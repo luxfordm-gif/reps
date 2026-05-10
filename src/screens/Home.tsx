@@ -270,7 +270,7 @@ function QuickAction({
         hapticBuzz(12);
         onClick?.();
       }}
-      className="flex items-center justify-center gap-2 rounded-card bg-paper-card py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+      className="quick-action-enter quick-action-enter-2 flex items-center justify-center gap-2 rounded-card bg-paper-card py-4 text-sm font-medium text-ink shadow-card transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97]"
     >
       {icon}
       {label}
@@ -350,11 +350,11 @@ function WaterAction({
       onPointerUp={end}
       onPointerCancel={clearTimer}
       disabled={busy}
-      className="relative flex flex-col items-start gap-1 overflow-hidden rounded-card bg-paper-card px-4 py-3 text-left shadow-card transition-transform active:scale-[0.99] touch-none select-none"
+      className="quick-action-enter quick-action-enter-1 relative flex flex-col items-start gap-1 overflow-hidden rounded-card bg-paper-card px-4 py-3 text-left shadow-card transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] touch-none select-none active:scale-[0.97]"
     >
       <div
-        className="absolute inset-y-0 left-0 bg-[#E5F0FF]"
-        style={{ width: `${pct * 100}%`, transition: 'width 250ms ease' }}
+        className="water-fill absolute inset-y-0 left-0 bg-[#E5F0FF]"
+        style={{ width: `${pct * 100}%` }}
       />
       <div className="relative flex w-full items-center gap-1.5 text-ink">
         <DropletIcon />
@@ -363,7 +363,10 @@ function WaterAction({
         </span>
       </div>
       <div className="relative text-base font-bold tracking-tight text-ink">
-        {count} / {goal}{' '}
+        <span key={count} className="water-count tabular-nums">
+          {count}
+        </span>{' '}
+        / {goal}{' '}
         <span className="text-xs font-medium text-muted">{unit}</span>
       </div>
     </button>

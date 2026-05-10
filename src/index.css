@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 html, body, #root {
   height: 100%;
   background-color: #FAFAFA;
@@ -12,4 +16,57 @@ html, body, #root {
 
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes water-count-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.water-count {
+  display: inline-block;
+  animation: water-count-pop 180ms var(--ease-out-strong) both;
+}
+
+.water-fill {
+  transition: width 200ms var(--ease-out-strong);
+}
+
+@keyframes quick-action-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.quick-action-enter {
+  animation: quick-action-enter 240ms var(--ease-out-strong) both;
+}
+
+.quick-action-enter-1 {
+  animation-delay: 0ms;
+}
+
+.quick-action-enter-2 {
+  animation-delay: 50ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .water-count,
+  .quick-action-enter {
+    animation: none;
+  }
+  .water-fill {
+    transition-duration: 0ms;
+  }
 }
