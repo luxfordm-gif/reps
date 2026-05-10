@@ -11,6 +11,13 @@ import {
   type BodyWeightUnit,
   type LiftWeightUnit,
 } from '../lib/units';
+import {
+  getWaterGoal,
+  setWaterGoal,
+  getWaterUnit,
+  setWaterUnit,
+  type WaterUnit,
+} from '../lib/waterApi';
 
 interface Props {
   onUploadPlan: () => void;
@@ -22,6 +29,8 @@ export function Profile({ onUploadPlan, onTabChange }: Props) {
   const [plan, setPlan] = useState<FullPlan | null>(null);
   const [bwUnit, setBwUnitState] = useState<BodyWeightUnit>(getBodyWeightUnit());
   const [lwUnit, setLwUnitState] = useState<LiftWeightUnit>(getLiftWeightUnit());
+  const [waterGoal, setWaterGoalState] = useState<number>(getWaterGoal());
+  const [waterUnit, setWaterUnitState] = useState<WaterUnit>(getWaterUnit());
 
   useEffect(() => {
     getActivePlan().then(setPlan).catch(() => {});
@@ -99,6 +108,44 @@ export function Profile({ onUploadPlan, onTabChange }: Props) {
               options={['kg', 'lb'] as const}
               onChange={changeLwUnit}
             />
+            <div className="border-t border-line" />
+            <div className="flex items-center justify-between px-5 py-4">
+              <div>
+                <div className="text-sm font-semibold text-ink">Daily water goal</div>
+                <div className="mt-0.5 text-xs text-muted">Tap the home tile to log</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={99}
+                  value={waterGoal}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    if (!Number.isNaN(n) && n > 0) {
+                      setWaterGoalState(n);
+                      setWaterGoal(n);
+                    }
+                  }}
+                  className="w-14 rounded-xl border border-line bg-paper px-2 py-1 text-center text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                />
+                <select
+                  value={waterUnit}
+                  onChange={(e) => {
+                    const u = e.target.value as WaterUnit;
+                    setWaterUnitState(u);
+                    setWaterUnit(u);
+                  }}
+                  className="rounded-xl border border-line bg-paper px-2 py-1 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                >
+                  <option value="bottles">bottles</option>
+                  <option value="glasses">glasses</option>
+                  <option value="cups">cups</option>
+                  <option value="L">litres</option>
+                </select>
+              </div>
+            </div>
           </div>
         </Section>
 

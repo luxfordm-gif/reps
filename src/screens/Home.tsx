@@ -5,6 +5,12 @@ import { AppHeader } from '../components/AppHeader';
 import { WeeklyProgress } from '../components/WeeklyProgress';
 import { getActivePlan, type FullPlan } from '../lib/plansApi';
 import { getLastCompletedTrainingDayName } from '../lib/sessionsApi';
+import {
+  getTodayWaterCount,
+  adjustWater,
+  getWaterGoal,
+  getWaterUnit,
+} from '../lib/waterApi';
 
 type Day = FullPlan['training_days'][number];
 
@@ -55,15 +61,20 @@ function greeting() {
 export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: Props) {
   const [plan, setPlan] = useState<FullPlan | null>(null);
   const [lastCompleted, setLastCompleted] = useState<string | null>(null);
+  const [waterCount, setWaterCount] = useState(0);
+  const [waterGoal] = useState(() => getWaterGoal());
+  const [waterUnit] = useState(() => getWaterUnit());
+  const [waterBusy, setWaterBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getActivePlan(), getLastCompletedTrainingDayName()])
-      .then(([p, lc]) => {
+    Promise.all([getActivePlan(), getLastCompletedTrainingDayName(), getTodayWaterCount()])
+      .then(([p, lc, w]) => {
         if (!mounted) return;
         setPlan(p);
         setLastCompleted(lc);
+        setWaterCount(w);
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -72,6 +83,17 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
       mounted = false;
     };
   }, []);
+
+  async function handleWaterTap(delta: number) {
+    if (waterBusy) return;
+    setWaterBusy(true);
+    try {
+      const next = await adjustWater(delta);
+      setWaterCount(next);
+    } finally {
+      setWaterBusy(false);
+    }
+  }
 
   const today = new Date()
     .toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -162,10 +184,13 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
         <div className="mt-7">
           <SectionLabel>Quick Actions</SectionLabel>
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <QuickAction
-              icon={<PlayIcon />}
-              label="Start workout"
-              onClick={() => nextDay && onTapDay(nextDay)}
+            <WaterAction
+              count={waterCount}
+              goal={waterGoal}
+              unit={waterUnit}
+              busy={waterBusy}
+              onTap={() => handleWaterTap(1)}
+              onLongPress={() => handleWaterTap(-1)}
             />
             <QuickAction
               icon={<ScaleIcon />}
@@ -239,10 +264,80 @@ function QuickAction({
   );
 }
 
-function PlayIcon() {
+function WaterAction({
+  count,
+  goal,
+  unit,
+  busy,
+  onTap,
+  onLongPress,
+}: {
+  count: number;
+  goal: number;
+  unit: string;
+  busy: boolean;
+  onTap: () => void;
+  onLongPress: () => void;
+}) {
+  const pct = Math.min(1, count / Math.max(1, goal));
+  let pressTimer: number | null = null;
+  function start() {
+    pressTimer = window.setTimeout(() => {
+      pressTimer = null;
+      onLongPress();
+    }, 600);
+  }
+  function end() {
+    if (pressTimer != null) {
+      window.clearTimeout(pressTimer);
+      pressTimer = null;
+      onTap();
+    }
+  }
+  function cancel() {
+    if (pressTimer != null) {
+      window.clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M5 3l9 6-9 6V3z" fill="currentColor" />
+    <button
+      onMouseDown={start}
+      onMouseUp={end}
+      onMouseLeave={cancel}
+      onTouchStart={start}
+      onTouchEnd={end}
+      onTouchCancel={cancel}
+      disabled={busy}
+      className="relative flex flex-col items-start gap-1 overflow-hidden rounded-card bg-paper-card px-4 py-3 text-left shadow-card transition-transform active:scale-[0.99]"
+    >
+      <div
+        className="absolute inset-y-0 left-0 bg-[#E5F0FF]"
+        style={{ width: `${pct * 100}%`, transition: 'width 250ms ease' }}
+      />
+      <div className="relative flex w-full items-center gap-1.5 text-ink">
+        <DropletIcon />
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+          Water
+        </span>
+      </div>
+      <div className="relative text-base font-bold tracking-tight text-ink">
+        {count} / {goal}{' '}
+        <span className="text-xs font-medium text-muted">{unit}</span>
+      </div>
+    </button>
+  );
+}
+
+function DropletIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+      <path
+        d="M9 2c2 3 5 6 5 9.5A5 5 0 0 1 9 16.5 5 5 0 0 1 4 11.5C4 8 7 5 9 2z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
