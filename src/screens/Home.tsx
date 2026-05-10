@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TrainingDayCard } from '../components/TrainingDayCard';
 import { BottomNav, type Tab } from '../components/BottomNav';
 import { AppHeader } from '../components/AppHeader';
@@ -264,6 +264,16 @@ function QuickAction({
   );
 }
 
+function hapticBuzz(pattern: number | number[]) {
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate(pattern);
+    } catch {
+      // ignore — some platforms (notably iOS Safari) don't support vibration
+    }
+  }
+}
+
 function WaterAction({
   count,
   goal,
@@ -280,36 +290,53 @@ function WaterAction({
   onLongPress: () => void;
 }) {
   const pct = Math.min(1, count / Math.max(1, goal));
-  let pressTimer: number | null = null;
-  function start() {
-    pressTimer = window.setTimeout(() => {
-      pressTimer = null;
+  const pressTimer = useRef<number | null>(null);
+  const didLongPress = useRef(false);
+
+  function clearTimer() {
+    if (pressTimer.current != null) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }
+
+  function start(e: React.PointerEvent<HTMLButtonElement>) {
+    // Capture the pointer so tiny finger movement doesn't cancel the press.
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore — older browsers may not support pointer capture
+    }
+    didLongPress.current = false;
+    clearTimer();
+    pressTimer.current = window.setTimeout(() => {
+      pressTimer.current = null;
+      didLongPress.current = true;
+      hapticBuzz([15, 40, 25]);
       onLongPress();
     }, 600);
   }
+
   function end() {
-    if (pressTimer != null) {
-      window.clearTimeout(pressTimer);
-      pressTimer = null;
+    // If the long-press already fired, swallow the trailing pointerup.
+    if (didLongPress.current) {
+      didLongPress.current = false;
+      return;
+    }
+    if (pressTimer.current != null) {
+      clearTimer();
+      hapticBuzz(12);
       onTap();
     }
   }
-  function cancel() {
-    if (pressTimer != null) {
-      window.clearTimeout(pressTimer);
-      pressTimer = null;
-    }
-  }
+
   return (
     <button
-      onMouseDown={start}
-      onMouseUp={end}
-      onMouseLeave={cancel}
-      onTouchStart={start}
-      onTouchEnd={end}
-      onTouchCancel={cancel}
+      onPointerDown={start}
+      onPointerUp={end}
+      onPointerCancel={clearTimer}
       disabled={busy}
-      className="relative flex flex-col items-start gap-1 overflow-hidden rounded-card bg-paper-card px-4 py-3 text-left shadow-card transition-transform active:scale-[0.99]"
+      className="relative flex flex-col items-start gap-1 overflow-hidden rounded-card bg-paper-card px-4 py-3 text-left shadow-card transition-transform active:scale-[0.99] touch-none select-none"
     >
       <div
         className="absolute inset-y-0 left-0 bg-[#E5F0FF]"
