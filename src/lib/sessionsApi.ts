@@ -21,6 +21,28 @@ export interface LoggedSet {
   completed_at: string;
 }
 
+export async function getLastCompletedTrainingDayName(): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('training_day_id, completed_at, training_days(name)')
+    .eq('user_id', user.id)
+    .not('completed_at', 'is', null)
+    .order('completed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  if (!data) return null;
+  // training_days may come through as object or array depending on PostgREST inference
+  const td = (data as { training_days: { name: string } | { name: string }[] | null }).training_days;
+  if (!td) return null;
+  if (Array.isArray(td)) return td[0]?.name ?? null;
+  return td.name ?? null;
+}
+
 export async function getActiveSessionForDay(
   trainingDayId: string
 ): Promise<SessionRow | null> {

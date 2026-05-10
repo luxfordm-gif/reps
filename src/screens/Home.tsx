@@ -4,6 +4,7 @@ import { BottomNav, type Tab } from '../components/BottomNav';
 import { AppHeader } from '../components/AppHeader';
 import { WeeklyProgress } from '../components/WeeklyProgress';
 import { getActivePlan, type FullPlan } from '../lib/plansApi';
+import { getLastCompletedTrainingDayName } from '../lib/sessionsApi';
 
 type Day = FullPlan['training_days'][number];
 
@@ -25,7 +26,6 @@ const ACCENTS: Record<string, string> = {
 
 const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
 const FIRST_NAME = 'Matt';
-const LAST_COMPLETED: string | null = null;
 
 function bodyPartsForDay(exercises: { body_part: string | null }[]): string {
   const parts: string[] = [];
@@ -37,9 +37,10 @@ function bodyPartsForDay(exercises: { body_part: string | null }[]): string {
 
 function getNextDayName(days: { name: string }[], lastCompleted: string | null) {
   if (days.length === 0) return null;
-  if (!lastCompleted) return days[0].name;
+  // No prior completed workout — don't pre-select anything as "Up next"
+  if (!lastCompleted) return null;
   const idx = days.findIndex((d) => d.name === lastCompleted);
-  if (idx === -1) return days[0].name;
+  if (idx === -1) return null;
   return days[(idx + 1) % days.length].name;
 }
 
@@ -53,13 +54,16 @@ function greeting() {
 
 export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: Props) {
   const [plan, setPlan] = useState<FullPlan | null>(null);
+  const [lastCompleted, setLastCompleted] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
-    getActivePlan()
-      .then((p) => {
-        if (mounted) setPlan(p);
+    Promise.all([getActivePlan(), getLastCompletedTrainingDayName()])
+      .then(([p, lc]) => {
+        if (!mounted) return;
+        setPlan(p);
+        setLastCompleted(lc);
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -114,9 +118,9 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
   const days = plan.training_days ?? [];
   const mainDays = days.filter((d) => d.name !== 'Abs');
   const absDay = days.find((d) => d.name === 'Abs');
-  const nextDayName = getNextDayName(mainDays, LAST_COMPLETED);
-  const nextDay = mainDays.find((d) => d.name === nextDayName);
-  const otherDays = mainDays.filter((d) => d.name !== nextDayName);
+  const nextDayName = getNextDayName(mainDays, lastCompleted);
+  const nextDay = nextDayName ? mainDays.find((d) => d.name === nextDayName) : undefined;
+  const otherDays = nextDay ? mainDays.filter((d) => d.name !== nextDay.name) : mainDays;
 
   return (
     <div className="min-h-screen bg-paper pb-28">
