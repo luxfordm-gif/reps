@@ -145,7 +145,7 @@ export function BodyWeight({ onBack }: Props) {
 
   return (
     <div className="min-h-screen bg-paper pb-28">
-      <div className="mx-auto max-w-md px-5 pt-12">
+      <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title="Body Weight" onBack={onBack} />
 
         <div className="mt-6">

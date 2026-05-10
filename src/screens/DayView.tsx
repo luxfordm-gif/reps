@@ -112,10 +112,10 @@ export function DayView({ day, onBack, onTapExercise }: Props) {
 
   return (
     <div className="min-h-screen bg-paper pb-28">
-      <div className="mx-auto max-w-md px-5 pt-12">
+      <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title={day.name} onBack={onBack} />
 
-        <div className="mt-9">
+        <div className="mt-8">
           <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
             {groups.map((g) => g.bodyPart).join(' · ')}
           </div>

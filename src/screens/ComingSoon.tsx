@@ -11,7 +11,7 @@ interface Props {
 export function ComingSoon({ active, title, subtitle, onTabChange }: Props) {
   return (
     <div className="min-h-screen bg-paper pb-28">
-      <div className="mx-auto max-w-md px-5 pt-12">
+      <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title={title} />
         <div className="mt-12 rounded-card bg-paper-card p-8 text-center shadow-card">
           {subtitle && <p className="text-sm text-muted">{subtitle}</p>}

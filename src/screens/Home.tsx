@@ -116,7 +116,7 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
   if (!plan) {
     return (
       <div className="min-h-screen bg-paper pb-28">
-        <div className="mx-auto max-w-md px-5 pt-12">
+        <div className="mx-auto max-w-md px-5 pt-3">
           <AppHeader />
 
           <div className="mt-16 rounded-card bg-paper-card p-8 text-center shadow-card">
@@ -152,7 +152,7 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
 
   return (
     <div className="min-h-screen bg-paper pb-28">
-      <div className="mx-auto max-w-md px-5 pt-6">
+      <div className="mx-auto max-w-md px-5 pt-3">
         <AppHeader />
 
         <div className="mt-5">

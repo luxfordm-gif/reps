@@ -57,7 +57,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
 
   return (
     <div className="min-h-screen bg-paper pb-12">
-      <div className="mx-auto max-w-md px-5 pt-12">
+      <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title="Upload Plan" onBack={onCancel} />
 
         <p className="mt-6 text-base text-muted">
