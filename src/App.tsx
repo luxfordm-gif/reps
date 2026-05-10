@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
+import { isSupabaseConfigured } from './lib/supabase';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { UploadPlan } from './screens/UploadPlan';
@@ -147,6 +148,23 @@ function Root() {
 }
 
 function App() {
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-paper p-8">
+        <div className="max-w-md rounded-card bg-paper-card p-8 text-center shadow-card">
+          <h1 className="text-2xl font-bold text-ink">Configuration missing</h1>
+          <p className="mt-3 text-sm text-muted">
+            The app couldn't find <code className="rounded bg-line px-1">VITE_SUPABASE_URL</code>{' '}
+            or <code className="rounded bg-line px-1">VITE_SUPABASE_KEY</code> in this build.
+          </p>
+          <p className="mt-3 text-sm text-muted">
+            Set both in Netlify → Site configuration → Environment variables, then{' '}
+            <strong className="text-ink">trigger a fresh deploy with cache cleared</strong>.
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
     <AuthProvider>
       <Root />
