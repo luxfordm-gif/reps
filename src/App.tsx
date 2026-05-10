@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
 import { isSupabaseConfigured } from './lib/supabase';
 import { Home } from './screens/Home';
@@ -10,11 +10,13 @@ import { ComingSoon } from './screens/ComingSoon';
 import { DayView } from './screens/DayView';
 import { ExerciseLogger } from './screens/ExerciseLogger';
 import { SetNewPassword } from './screens/SetNewPassword';
+import { WorkoutHistory } from './screens/WorkoutHistory';
+import { WorkoutComplete } from './screens/WorkoutComplete';
 import { createSession, completeSession } from './lib/sessionsApi';
 import type { Tab } from './components/BottomNav';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 
-type Modal = null | 'upload' | 'bodyWeight';
+type Modal = null | 'upload' | 'bodyWeight' | 'history';
 
 function Root() {
   const { session, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
@@ -24,6 +26,9 @@ function Root() {
   const [activeDay, setActiveDay] = useState<FullPlan['training_days'][number] | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [exerciseIdx, setExerciseIdx] = useState<number | null>(null);
+  const [completedSession, setCompletedSession] = useState<{ id: string; dayName: string } | null>(
+    null
+  );
 
   const exercises = activeDay?.plan_exercises ?? [];
   const activeExercise: PlanExerciseRow | null =
@@ -60,6 +65,20 @@ function Root() {
     return <BodyWeight onBack={() => setModal(null)} />;
   }
 
+  if (modal === 'history') {
+    return <WorkoutHistory onBack={() => setModal(null)} />;
+  }
+
+  if (completedSession) {
+    return (
+      <WorkoutComplete
+        sessionId={completedSession.id}
+        dayName={completedSession.dayName}
+        onDone={() => setCompletedSession(null)}
+      />
+    );
+  }
+
   async function startExercise(exercise: PlanExerciseRow, existingSessionId?: string) {
     if (!activeDay) return;
     let sid = existingSessionId ?? sessionId;
@@ -90,9 +109,11 @@ function Root() {
         onPrev={() => setExerciseIdx((i) => (i != null && i > 0 ? i - 1 : i))}
         onNext={() => setExerciseIdx((i) => (i != null ? i + 1 : null))}
         onFinish={async () => {
-          if (sessionId) {
+          const sid = sessionId;
+          const finishedDay = activeDay?.name ?? 'Workout';
+          if (sid) {
             try {
-              await completeSession(sessionId);
+              await completeSession(sid);
             } catch (e) {
               console.error(e);
             }
@@ -100,6 +121,10 @@ function Root() {
           setExerciseIdx(null);
           setSessionId(null);
           setActiveDay(null);
+          if (sid) {
+            setCompletedSession({ id: sid, dayName: finishedDay });
+            setRefreshKey((k) => k + 1);
+          }
         }}
       />
     );
@@ -118,9 +143,10 @@ function Root() {
     );
   }
 
+  let screen: React.ReactNode = null;
   switch (tab) {
     case 'home':
-      return (
+      screen = (
         <Home
           key={refreshKey}
           onUploadPlan={() => setModal('upload')}
@@ -129,27 +155,69 @@ function Root() {
           onTapDay={setActiveDay}
         />
       );
-    case 'workouts':
-      return (
+      break;
+    case 'performance':
+      screen = (
         <ComingSoon
-          active="workouts"
-          title="Workouts"
-          subtitle="A flat list of every training day with quick-jump search."
-          onTabChange={setTab}
-        />
-      );
-    case 'progress':
-      return (
-        <ComingSoon
-          active="progress"
-          title="Progress"
+          active="performance"
+          title="Performance"
           subtitle="PRs, est. 1RM, body weight trend, exercise history."
           onTabChange={setTab}
         />
       );
+      break;
     case 'profile':
-      return <Profile onUploadPlan={() => setModal('upload')} onTabChange={setTab} />;
+      screen = (
+        <Profile
+          onUploadPlan={() => setModal('upload')}
+          onTabChange={setTab}
+          onOpenHistory={() => setModal('history')}
+        />
+      );
+      break;
   }
+  return <TabSwipeContainer tab={tab} onTabChange={setTab}>{screen}</TabSwipeContainer>;
+}
+
+const TAB_ORDER: Tab[] = ['home', 'performance', 'profile'];
+
+function TabSwipeContainer({
+  tab,
+  onTabChange,
+  children,
+}: {
+  tab: Tab;
+  onTabChange: (t: Tab) => void;
+  children: React.ReactNode;
+}) {
+  const start = useRef<{ x: number; y: number; ignore: boolean } | null>(null);
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    const ignore = !!target.closest(
+      'input, textarea, select, button, a, [role="button"], [data-no-tab-swipe]'
+    );
+    start.current = { x: e.clientX, y: e.clientY, ignore };
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    const s = start.current;
+    start.current = null;
+    if (!s || s.ignore) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (Math.abs(dx) < 60 || Math.abs(dy) > 40) return;
+    const idx = TAB_ORDER.indexOf(tab);
+    if (idx === -1) return;
+    const nextIdx = dx < 0 ? idx + 1 : idx - 1;
+    if (nextIdx < 0 || nextIdx >= TAB_ORDER.length) return;
+    onTabChange(TAB_ORDER[nextIdx]);
+  }
+  return (
+    <div onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => (start.current = null)}>
+      {children}
+    </div>
+  );
 }
 
 function App() {

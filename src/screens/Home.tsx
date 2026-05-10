@@ -43,10 +43,10 @@ function bodyPartsForDay(exercises: { body_part: string | null }[]): string {
 
 function getNextDayName(days: { name: string }[], lastCompleted: string | null) {
   if (days.length === 0) return null;
-  // No prior completed workout — don't pre-select anything as "Up next"
-  if (!lastCompleted) return null;
+  // No prior history — start from the first day in plan order.
+  if (!lastCompleted) return days[0].name;
   const idx = days.findIndex((d) => d.name === lastCompleted);
-  if (idx === -1) return null;
+  if (idx === -1) return days[0].name;
   return days[(idx + 1) % days.length].name;
 }
 
@@ -148,7 +148,14 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
   const absDay = days.find((d) => d.name === 'Abs');
   const nextDayName = getNextDayName(mainDays, lastCompleted);
   const nextDay = nextDayName ? mainDays.find((d) => d.name === nextDayName) : undefined;
-  const otherDays = nextDay ? mainDays.filter((d) => d.name !== nextDay.name) : mainDays;
+  // List order: each main day in plan order, with Abs inserted after Pull and after Arms.
+  const listDays: { day: Day; slot: 'main' | 'abs' }[] = [];
+  for (const d of mainDays) {
+    listDays.push({ day: d, slot: 'main' });
+    if (absDay && (d.name === 'Pull' || d.name === 'Arms')) {
+      listDays.push({ day: absDay, slot: 'abs' });
+    }
+  }
 
   return (
     <div className="min-h-screen bg-paper pb-28">
@@ -173,7 +180,7 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
 
         {nextDay && (
           <div className="mt-7">
-            <SectionLabel>Today's Workout</SectionLabel>
+            <SectionLabel>Today's workout</SectionLabel>
             <div className="mt-3">
               <TrainingDayCard
                 name={nextDay.name}
@@ -188,8 +195,8 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
         )}
 
         <div className="mt-7">
-          <SectionLabel>Quick Actions</SectionLabel>
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <SectionLabel>Quick actions</SectionLabel>
+          <div className="mt-3 grid grid-cols-[1fr_0.675fr_1fr] gap-2">
             <WaterAction
               count={waterCount}
               goal={waterGoal}
@@ -198,9 +205,10 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
               onTap={() => handleWaterTap(1)}
               onLongPress={() => handleWaterTap(-1)}
             />
+            <CoffeeAction />
             <QuickAction
               icon={<ScaleIcon />}
-              label="Log body weight"
+              label="Log weight"
               onClick={onLogBodyWeight}
             />
           </div>
@@ -212,11 +220,11 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
         </div>
 
         <div className="mt-7">
-          <SectionLabel>All Workouts</SectionLabel>
+          <SectionLabel>All workouts</SectionLabel>
           <div className="mt-3 space-y-3">
-            {otherDays.map((day) => (
+            {listDays.map(({ day }, i) => (
               <TrainingDayCard
-                key={day.id}
+                key={`${day.id}-${i}`}
                 name={day.name}
                 bodyParts={bodyPartsForDay(day.plan_exercises ?? [])}
                 exerciseCount={(day.plan_exercises ?? []).length}
@@ -224,20 +232,6 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
                 onClick={() => onTapDay(day)}
               />
             ))}
-            {absDay && (
-              <button
-                onClick={() => onTapDay(absDay)}
-                className="flex w-full items-center justify-between rounded-card bg-paper-card px-5 py-5 text-left shadow-card"
-              >
-                <div>
-                  <div className="text-base font-semibold text-ink">Abs</div>
-                  <div className="mt-0.5 text-sm text-muted">
-                    2× weekly · {(absDay.plan_exercises ?? []).length} exercises
-                  </div>
-                </div>
-                <ChevronRight />
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -270,10 +264,10 @@ function QuickAction({
         hapticBuzz(12);
         onClick?.();
       }}
-      className="flex items-center justify-center gap-2 rounded-card bg-paper-card py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+      className="flex items-center justify-between rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
     >
-      {icon}
-      {label}
+      <span>{icon}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -287,6 +281,130 @@ function hapticBuzz(pattern: number | number[]) {
     }
   }
 }
+
+function todayKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `reps_coffee_${y}-${m}-${day}`;
+}
+
+function CoffeeAction() {
+  const key = todayKey();
+  const [count, setCount] = useState(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? parseInt(v, 10) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [wiggleKey, setWiggleKey] = useState(0);
+  const pressTimer = useRef<number | null>(null);
+  const didLongPress = useRef(false);
+
+  function write(next: number) {
+    setCount(next);
+    try {
+      localStorage.setItem(key, String(next));
+    } catch {
+      // localStorage unavailable — keep the in-memory count
+    }
+  }
+
+  function bump(delta: number) {
+    setWiggleKey((k) => k + 1);
+    setCount((c) => {
+      const next = Math.max(0, c + delta);
+      try {
+        localStorage.setItem(key, String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
+
+  function clearTimer() {
+    if (pressTimer.current != null) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }
+
+  function start(e: React.PointerEvent<HTMLButtonElement>) {
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    didLongPress.current = false;
+    clearTimer();
+    pressTimer.current = window.setTimeout(() => {
+      pressTimer.current = null;
+      didLongPress.current = true;
+      hapticBuzz([15, 40, 25]);
+      bump(-1);
+    }, 600);
+  }
+
+  function end() {
+    if (didLongPress.current) {
+      didLongPress.current = false;
+      return;
+    }
+    if (pressTimer.current != null) {
+      clearTimer();
+      hapticBuzz(10);
+      bump(1);
+    }
+  }
+
+  // Touch `write` so it's not flagged unused — kept for potential reset use.
+  void write;
+
+  return (
+    <button
+      onPointerDown={start}
+      onPointerUp={end}
+      onPointerCancel={clearTimer}
+      aria-label={`Coffee count: ${count}. Tap to add, press and hold to remove.`}
+      className="flex items-center justify-between rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.97] touch-none select-none"
+    >
+      <style>{`
+        @keyframes reps-coffee-wiggle {
+          0% { transform: rotate(0deg); }
+          20% { transform: rotate(-14deg); }
+          45% { transform: rotate(12deg); }
+          70% { transform: rotate(-7deg); }
+          100% { transform: rotate(0deg); }
+        }
+      `}</style>
+      <span
+        key={wiggleKey}
+        className="inline-flex origin-bottom"
+        style={
+          wiggleKey > 0
+            ? { animation: 'reps-coffee-wiggle 450ms ease-out' }
+            : undefined
+        }
+      >
+        <CoffeeIcon />
+      </span>
+      <span className="tabular-nums">{count}</span>
+    </button>
+  );
+}
+
+const HYDRATION_MESSAGES = [
+  'Well done!',
+  "You're well hydrated",
+  'Hydration hero',
+  'Crushing it',
+  'Topped right up',
+  'Smashed your goal',
+];
 
 function WaterAction({
   count,
@@ -306,6 +424,26 @@ function WaterAction({
   const pct = Math.min(1, count / Math.max(1, goal));
   const pressTimer = useRef<number | null>(null);
   const didLongPress = useRef(false);
+  const reached = count >= goal;
+  const prevReached = useRef(reached);
+  const [celebrating, setCelebrating] = useState(false);
+  const [praise, setPraise] = useState(() =>
+    reached ? HYDRATION_MESSAGES[Math.floor(Math.random() * HYDRATION_MESSAGES.length)] : ''
+  );
+
+  useEffect(() => {
+    if (reached && !prevReached.current) {
+      setPraise(HYDRATION_MESSAGES[Math.floor(Math.random() * HYDRATION_MESSAGES.length)]);
+      setCelebrating(true);
+      const t = window.setTimeout(() => setCelebrating(false), 1400);
+      prevReached.current = true;
+      return () => window.clearTimeout(t);
+    }
+    if (!reached && prevReached.current) {
+      prevReached.current = false;
+      setCelebrating(false);
+    }
+  }, [reached]);
 
   function clearTimer() {
     if (pressTimer.current != null) {
@@ -345,38 +483,113 @@ function WaterAction({
   }
 
   return (
-    <button
-      onPointerDown={start}
-      onPointerUp={end}
-      onPointerCancel={clearTimer}
-      disabled={busy}
-      className="relative flex flex-col items-start gap-1 overflow-hidden rounded-card bg-paper-card px-4 py-3 text-left shadow-card transition-transform active:scale-[0.99] touch-none select-none"
+    <div className="relative">
+      <button
+        onPointerDown={start}
+        onPointerUp={end}
+        onPointerCancel={clearTimer}
+        disabled={busy}
+        className="relative flex w-full items-center justify-between overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99] touch-none select-none"
+      >
+        <div
+          className="absolute inset-y-0 left-0 bg-[#D6E8FF]"
+          style={{ width: `${pct * 100}%`, transition: 'width 350ms cubic-bezier(.22,.85,.36,1)' }}
+        />
+        {reached ? (
+          <span className="relative w-full text-center font-semibold text-ink">
+            {celebrating ? 'Well done!' : praise}
+          </span>
+        ) : (
+          <>
+            <span className="relative">
+              <DropletIcon />
+            </span>
+            <span className="relative truncate pl-2 text-right">
+              {count} / {goal} <span className="text-muted">{unit}</span>
+            </span>
+          </>
+        )}
+      </button>
+      {celebrating && <Confetti />}
+    </div>
+  );
+}
+
+const CONFETTI_COLORS = ['#6BB6FF', '#FFB84D', '#FF6B9A', '#7BD389', '#A78BFA'];
+const CONFETTI_PIECES = Array.from({ length: 14 }, (_, i) => {
+  const angle = (i / 14) * Math.PI * 2 + Math.random() * 0.3;
+  const dist = 38 + Math.random() * 30;
+  return {
+    tx: Math.cos(angle) * dist,
+    ty: Math.sin(angle) * dist - 10,
+    rot: Math.random() * 360,
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    delay: Math.random() * 80,
+  };
+});
+
+function Confetti() {
+  return (
+    <span
+      className="pointer-events-none absolute inset-0 flex items-center justify-center"
+      aria-hidden
     >
-      <div
-        className="absolute inset-y-0 left-0 bg-[#E5F0FF]"
-        style={{ width: `${pct * 100}%`, transition: 'width 250ms ease' }}
+      <style>{`
+        @keyframes reps-confetti {
+          0% { transform: translate(0,0) rotate(0deg); opacity: 0; }
+          15% { opacity: 1; }
+          100% { transform: translate(var(--tx), var(--ty)) rotate(var(--rot)); opacity: 0; }
+        }
+      `}</style>
+      {CONFETTI_PIECES.map((p, i) => (
+        <span
+          key={i}
+          className="absolute h-1.5 w-1.5 rounded-sm"
+          style={{
+            backgroundColor: p.color,
+            ['--tx' as string]: `${p.tx}px`,
+            ['--ty' as string]: `${p.ty}px`,
+            ['--rot' as string]: `${p.rot}deg`,
+            animation: `reps-confetti 1100ms ease-out ${p.delay}ms forwards`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function CoffeeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M4 8h12v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
       />
-      <div className="relative flex w-full items-center gap-1.5 text-ink">
-        <DropletIcon />
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-          Water
-        </span>
-      </div>
-      <div className="relative text-base font-bold tracking-tight text-ink">
-        {count} / {goal}{' '}
-        <span className="text-xs font-medium text-muted">{unit}</span>
-      </div>
-    </button>
+      <path
+        d="M16 10h2a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M8 3v2M11 3v2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
 function DropletIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
       <path
-        d="M9 2c2 3 5 6 5 9.5A5 5 0 0 1 9 16.5 5 5 0 0 1 4 11.5C4 8 7 5 9 2z"
+        d="M12 3c2.5 3.8 6.5 7.5 6.5 12a6.5 6.5 0 0 1-13 0C5.5 10.5 9.5 6.8 12 3z"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.6"
         strokeLinejoin="round"
       />
     </svg>
@@ -385,14 +598,24 @@ function DropletIcon() {
 
 function ScaleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path
-        d="M3 5h12l-1.5 9a1 1 0 0 1-1 .9H5.5a1 1 0 0 1-1-.9L3 5z M9 5V3 M7 3h4"
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="16"
+        rx="3"
         stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        strokeWidth="1.6"
       />
+      <circle cx="12" cy="13" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M12 13l1.8-2.2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path d="M9 7h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -411,16 +634,3 @@ function UploadCloudIcon() {
   );
 }
 
-function ChevronRight() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="text-muted">
-      <path
-        d="M7.5 4L13.5 10L7.5 16"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}

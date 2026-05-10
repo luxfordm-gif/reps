@@ -215,6 +215,10 @@ export function ExerciseLogger({
       setError('Enter a weight or reps');
       return;
     }
+    if (repsNum != null && repsNum > 100) {
+      setError('Reps capped at 100 — check the number');
+      return;
+    }
     setError(null);
     setSavingIdx(idx);
     try {
@@ -346,16 +350,25 @@ export function ExerciseLogger({
                 groups.push({ setIndex: s.setIndex, rows: [{ row: s, idx: i }] });
               }
             });
-            return groups.map((group) => (
-              <SetGroup
-                key={group.setIndex}
-                rows={group.rows}
-                activeIndex={activeIndex}
-                savingIdx={savingIdx}
-                onChange={update}
-                onComplete={handleComplete}
-              />
-            ));
+            const intensifier = parseIntensifier(exercise.notes);
+            const lastSetIndex = groups[groups.length - 1]?.setIndex;
+            return groups.map((group) => {
+              if (intensifier && group.setIndex === lastSetIndex) {
+                return (
+                  <IntensifierBlock key={group.setIndex} setIndex={group.setIndex} pyramid={intensifier} />
+                );
+              }
+              return (
+                <SetGroup
+                  key={group.setIndex}
+                  rows={group.rows}
+                  activeIndex={activeIndex}
+                  savingIdx={savingIdx}
+                  onChange={update}
+                  onComplete={handleComplete}
+                />
+              );
+            });
           })()}
         </div>
 
@@ -495,8 +508,8 @@ function SetGroup({
         return (
           <div
             key={idx}
-            className={`relative flex items-center gap-3 px-3 py-3 transition-colors ${
-              !isMain ? 'pl-9 bg-line/30' : ''
+            className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
+              !isMain ? 'pl-11 bg-line/30' : ''
             } ${row.completed ? 'opacity-70' : ''} ${
               isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
             } ${!isLastInGroup ? 'border-b border-line/60' : ''}`}
@@ -532,6 +545,7 @@ function SetGroup({
             <input
               type="number"
               inputMode="numeric"
+              max={100}
               value={row.reps}
               disabled={row.completed}
               onChange={(e) => onChange(idx, { reps: e.target.value })}
@@ -801,6 +815,49 @@ function ChevronSmall({ flip }: { flip?: boolean }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function parseIntensifier(notes: string | null | undefined): { weight: number; reps: number }[] | null {
+  if (!notes) return null;
+  if (!/intensifier/i.test(notes)) return null;
+  const re = /([\d.]+)\s*kg\s*[x×]\s*(\d+)/gi;
+  const pairs: { weight: number; reps: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(notes)) !== null) {
+    const weight = parseFloat(m[1]);
+    const reps = parseInt(m[2], 10);
+    if (!Number.isNaN(weight) && !Number.isNaN(reps)) pairs.push({ weight, reps });
+  }
+  return pairs.length >= 3 ? pairs : null;
+}
+
+function IntensifierBlock({
+  setIndex,
+  pyramid,
+}: {
+  setIndex: number;
+  pyramid: { weight: number; reps: number }[];
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl bg-paper-card shadow-card">
+      <div className="border-b border-line px-4 py-3">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+          Set {setIndex} · Dumbbell intensifier
+        </div>
+        <div className="mt-0.5 text-xs text-muted">
+          Work down and back up — no rest between weights
+        </div>
+      </div>
+      <ol className="divide-y divide-line">
+        {pyramid.map((p, i) => (
+          <li key={i} className="flex items-center justify-between px-5 py-2.5">
+            <span className="text-sm font-semibold text-ink tabular-nums">{p.weight} kg</span>
+            <span className="text-sm text-muted tabular-nums">× {p.reps}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
