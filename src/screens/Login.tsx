@@ -2,13 +2,21 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Logo } from '../components/Logo';
 
+type Mode = 'signin' | 'signup' | 'forgot';
+
 export function Login() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
+
+  function changeMode(m: Mode) {
+    setMode(m);
+    setError(null);
+    setInfo(null);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,10 +27,16 @@ export function Login() {
       if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-      } else {
+      } else if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         setInfo('Check your email to confirm your account, then sign in.');
+      } else {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/`,
+        });
+        if (error) throw error;
+        setInfo('Check your email for a link to reset your password.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -31,6 +45,25 @@ export function Login() {
     }
   }
 
+  const titles: Record<Mode, { heading: string; subtitle: string; cta: string }> = {
+    signin: {
+      heading: 'Welcome back.',
+      subtitle: 'Sign in to continue your training.',
+      cta: 'Sign in',
+    },
+    signup: {
+      heading: 'Create your account.',
+      subtitle: "Let's get you set up.",
+      cta: 'Create account',
+    },
+    forgot: {
+      heading: 'Reset password.',
+      subtitle: 'Enter your email and we’ll send you a link.',
+      cta: 'Send reset link',
+    },
+  };
+  const t = titles[mode];
+
   return (
     <div className="min-h-screen bg-paper">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5">
@@ -38,13 +71,9 @@ export function Login() {
           <Logo className="h-16 w-auto self-start" />
 
           <h1 className="mt-10 text-[32px] font-bold leading-tight tracking-tight text-ink">
-            {mode === 'signin' ? 'Welcome back.' : 'Create your account.'}
+            {t.heading}
           </h1>
-          <p className="mt-1.5 text-base text-muted">
-            {mode === 'signin'
-              ? 'Sign in to continue your training.'
-              : "Let's get you set up."}
-          </p>
+          <p className="mt-1.5 text-base text-muted">{t.subtitle}</p>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-3">
             <Field
@@ -55,14 +84,16 @@ export function Login() {
               placeholder="you@example.com"
               autoComplete="email"
             />
-            <Field
-              label="Password"
-              type="password"
-              value={password}
-              onChange={setPassword}
-              placeholder="••••••••"
-              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            />
+            {mode !== 'forgot' && (
+              <Field
+                label="Password"
+                type="password"
+                value={password}
+                onChange={setPassword}
+                placeholder="••••••••"
+                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              />
+            )}
 
             {error && (
               <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -80,28 +111,32 @@ export function Login() {
               disabled={busy}
               className="mt-2 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
             >
-              {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+              {busy ? 'Please wait…' : t.cta}
             </button>
           </form>
 
-          <button
-            onClick={() => {
-              setMode(mode === 'signin' ? 'signup' : 'signin');
-              setError(null);
-              setInfo(null);
-            }}
-            className="mt-6 w-full text-center text-sm text-muted"
-          >
-            {mode === 'signin' ? (
+          <div className="mt-6 space-y-2 text-center text-sm text-muted">
+            {mode === 'signin' && (
               <>
-                New here? <span className="font-semibold text-ink">Create an account</span>
-              </>
-            ) : (
-              <>
-                Already have an account? <span className="font-semibold text-ink">Sign in</span>
+                <button onClick={() => changeMode('forgot')} className="block w-full">
+                  Forgot password?
+                </button>
+                <button onClick={() => changeMode('signup')} className="block w-full">
+                  New here? <span className="font-semibold text-ink">Create an account</span>
+                </button>
               </>
             )}
-          </button>
+            {mode === 'signup' && (
+              <button onClick={() => changeMode('signin')} className="block w-full">
+                Already have an account? <span className="font-semibold text-ink">Sign in</span>
+              </button>
+            )}
+            {mode === 'forgot' && (
+              <button onClick={() => changeMode('signin')} className="block w-full">
+                <span className="font-semibold text-ink">Back to sign in</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

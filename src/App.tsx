@@ -9,6 +9,7 @@ import { Profile } from './screens/Profile';
 import { ComingSoon } from './screens/ComingSoon';
 import { DayView } from './screens/DayView';
 import { ExerciseLogger } from './screens/ExerciseLogger';
+import { SetNewPassword } from './screens/SetNewPassword';
 import { createSession, completeSession } from './lib/sessionsApi';
 import type { Tab } from './components/BottomNav';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
@@ -16,7 +17,7 @@ import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 type Modal = null | 'upload' | 'bodyWeight';
 
 function Root() {
-  const { session, loading } = useAuth();
+  const { session, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -34,6 +35,10 @@ function Root() {
         <div className="text-sm text-muted">Loading…</div>
       </div>
     );
+  }
+
+  if (passwordRecovery) {
+    return <SetNewPassword onDone={clearPasswordRecovery} />;
   }
 
   if (!session) return <Login />;
