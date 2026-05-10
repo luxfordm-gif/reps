@@ -6,6 +6,7 @@ import {
   getLastSessionSetsForExercise,
   type LoggedSet,
 } from '../lib/sessionsApi';
+import { parseSetMods } from '../lib/parseSetMods';
 import type { PlanExerciseRow } from '../lib/plansApi';
 
 interface Props {
@@ -23,6 +24,7 @@ interface Props {
 
 interface SetState {
   setIndex: number;
+  dropIndex: number; // 0 = main, 1+ = drop
   weight: string;
   reps: string;
   weightSuggested: string;
@@ -119,10 +121,17 @@ export function ExerciseLogger({
       .then(([existing, last]) => {
         if (!mounted) return;
         setLastSets(last);
-        const initial = buildInitialSets(exercise.total_sets ?? 1, exercise.rep_range, last);
-        // Mark as completed any sets already logged in this session
+        const initial = buildInitialSets(
+          exercise.total_sets ?? 1,
+          exercise.rep_range,
+          last,
+          exercise.notes ?? ''
+        );
+        // Mark as completed any rows already logged in this session
         for (const s of existing) {
-          const idx = initial.findIndex((x) => x.setIndex === s.set_index);
+          const idx = initial.findIndex(
+            (x) => x.setIndex === s.set_index && x.dropIndex === s.drop_index
+          );
           if (idx >= 0) {
             initial[idx] = {
               ...initial[idx],
@@ -141,7 +150,14 @@ export function ExerciseLogger({
     return () => {
       mounted = false;
     };
-  }, [sessionId, exercise.id, exercise.normalized_name, exercise.total_sets, exercise.rep_range]);
+  }, [
+    sessionId,
+    exercise.id,
+    exercise.normalized_name,
+    exercise.total_sets,
+    exercise.rep_range,
+    exercise.notes,
+  ]);
 
   const targetSets = exercise.total_sets ?? sets.length;
   const allDone = sets.length > 0 && sets.every((s) => s.completed);
@@ -167,14 +183,20 @@ export function ExerciseLogger({
         exerciseDisplayName: exercise.name,
         exerciseNormalizedName: exercise.normalized_name,
         setIndex: set.setIndex,
+        dropIndex: set.dropIndex,
         weight: weightNum,
         reps: repsNum,
       });
       update(idx, { completed: true });
-      // Auto-advance + start rest timer
+      // Auto-advance
       const nextIdx = sets.findIndex((s, i) => i > idx && !s.completed);
       if (nextIdx !== -1) setActiveIndex(nextIdx);
-      setRestEndsAt(Date.now() + restSeconds * 1000);
+      // Rest timer only when stepping into a NEW set group (not within drops of the same set)
+      const next = sets[idx + 1];
+      const isLastInGroup = !next || next.setIndex !== set.setIndex;
+      if (isLastInGroup) {
+        setRestEndsAt(Date.now() + restSeconds * 1000);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to log set');
     } finally {
@@ -210,7 +232,7 @@ export function ExerciseLogger({
 
   return (
     <div className="min-h-screen bg-paper pb-28">
-      <div className="mx-auto max-w-md px-5 pt-10">
+      <div className="mx-auto max-w-md px-5 pt-6">
         <PageHeader
           title={`${exerciseIndex + 1} / ${totalExercises}`}
           onBack={hasPrev ? onPrev : onBack}
@@ -272,18 +294,28 @@ export function ExerciseLogger({
           </div>
         )}
 
-        <div className="mt-6 space-y-2">
-          {sets.map((s, i) => (
-            <SetRow
-              key={i}
-              index={i}
-              set={s}
-              isActive={!s.completed && i === activeIndex}
-              saving={savingIdx === i}
-              onChange={(patch) => update(i, patch)}
-              onComplete={() => handleComplete(i)}
-            />
-          ))}
+        <div className="mt-6 space-y-3">
+          {(() => {
+            const groups: { setIndex: number; rows: { row: SetState; idx: number }[] }[] = [];
+            sets.forEach((s, i) => {
+              const last = groups[groups.length - 1];
+              if (last && last.setIndex === s.setIndex) {
+                last.rows.push({ row: s, idx: i });
+              } else {
+                groups.push({ setIndex: s.setIndex, rows: [{ row: s, idx: i }] });
+              }
+            });
+            return groups.map((group) => (
+              <SetGroup
+                key={group.setIndex}
+                rows={group.rows}
+                activeIndex={activeIndex}
+                savingIdx={savingIdx}
+                onChange={update}
+                onComplete={handleComplete}
+              />
+            ));
+          })()}
         </div>
 
         {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
@@ -389,7 +421,100 @@ function Stat({
   );
 }
 
-function SetRow({
+function SetGroup({
+  rows,
+  activeIndex,
+  savingIdx,
+  onChange,
+  onComplete,
+}: {
+  rows: { row: SetState; idx: number }[];
+  activeIndex: number;
+  savingIdx: number | null;
+  onChange: (idx: number, patch: Partial<SetState>) => void;
+  onComplete: (idx: number) => void;
+}) {
+  const setIndex = rows[0].row.setIndex;
+  const hasDrops = rows.some((r) => r.row.dropIndex > 0);
+  return (
+    <div className="overflow-hidden rounded-2xl bg-paper-card shadow-card">
+      {rows.map(({ row, idx }, ri) => {
+        const isMain = row.dropIndex === 0;
+        const isActive = !row.completed && idx === activeIndex;
+        const isLastInGroup = ri === rows.length - 1;
+        return (
+          <div
+            key={idx}
+            className={`relative flex items-center gap-3 px-3 py-3 transition-colors ${
+              !isMain ? 'pl-9 bg-line/30' : ''
+            } ${row.completed ? 'opacity-70' : ''} ${
+              isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
+            } ${!isLastInGroup ? 'border-b border-line/60' : ''}`}
+          >
+            {!isMain && (
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Drop
+              </div>
+            )}
+            <div className="w-12 text-xs font-semibold uppercase tracking-wider text-muted">
+              {isMain ? `Set ${setIndex}` : ''}
+            </div>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.5"
+              value={row.weight}
+              disabled={row.completed}
+              onChange={(e) => onChange(idx, { weight: e.target.value })}
+              placeholder="kg"
+              className={`w-20 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+                row.weight === row.weightSuggested && row.weightSuggested !== ''
+                  ? 'text-ink/40'
+                  : 'text-ink'
+              }`}
+            />
+            <span className="text-xs text-muted">×</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={row.reps}
+              disabled={row.completed}
+              onChange={(e) => onChange(idx, { reps: e.target.value })}
+              placeholder="reps"
+              className={`w-16 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+                row.reps === row.repsSuggested && row.repsSuggested !== ''
+                  ? 'text-ink/40'
+                  : 'text-ink'
+              }`}
+            />
+            <div className="flex-1" />
+            {row.completed ? (
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white">
+                <Check />
+              </div>
+            ) : (
+              <button
+                onClick={() => onComplete(idx)}
+                disabled={savingIdx === idx}
+                className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-50"
+              >
+                {savingIdx === idx ? '…' : 'Done'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {hasDrops && (
+        <div className="border-t border-line/60 bg-line/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Dropset · no rest between drops
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Legacy single-row component, kept in case it's still referenced.
+function _SetRow({
   index,
   set,
   isActive,

@@ -90,6 +90,7 @@ export async function logSet(params: {
   exerciseDisplayName: string;
   exerciseNormalizedName: string;
   setIndex: number;
+  dropIndex?: number;
   weight?: number | null;
   reps?: number | null;
   holdSeconds?: number | null;
@@ -107,6 +108,7 @@ export async function logSet(params: {
       exercise_display_name: params.exerciseDisplayName,
       exercise_normalized_name: params.exerciseNormalizedName,
       set_index: params.setIndex,
+      drop_index: params.dropIndex ?? 0,
       weight: params.weight ?? null,
       reps: params.reps ?? null,
       hold_seconds: params.holdSeconds ?? null,

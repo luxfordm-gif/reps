@@ -120,10 +120,10 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
 
   return (
     <div className="min-h-screen bg-paper pb-28">
-      <div className="mx-auto max-w-md px-5 pt-12">
+      <div className="mx-auto max-w-md px-5 pt-6">
         <AppHeader />
 
-        <div className="mt-7">
+        <div className="mt-5">
           <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
             {today}
           </div>
