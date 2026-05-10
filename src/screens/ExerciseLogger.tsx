@@ -29,6 +29,9 @@ interface SetState {
   reps: string;
   weightSuggested: string;
   repsSuggested: string;
+  repRangeLabel?: string;
+  scheme?: 'dropset' | 'back_off' | 'muscle_round';
+  schemeDetail?: string;
   completed: boolean;
   loggedId?: string;
 }
@@ -435,7 +438,16 @@ function SetGroup({
   onComplete: (idx: number) => void;
 }) {
   const setIndex = rows[0].row.setIndex;
+  const mainRow = rows[0].row;
   const hasDrops = rows.some((r) => r.row.dropIndex > 0);
+  const scheme = mainRow.scheme;
+  const schemeDetail = mainRow.schemeDetail;
+  const footerLabel =
+    scheme === 'muscle_round'
+      ? `Muscle round${schemeDetail ? ` · ${schemeDetail}` : ''}`
+      : scheme === 'dropset' || hasDrops
+        ? 'Dropset · no rest between drops'
+        : null;
   return (
     <div className="overflow-hidden rounded-2xl bg-paper-card shadow-card">
       {rows.map(({ row, idx }, ri) => {
@@ -459,6 +471,11 @@ function SetGroup({
             <div className="w-12 text-xs font-semibold uppercase tracking-wider text-muted">
               {isMain ? `Set ${setIndex}` : ''}
             </div>
+            {isMain && row.scheme === 'back_off' && row.repRangeLabel && (
+              <span className="rounded-pill bg-ink px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-white">
+                Back off · {row.repRangeLabel}
+              </span>
+            )}
             <input
               type="number"
               inputMode="decimal"
@@ -504,9 +521,9 @@ function SetGroup({
           </div>
         );
       })}
-      {hasDrops && (
+      {footerLabel && (hasDrops || scheme === 'muscle_round') && (
         <div className="border-t border-line/60 bg-line/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-          Dropset · no rest between drops
+          {footerLabel}
         </div>
       )}
     </div>

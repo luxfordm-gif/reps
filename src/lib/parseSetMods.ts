@@ -14,8 +14,14 @@ export interface DropTarget {
   repTarget?: number;
 }
 
+export type SchemeTag = 'dropset' | 'back_off' | 'muscle_round';
+
 export interface SetMod {
   drops: DropTarget[];
+  repRangeOverride?: string;
+  repTarget?: number;
+  scheme?: SchemeTag;
+  schemeDetail?: string;
 }
 
 export interface SetModsResult {
@@ -66,8 +72,52 @@ export function parseSetMods(notes: string, totalSets: number): SetModsResult {
     if (blanketDouble || blanketSingle) {
       const drops = blanketDouble ? [{}, {}] : [{}];
       for (let i = 1; i <= totalSets; i++) {
-        out.set(i, { drops });
+        out.set(i, { drops, scheme: 'dropset' });
       }
+    }
+  }
+
+  // Tag dropset scheme on any set we've already populated with drops
+  for (const [k, v] of out.entries()) {
+    if (v.drops.length > 0 && !v.scheme) {
+      out.set(k, { ...v, scheme: 'dropset' });
+    }
+  }
+
+  // Back-off pattern: "X-Y REPS BACK OFF" → last set is back-off with that rep range.
+  const backOffMatch = upper.match(/(\d+)\s*-\s*(\d+)\s*REPS?\s+BACK\s*OFF/);
+  if (backOffMatch && totalSets >= 1) {
+    const lo = parseInt(backOffMatch[1], 10);
+    const hi = parseInt(backOffMatch[2], 10);
+    const existing = out.get(totalSets) ?? { drops: [] };
+    out.set(totalSets, {
+      ...existing,
+      repRangeOverride: `${lo}-${hi}`,
+      repTarget: hi,
+      scheme: existing.scheme ?? 'back_off',
+    });
+  }
+
+  // Muscle round: "SET N: MUSCLE ROUND ... X SETS, Y REPS, Z SECONDS REST"
+  const muscleMatch = upper.match(
+    /SET\s+(\d+)[^.]*?MUSCLE\s+ROUND[^.]*?(\d+)\s*SETS?[^.]*?(\d+)\s*REPS?[^.]*?(\d+)\s*SEC/
+  );
+  if (muscleMatch) {
+    const setIdx = parseInt(muscleMatch[1], 10);
+    const subSets = parseInt(muscleMatch[2], 10);
+    const subReps = parseInt(muscleMatch[3], 10);
+    const restSec = parseInt(muscleMatch[4], 10);
+    if (setIdx >= 1 && setIdx <= totalSets && subSets > 1) {
+      const drops: DropTarget[] = Array.from({ length: subSets - 1 }, () => ({
+        repTarget: subReps,
+      }));
+      out.set(setIdx, {
+        drops,
+        repRangeOverride: String(subReps),
+        repTarget: subReps,
+        scheme: 'muscle_round',
+        schemeDetail: `${subSets} × ${subReps}, ${restSec}s rest`,
+      });
     }
   }
 
