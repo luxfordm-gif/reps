@@ -286,7 +286,7 @@ export function BodyWeight({ onBack }: Props) {
                       border: '1px solid #E5E5EA',
                       fontSize: 12,
                     }}
-                    formatter={(_v: number, _name, item) => {
+                    formatter={(_v, _name, item) => {
                       const kg = (item?.payload as { kg: number } | undefined)?.kg ?? 0;
                       return [primaryDisplay(kg, unit), 'Weight'];
                     }}
