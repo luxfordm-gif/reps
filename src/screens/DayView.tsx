@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
+import { ConfirmModal } from '../components/ConfirmModal';
 import type { FullPlan, PlanExerciseRow } from '../lib/plansApi';
 import {
   getActiveSessionForDay,
@@ -63,6 +64,7 @@ export function DayView({ day, onBack, onTapExercise }: Props) {
     lastExerciseIdx: number;
   } | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -96,9 +98,9 @@ export function DayView({ day, onBack, onTapExercise }: Props) {
 
   async function handleDiscard() {
     if (!inProgress) return;
-    if (!confirm('Discard this in-progress workout? Logged sets will be deleted.')) return;
     await deleteSession(inProgress.sessionId);
     setInProgress(null);
+    setConfirmDiscard(false);
   }
 
   function toggle(bp: string) {
@@ -152,7 +154,7 @@ export function DayView({ day, onBack, onTapExercise }: Props) {
             <span>{inProgress.setsLogged} sets logged so far</span>
             <span className="h-1 w-1 rounded-full bg-muted/50" />
             <button
-              onClick={handleDiscard}
+              onClick={() => setConfirmDiscard(true)}
               className="font-medium underline-offset-2 active:underline"
             >
               Discard workout
@@ -198,6 +200,15 @@ export function DayView({ day, onBack, onTapExercise }: Props) {
           })}
         </div>
       </div>
+      {confirmDiscard && (
+        <ConfirmModal
+          title="Discard this workout?"
+          message="Logged sets will be deleted."
+          confirmLabel="Discard"
+          onCancel={() => setConfirmDiscard(false)}
+          onConfirm={handleDiscard}
+        />
+      )}
     </div>
   );
 }

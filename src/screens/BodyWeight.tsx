@@ -25,6 +25,7 @@ import {
 import { BottomNav } from '../components/BottomNav';
 import { PageHeader } from '../components/PageHeader';
 import { CalendarPopover } from '../components/Calendar';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 interface Props {
   onBack: () => void;
@@ -51,6 +52,7 @@ function formatEntryDate(iso: string): string {
 
 export function BodyWeight({ onBack }: Props) {
   const [rows, setRows] = useState<BodyWeightRow[]>([]);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [unit, setUnitState] = useState<BodyWeightUnit>(getBodyWeightUnit());
   const [kgInput, setKgInput] = useState('');
@@ -115,9 +117,9 @@ export function BodyWeight({ onBack }: Props) {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this entry?')) return;
     await deleteBodyWeight(id);
     setRows((prev) => prev.filter((r) => r.id !== id));
+    setPendingDeleteId(null);
   }
 
   // Chart data — chronological, in chosen unit (decimal stones for st mode)
@@ -146,7 +148,7 @@ export function BodyWeight({ onBack }: Props) {
   return (
     <div className="min-h-screen bg-paper pb-28">
       <div className="mx-auto max-w-md px-5 pt-3">
-        <PageHeader title="Body Weight" onBack={onBack} />
+        <PageHeader title="Body weight" onBack={onBack} />
 
         <div className="mt-6">
           <h1 className="text-[28px] font-bold leading-[1.1] tracking-tight text-ink">
@@ -343,7 +345,7 @@ export function BodyWeight({ onBack }: Props) {
                         {primaryDisplay(r.weight_kg, unit)}
                       </div>
                       <button
-                        onClick={() => handleDelete(r.id)}
+                        onClick={() => setPendingDeleteId(r.id)}
                         className="text-xs text-muted active:text-ink"
                         aria-label="Delete entry"
                       >
@@ -359,6 +361,15 @@ export function BodyWeight({ onBack }: Props) {
       </div>
 
       <BottomNav active="home" />
+      {pendingDeleteId && (
+        <ConfirmModal
+          title="Delete this entry?"
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={() => handleDelete(pendingDeleteId)}
+        />
+      )}
     </div>
   );
 }

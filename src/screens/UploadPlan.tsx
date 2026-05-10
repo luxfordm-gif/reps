@@ -58,7 +58,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   return (
     <div className="min-h-screen bg-paper pb-12">
       <div className="mx-auto max-w-md px-5 pt-3">
-        <PageHeader title="Upload Plan" onBack={onCancel} />
+        <PageHeader title="Upload plan" onBack={onCancel} />
 
         <p className="mt-6 text-base text-muted">
           Drop in the PDF from your trainer. Reps will turn it into your training days.

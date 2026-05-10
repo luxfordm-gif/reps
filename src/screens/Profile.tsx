@@ -22,9 +22,10 @@ import {
 interface Props {
   onUploadPlan: () => void;
   onTabChange?: (tab: Tab) => void;
+  onOpenHistory?: () => void;
 }
 
-export function Profile({ onUploadPlan, onTabChange }: Props) {
+export function Profile({ onUploadPlan, onTabChange, onOpenHistory }: Props) {
   const { session, signOut } = useAuth();
   const [plan, setPlan] = useState<FullPlan | null>(null);
   const [bwUnit, setBwUnitState] = useState<BodyWeightUnit>(getBodyWeightUnit());
@@ -59,7 +60,7 @@ export function Profile({ onUploadPlan, onTabChange }: Props) {
           </p>
         </div>
 
-        <Section title="Active Plan">
+        <Section title="Active plan">
           <div className="rounded-card bg-paper-card p-5 shadow-card">
             {plan ? (
               <>
@@ -147,6 +148,24 @@ export function Profile({ onUploadPlan, onTabChange }: Props) {
               </div>
             </div>
           </div>
+        </Section>
+
+        <Section title="Activity">
+          <button
+            onClick={onOpenHistory}
+            className="flex w-full items-center justify-between rounded-card bg-paper-card px-5 py-4 text-left shadow-card active:bg-line/40"
+          >
+            <div className="text-sm font-semibold text-ink">Workout history</div>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path
+                d="M7 4l5 5-5 5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
         </Section>
 
         <Section title="Account">

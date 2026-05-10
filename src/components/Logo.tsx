@@ -1,11 +1,10 @@
-export function Logo({ className = '' }: { className?: string }) {
+export function Logo({ className = 'h-8 w-auto' }: { className?: string }) {
   return (
-    <span
-      aria-label="Reps"
-      className={`select-none font-black leading-none tracking-[-0.06em] text-ink ${className}`}
-      style={{ fontSize: '32px' }}
-    >
-      REPS
-    </span>
+    <img
+      src="/Reps-Logo.svg"
+      alt="Reps"
+      className={`select-none ${className}`}
+      draggable={false}
+    />
   );
 }
