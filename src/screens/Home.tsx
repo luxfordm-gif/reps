@@ -65,6 +65,7 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
   const [waterGoal] = useState(() => getWaterGoal());
   const [waterUnit] = useState(() => getWaterUnit());
   const [waterBusy, setWaterBusy] = useState(false);
+  const [waterError, setWaterError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -87,9 +88,14 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
   async function handleWaterTap(delta: number) {
     if (waterBusy) return;
     setWaterBusy(true);
+    setWaterError(null);
     try {
       const next = await adjustWater(delta);
       setWaterCount(next);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not save water count';
+      setWaterError(msg);
+      console.error('[water] adjust failed', err);
     } finally {
       setWaterBusy(false);
     }
@@ -198,6 +204,11 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
               onClick={onLogBodyWeight}
             />
           </div>
+          {waterError && (
+            <div className="mt-2 rounded-card bg-[#FFEDED] px-3 py-2 text-xs text-[#B42318]">
+              Couldn't save water: {waterError}
+            </div>
+          )}
         </div>
 
         <div className="mt-7">
@@ -255,7 +266,10 @@ function QuickAction({
 }) {
   return (
     <button
-      onClick={onClick}
+      onClick={() => {
+        hapticBuzz(12);
+        onClick?.();
+      }}
       className="flex items-center justify-center gap-2 rounded-card bg-paper-card py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
     >
       {icon}
