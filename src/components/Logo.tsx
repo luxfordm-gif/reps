@@ -1,7 +1,7 @@
 export function Logo({ className = '' }: { className?: string }) {
   return (
     <img
-      src="/reps.png"
+      src="/reps-new.png"
       alt="Reps"
       className={className}
       draggable={false}
