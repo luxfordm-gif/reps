@@ -47,24 +47,62 @@ function parseTargetReps(repRange: string): number | null {
 function buildInitialSets(
   totalSets: number,
   repRange: string,
-  lastSets: LoggedSet[]
+  lastSets: LoggedSet[],
+  notes: string
 ): SetState[] {
-  const target = parseTargetReps(repRange);
-  const targetStr = target != null ? String(target) : '';
-  return Array.from({ length: Math.max(1, totalSets) }, (_, i) => {
-    const last = lastSets.find((s) => s.set_index === i + 1);
-    const weightSuggested = last?.weight != null ? String(last.weight) : '';
-    const repsSuggested =
-      last?.reps != null ? String(last.reps) : targetStr;
-    return {
-      setIndex: i + 1,
-      weight: weightSuggested,
-      reps: repsSuggested,
-      weightSuggested,
-      repsSuggested,
+  const baseTarget = parseTargetReps(repRange);
+  const baseTargetStr = baseTarget != null ? String(baseTarget) : '';
+  const mods = parseSetMods(notes, Math.max(1, totalSets));
+  const rows: SetState[] = [];
+  for (let i = 0; i < Math.max(1, totalSets); i++) {
+    const setIndex = i + 1;
+    const mod = mods.bySetIndex.get(setIndex);
+    const targetStr =
+      mod?.repTarget != null ? String(mod.repTarget) : baseTargetStr;
+    // Main set
+    const mainLast = lastSets.find((s) => s.set_index === setIndex && s.drop_index === 0);
+    const mainWeightSugg = mainLast?.weight != null ? String(mainLast.weight) : '';
+    const mainRepsSugg =
+      mainLast?.reps != null ? String(mainLast.reps) : targetStr;
+    rows.push({
+      setIndex,
+      dropIndex: 0,
+      weight: mainWeightSugg,
+      reps: mainRepsSugg,
+      weightSuggested: mainWeightSugg,
+      repsSuggested: mainRepsSugg,
+      repRangeLabel: mod?.repRangeOverride,
+      scheme: mod?.scheme,
+      schemeDetail: mod?.schemeDetail,
       completed: false,
-    };
-  });
+    });
+    // Drops (from coach-note modifiers)
+    if (mod && mod.drops.length > 0) {
+      mod.drops.forEach((drop, di) => {
+        const dropIndex = di + 1;
+        const dropLast = lastSets.find(
+          (s) => s.set_index === setIndex && s.drop_index === dropIndex
+        );
+        const wSugg = dropLast?.weight != null ? String(dropLast.weight) : '';
+        const rSugg =
+          dropLast?.reps != null
+            ? String(dropLast.reps)
+            : drop.repTarget != null
+              ? String(drop.repTarget)
+              : '';
+        rows.push({
+          setIndex,
+          dropIndex,
+          weight: wSugg,
+          reps: rSugg,
+          weightSuggested: wSugg,
+          repsSuggested: rSugg,
+          completed: false,
+        });
+      });
+    }
+  }
+  return rows;
 }
 
 function googleImagesUrl(name: string): string {
