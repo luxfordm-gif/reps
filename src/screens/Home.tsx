@@ -82,7 +82,7 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay, onR
   const [active, setActive] = useState<ActiveSessionContext | null>(null);
   const [weekSummary, setWeekSummary] = useState<WeekSummary>({
     workoutsDone: 0,
-    bars: [0, 0, 0, 0, 0, 0, 0],
+    bars: [[], [], [], [], [], [], []],
   });
 
   useEffect(() => {
@@ -125,10 +125,6 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay, onR
       setWaterBusy(false);
     }
   }
-
-  const today = new Date()
-    .toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
-    .toUpperCase();
 
   if (loading) {
     return (
