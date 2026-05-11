@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import {
   logSet,
@@ -26,6 +26,9 @@ interface Props {
   onPrev: () => void;
   onNext: () => void;
   onFinish: () => void;
+  onOverview: () => void;
+  onHome: () => void;
+  onEndWorkout: () => void;
 }
 
 interface SetState {
@@ -156,6 +159,9 @@ export function ExerciseLogger({
   onPrev,
   onNext,
   onFinish,
+  onOverview,
+  onHome,
+  onEndWorkout,
 }: Props) {
   const [sets, setSets] = useState<SetState[]>([]);
   const [lastSets, setLastSets] = useState<LoggedSet[]>([]);
@@ -415,15 +421,13 @@ export function ExerciseLogger({
           title={`${exerciseIndex + 1} / ${totalExercises}`}
           onBack={hasPrev ? onPrev : onBack}
           rightAction={
-            hasNext ? (
-              <button
-                onClick={onNext}
-                className="flex items-center gap-0.5 pr-1 text-sm font-medium text-muted active:text-ink"
-              >
-                Skip
-                <ChevronSmall />
-              </button>
-            ) : null
+            <ExerciseMenu
+              hasNext={hasNext}
+              onSkip={onNext}
+              onOverview={onOverview}
+              onHome={onHome}
+              onEndWorkout={onEndWorkout}
+            />
           }
         />
 
@@ -514,7 +518,7 @@ export function ExerciseLogger({
             </div>
           </div>
         )}
-        {(USE_REST_OVERLAY || !restActive) && !restActive && (
+        {!USE_REST_OVERLAY && !restActive && (
           <div className="mt-5 flex items-center justify-center">
             <RestPicker value={restSeconds} onChange={setRestSeconds} compact />
           </div>
@@ -600,6 +604,93 @@ export function ExerciseLogger({
   );
 }
 
+function ExerciseMenu({
+  hasNext,
+  onSkip,
+  onOverview,
+  onHome,
+  onEndWorkout,
+}: {
+  hasNext: boolean;
+  onSkip: () => void;
+  onOverview: () => void;
+  onHome: () => void;
+  onEndWorkout: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [open]);
+
+  function pick(fn: () => void) {
+    setOpen(false);
+    fn();
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="More options"
+        className="flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-line/60"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <circle cx="5" cy="12" r="1.6" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+          <circle cx="19" cy="12" r="1.6" fill="currentColor" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-40 w-52 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
+          {hasNext && (
+            <button
+              onClick={() => pick(onSkip)}
+              className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+            >
+              Skip exercise
+            </button>
+          )}
+          {hasNext && <div className="border-t border-line/60" />}
+          <button
+            onClick={() => pick(onOverview)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+          >
+            Back to overview
+          </button>
+          <div className="border-t border-line/60" />
+          <button
+            onClick={() => pick(onHome)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+          >
+            Back to home
+          </button>
+          <div className="border-t border-line/60" />
+          <button
+            onClick={() => pick(onEndWorkout)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-red-600 active:bg-red-50"
+          >
+            End workout
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Stat({
   label,
   value,
@@ -664,28 +755,29 @@ function SetGroup({
         const isActive = !row.completed && idx === activeIndex;
         const isLastInGroup = ri === rows.length - 1;
         const shaking = shakeIdx === idx;
+        const showBackOffHeader = isMain && row.scheme === 'back_off' && !!row.repRangeLabel;
         return (
-          <div
-            key={idx}
-            className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
-              !isMain ? 'pl-11 bg-line/30' : ''
-            } ${row.completed ? 'opacity-70' : ''} ${
-              isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
-            } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
-          >
-            {!isMain && (
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                Drop
+          <div key={idx}>
+            {showBackOffHeader && (
+              <div className="px-5 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                Back off · {row.repRangeLabel}
               </div>
             )}
-            <div className="w-12 text-xs font-semibold uppercase tracking-wider text-muted">
-              {isMain ? `Set ${setIndex}` : ''}
-            </div>
-            {isMain && row.scheme === 'back_off' && row.repRangeLabel && (
-              <span className="rounded-pill bg-ink px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-white">
-                Back off · {row.repRangeLabel}
-              </span>
-            )}
+            <div
+              className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
+                !isMain ? 'pl-11 bg-line/30' : ''
+              } ${row.completed ? 'opacity-70' : ''} ${
+                isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
+              } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
+            >
+              {!isMain && (
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Drop
+                </div>
+              )}
+              <div className="w-12 text-xs font-semibold uppercase tracking-wider text-muted">
+                {isMain ? `Set ${setIndex}` : ''}
+              </div>
             <input
               type="number"
               inputMode="decimal"
@@ -745,6 +837,7 @@ function SetGroup({
                 {savingIdx === idx ? '…' : 'Done'}
               </button>
             )}
+            </div>
           </div>
         );
       })}
@@ -888,15 +981,16 @@ function RestOverlay({
       ? `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
       : null;
 
+  // Unused props after layout simplification — keep variable refs so TS doesn't complain.
+  void dayName;
+  void lastSetWeight;
+  void lastSetReps;
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0A0A0A] text-white">
-      <div className="mx-auto flex w-full max-w-md flex-col px-5 pt-3">
-        <div className="flex items-center justify-between py-2">
-          <button onClick={onSkip} aria-label="Back" className="-ml-1 p-1 active:opacity-60">
-            <BackChevron />
-          </button>
-          <div className="text-base font-semibold tracking-tight">{dayName}</div>
-          <div className="w-8" />
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pt-3">
+        <div className="flex items-center justify-center py-2">
+          <div className="text-base font-semibold tracking-tight">Rest</div>
         </div>
 
         {elapsedLabel && (
@@ -910,11 +1004,10 @@ function RestOverlay({
           </div>
         )}
 
-        <div className="mt-8 flex flex-col items-center">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/80">
-            Rest
-          </div>
-          <div className="relative mt-4 h-[300px] w-[300px]">
+        <div className="flex-1" />
+
+        <div className="flex -translate-y-3 flex-col items-center">
+          <div className="relative h-[300px] w-[300px]">
             <svg width="300" height="300" viewBox="0 0 300 300">
               <circle
                 cx="150"
@@ -947,59 +1040,56 @@ function RestOverlay({
               </div>
             </div>
           </div>
-        </div>
 
-        {nextSetName && (
+          {nextSetName && (
+            <div className="mt-6 flex flex-col items-center">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+                Next set
+              </div>
+              <div className="mt-1 text-lg font-bold tracking-tight">{nextSetName}</div>
+              {(nextSetWeight || nextSetReps) && (
+                <div className="mt-0.5 text-sm text-white/70">
+                  {nextSetWeight || '–'}kg × {nextSetReps || '–'}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-6 flex flex-col items-center">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
-              Next set
+              Default rest time
             </div>
-            <div className="mt-1 text-lg font-bold tracking-tight">{nextSetName}</div>
-            {(nextSetWeight || nextSetReps) && (
-              <div className="mt-0.5 text-sm text-white/70">
-                {nextSetWeight || '–'}kg × {nextSetReps || '–'}
-              </div>
-            )}
-            {lastSetWeight != null && lastSetReps != null && (
-              <div className="mt-2 rounded-pill bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/80">
-                Last set: {lastSetWeight}kg × {lastSetReps}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="mt-6 flex flex-col items-center">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
-            Default rest time
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            {REST_OPTIONS.map((s) => {
-              const active = s === restSeconds;
-              return (
-                <button
-                  key={s}
-                  onClick={() => onSetRestSeconds(s)}
-                  className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                    active
-                      ? 'bg-white text-ink'
-                      : 'border border-white/30 text-white/80 active:bg-white/10'
-                  }`}
-                >
-                  {s} sec
-                </button>
-              );
-            })}
+            <div className="mt-2 flex items-center gap-2">
+              {REST_OPTIONS.map((s) => {
+                const active = s === restSeconds;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => onSetRestSeconds(s)}
+                    className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                      active
+                        ? 'bg-white text-ink'
+                        : 'border border-white/30 text-white/80 active:bg-white/10'
+                    }`}
+                  >
+                    {s} sec
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="mt-8 flex items-start justify-around">
-          <RoundAction label={['Subtract', '15 sec']} onClick={onSubtract}>
+        <div className="flex-1" />
+
+        <div className="flex items-start justify-around pb-[max(env(safe-area-inset-bottom),20px)] pt-6">
+          <RoundAction label="Subtract 15" onClick={onSubtract}>
             <span className="text-xl font-bold leading-none">−15</span>
           </RoundAction>
-          <RoundAction label={['Add 15 sec']} onClick={onAdd}>
+          <RoundAction label="Add 15" onClick={onAdd}>
             <span className="text-xl font-bold leading-none">+15</span>
           </RoundAction>
-          <RoundAction label={['Skip', 'rest']} onClick={onSkip}>
+          <RoundAction label="Skip rest" onClick={onSkip}>
             <FastForward />
           </RoundAction>
         </div>
@@ -1014,7 +1104,7 @@ function RoundAction({
   onClick,
 }: {
   children: React.ReactNode;
-  label: string[];
+  label: string;
   onClick: () => void;
 }) {
   return (
@@ -1022,26 +1112,10 @@ function RoundAction({
       <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/30 text-white">
         {children}
       </div>
-      <div className="text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70">
-        {label.map((l, i) => (
-          <div key={i}>{l}</div>
-        ))}
+      <div className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70">
+        {label}
       </div>
     </button>
-  );
-}
-
-function BackChevron() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M15 5l-7 7 7 7"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 
@@ -1210,26 +1284,6 @@ function NotesIcon() {
         d="M4 2.5h6l2.5 2.5v8.5a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z M10 2.5V5h2.5 M5.5 7.5h5 M5.5 10h5 M5.5 12.5h3"
         stroke="currentColor"
         strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronSmall({ flip }: { flip?: boolean }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      style={flip ? { transform: 'rotate(180deg)' } : undefined}
-    >
-      <path
-        d="M6 4l4 4-4 4"
-        stroke="currentColor"
-        strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

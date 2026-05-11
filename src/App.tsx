@@ -1,4 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { WhatsNewModal } from './components/WhatsNewModal';
+import { EndWorkoutDialog } from './components/EndWorkoutDialog';
+import { APP_VERSION, getEntryForVersion } from './lib/changelog';
 import { AuthProvider, useAuth } from './lib/auth';
 import { isSupabaseConfigured } from './lib/supabase';
 import { Home } from './screens/Home';
@@ -12,7 +15,11 @@ import { ExerciseLogger } from './screens/ExerciseLogger';
 import { SetNewPassword } from './screens/SetNewPassword';
 import { WorkoutHistory } from './screens/WorkoutHistory';
 import { WorkoutComplete } from './screens/WorkoutComplete';
-import { createSession, completeSession } from './lib/sessionsApi';
+import {
+  createSession,
+  completeSession,
+  deleteAllOpenSessions,
+} from './lib/sessionsApi';
 import type { Tab } from './components/BottomNav';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 
@@ -30,6 +37,24 @@ function Root() {
   const [completedSession, setCompletedSession] = useState<{ id: string; dayName: string } | null>(
     null
   );
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [endWorkoutOpen, setEndWorkoutOpen] = useState(false);
+
+  useEffect(() => {
+    if (!session) return;
+    if (typeof window === 'undefined') return;
+    const seen = window.localStorage.getItem('reps.lastSeenVersion');
+    if (seen !== APP_VERSION && getEntryForVersion(APP_VERSION)) {
+      setShowWhatsNew(true);
+    }
+  }, [session]);
+
+  function dismissWhatsNew() {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('reps.lastSeenVersion', APP_VERSION);
+    }
+    setShowWhatsNew(false);
+  }
 
   const exercises = activeDay?.plan_exercises ?? [];
   const activeExercise: PlanExerciseRow | null =
@@ -98,9 +123,48 @@ function Root() {
     setExerciseIdx(idx >= 0 ? idx : 0);
   }
 
+  async function handleEndSave() {
+    const sid = sessionId;
+    const finishedDay = activeDay?.name ?? 'Workout';
+    setEndWorkoutOpen(false);
+    if (sid) {
+      try {
+        await completeSession(sid);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setExerciseIdx(null);
+    setSessionId(null);
+    setSessionStartedAt(null);
+    setActiveDay(null);
+    if (sid) {
+      setCompletedSession({ id: sid, dayName: finishedDay });
+      setRefreshKey((k) => k + 1);
+    }
+  }
+
+  async function handleEndDiscard() {
+    setEndWorkoutOpen(false);
+    try {
+      // Wipe ALL of the user's open sessions, not just the current one —
+      // otherwise a lingering abandoned session can still show as
+      // "Workout in progress" on the home screen.
+      await deleteAllOpenSessions();
+    } catch (e) {
+      console.error(e);
+    }
+    setExerciseIdx(null);
+    setSessionId(null);
+    setSessionStartedAt(null);
+    setActiveDay(null);
+    setRefreshKey((k) => k + 1);
+  }
+
   if (activeDay && exerciseIdx != null && activeExercise) {
     return (
-      <ExerciseLogger
+      <>
+        <ExerciseLogger
         sessionId={sessionId!}
         sessionStartedAt={sessionStartedAt}
         dayName={activeDay.name}
@@ -112,6 +176,12 @@ function Root() {
         onBack={() => setExerciseIdx(null)}
         onPrev={() => setExerciseIdx((i) => (i != null && i > 0 ? i - 1 : i))}
         onNext={() => setExerciseIdx((i) => (i != null ? i + 1 : null))}
+        onOverview={() => setExerciseIdx(null)}
+        onHome={() => {
+          setExerciseIdx(null);
+          setActiveDay(null);
+        }}
+        onEndWorkout={() => setEndWorkoutOpen(true)}
         onFinish={async () => {
           const sid = sessionId;
           const finishedDay = activeDay?.name ?? 'Workout';
@@ -132,6 +202,14 @@ function Root() {
           }
         }}
       />
+        {endWorkoutOpen && (
+          <EndWorkoutDialog
+            onSave={handleEndSave}
+            onDiscard={handleEndDiscard}
+            onCancel={() => setEndWorkoutOpen(false)}
+          />
+        )}
+      </>
     );
   }
 
@@ -159,6 +237,12 @@ function Root() {
           onTabChange={setTab}
           onLogBodyWeight={() => setModal('bodyWeight')}
           onTapDay={setActiveDay}
+          onResumeWorkout={({ day, exerciseIdx, sessionId: sid, startedAt }) => {
+            setActiveDay(day);
+            setSessionId(sid);
+            setSessionStartedAt(startedAt);
+            setExerciseIdx(exerciseIdx);
+          }}
         />
       );
       break;
@@ -182,7 +266,15 @@ function Root() {
       );
       break;
   }
-  return <TabSwipeContainer tab={tab} onTabChange={setTab}>{screen}</TabSwipeContainer>;
+  const entry = getEntryForVersion(APP_VERSION);
+  return (
+    <>
+      <TabSwipeContainer tab={tab} onTabChange={setTab}>{screen}</TabSwipeContainer>
+      {showWhatsNew && entry && (
+        <WhatsNewModal entry={entry} onDismiss={dismissWhatsNew} />
+      )}
+    </>
+  );
 }
 
 const TAB_ORDER: Tab[] = ['home', 'performance', 'profile'];
