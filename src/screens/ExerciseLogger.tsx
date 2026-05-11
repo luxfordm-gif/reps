@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import {
   logSet,
+  updateLoggedSet,
   getSessionSets,
   getLastSessionSetsForExercise,
   type LoggedSet,
@@ -9,8 +10,13 @@ import {
 import { parseSetMods } from '../lib/parseSetMods';
 import type { PlanExerciseRow } from '../lib/plansApi';
 
+// Flip to false to revert to the inline rest timer (the original design).
+const USE_REST_OVERLAY = true;
+
 interface Props {
   sessionId: string;
+  sessionStartedAt?: string | null;
+  dayName?: string;
   exercise: PlanExerciseRow;
   hasNext: boolean;
   hasPrev: boolean;
@@ -30,7 +36,7 @@ interface SetState {
   weightSuggested: string;
   repsSuggested: string;
   repRangeLabel?: string;
-  scheme?: 'dropset' | 'back_off' | 'muscle_round';
+  scheme?: 'dropset' | 'back_off' | 'muscle_round' | 'intensifier';
   schemeDetail?: string;
   completed: boolean;
   loggedId?: string;
@@ -53,6 +59,7 @@ function buildInitialSets(
   const baseTarget = parseTargetReps(repRange);
   const baseTargetStr = baseTarget != null ? String(baseTarget) : '';
   const mods = parseSetMods(notes, Math.max(1, totalSets));
+  const intensifier = parseIntensifier(notes);
   const rows: SetState[] = [];
   for (let i = 0; i < Math.max(1, totalSets); i++) {
     const setIndex = i + 1;
@@ -102,6 +109,33 @@ function buildInitialSets(
       });
     }
   }
+
+  // If the coach notes describe a dumbbell intensifier on the last set,
+  // replace that set's row(s) with one editable row per pyramid weight×reps.
+  if (intensifier && rows.length > 0) {
+    const lastSetIndex = rows[rows.length - 1].setIndex;
+    const without = rows.filter((r) => r.setIndex !== lastSetIndex);
+    intensifier.forEach((p, i) => {
+      const dropIndex = i; // first = main (0), rest = drops 1..N
+      const last = lastSets.find(
+        (s) => s.set_index === lastSetIndex && s.drop_index === dropIndex
+      );
+      const w = last?.weight != null ? String(last.weight) : String(p.weight);
+      const r = last?.reps != null ? String(last.reps) : String(p.reps);
+      without.push({
+        setIndex: lastSetIndex,
+        dropIndex,
+        weight: w,
+        reps: r,
+        weightSuggested: w,
+        repsSuggested: r,
+        completed: false,
+        scheme: dropIndex === 0 ? 'intensifier' : undefined,
+      });
+    });
+    return without;
+  }
+
   return rows;
 }
 
@@ -111,6 +145,8 @@ function googleImagesUrl(name: string): string {
 
 export function ExerciseLogger({
   sessionId,
+  sessionStartedAt,
+  dayName,
   exercise,
   hasNext,
   hasPrev,
@@ -127,6 +163,7 @@ export function ExerciseLogger({
   const [activeIndex, setActiveIndex] = useState(0);
   const [notesOpen, setNotesOpen] = useState(false);
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
+  const [shakeIdx, setShakeIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   const [restSeconds, setRestSecondsState] = useState<number>(() => {
@@ -144,11 +181,69 @@ export function ExerciseLogger({
     }
   }
 
+  // Keep screen on while resting
+  useEffect(() => {
+    if (restEndsAt == null) return;
+    type WakeLockSentinel = { release: () => Promise<void> };
+    type WakeLockNav = Navigator & {
+      wakeLock?: { request: (type: 'screen') => Promise<WakeLockSentinel> };
+    };
+    const nav = navigator as WakeLockNav;
+    if (!nav.wakeLock) return;
+
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+
+    async function acquire() {
+      try {
+        const s = await nav.wakeLock!.request('screen');
+        if (cancelled) {
+          s.release().catch(() => {});
+          return;
+        }
+        sentinel = s;
+      } catch {
+        // Permission denied or unsupported — silently ignore.
+      }
+    }
+    acquire();
+
+    function onVisibility() {
+      if (document.visibilityState === 'visible' && !sentinel && !cancelled) {
+        acquire();
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (sentinel) {
+        sentinel.release().catch(() => {});
+        sentinel = null;
+      }
+    };
+  }, [restEndsAt]);
+
   // Tick for rest timer
   useEffect(() => {
     if (restEndsAt == null) return;
     const id = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(id);
+    const remaining = restEndsAt - Date.now();
+    const fireAt = Math.max(0, remaining);
+    const buzz = window.setTimeout(() => {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try {
+          navigator.vibrate(25);
+        } catch {
+          // ignore
+        }
+      }
+    }, fireAt);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(buzz);
+    };
   }, [restEndsAt]);
 
   // Load existing sets for this exercise + last session's sets
@@ -207,40 +302,73 @@ export function ExerciseLogger({
     setSets((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
   }
 
+  function triggerShake(idx: number) {
+    setShakeIdx(idx);
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try {
+        navigator.vibrate([40, 30, 40]);
+      } catch {
+        // ignore
+      }
+    }
+    window.setTimeout(() => setShakeIdx((cur) => (cur === idx ? null : cur)), 380);
+  }
+
+  function handleEdit(idx: number) {
+    setError(null);
+    setRestEndsAt(null);
+    update(idx, { completed: false });
+    setActiveIndex(idx);
+  }
+
   async function handleComplete(idx: number) {
     const set = sets[idx];
-    const weightNum = set.weight ? parseFloat(set.weight) : null;
-    const repsNum = set.reps ? parseInt(set.reps, 10) : null;
-    if ((weightNum == null || Number.isNaN(weightNum)) && (repsNum == null || Number.isNaN(repsNum))) {
-      setError('Enter a weight or reps');
+    const weightStr = set.weight.trim();
+    const repsStr = set.reps.trim();
+    const weightNum = weightStr === '' ? NaN : parseFloat(weightStr);
+    const repsNum = repsStr === '' ? NaN : parseInt(repsStr, 10);
+    if (weightStr === '' || repsStr === '' || Number.isNaN(weightNum) || Number.isNaN(repsNum)) {
+      setError('Enter both weight and reps (use 0 kg for body weight)');
+      triggerShake(idx);
       return;
     }
-    if (repsNum != null && repsNum > 100) {
+    if (repsNum > 100) {
       setError('Reps capped at 100 — check the number');
+      triggerShake(idx);
       return;
     }
     setError(null);
     setSavingIdx(idx);
+    const isEdit = !!set.loggedId;
     try {
-      await logSet({
-        sessionId,
-        planExerciseId: exercise.id,
-        exerciseDisplayName: exercise.name,
-        exerciseNormalizedName: exercise.normalized_name,
-        setIndex: set.setIndex,
-        dropIndex: set.dropIndex,
-        weight: weightNum,
-        reps: repsNum,
-      });
-      update(idx, { completed: true });
-      // Auto-advance
-      const nextIdx = sets.findIndex((s, i) => i > idx && !s.completed);
-      if (nextIdx !== -1) setActiveIndex(nextIdx);
-      // Rest timer only when stepping into a NEW set group (not within drops of the same set)
-      const next = sets[idx + 1];
-      const isLastInGroup = !next || next.setIndex !== set.setIndex;
-      if (isLastInGroup) {
-        setRestEndsAt(Date.now() + restSeconds * 1000);
+      if (set.loggedId) {
+        await updateLoggedSet(set.loggedId, { weight: weightNum, reps: repsNum });
+        update(idx, { completed: true });
+      } else {
+        const logged = await logSet({
+          sessionId,
+          planExerciseId: exercise.id,
+          exerciseDisplayName: exercise.name,
+          exerciseNormalizedName: exercise.normalized_name,
+          setIndex: set.setIndex,
+          dropIndex: set.dropIndex,
+          weight: weightNum,
+          reps: repsNum,
+        });
+        update(idx, { completed: true, loggedId: logged.id });
+      }
+      if (!isEdit) {
+        // Auto-advance
+        const nextIdx = sets.findIndex((s, i) => i > idx && !s.completed);
+        if (nextIdx !== -1) setActiveIndex(nextIdx);
+        // Rest timer only when stepping into a NEW set group (not within drops of
+        // the same set) AND only when there is a next set still to do.
+        const next = sets[idx + 1];
+        const isLastInGroup = !next || next.setIndex !== set.setIndex;
+        const hasMoreToDo = sets.some((s, i) => i !== idx && !s.completed);
+        if (isLastInGroup && hasMoreToDo && set.scheme !== 'intensifier') {
+          setRestEndsAt(Date.now() + restSeconds * 1000);
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to log set');
@@ -266,6 +394,11 @@ export function ExerciseLogger({
 
   const restRemainingMs = restEndsAt ? Math.max(0, restEndsAt - Date.now()) : 0;
   const restActive = restEndsAt != null && restRemainingMs > 0;
+
+  const nextSet = sets.find((s) => !s.completed) ?? null;
+  const nextSetLastMatch = nextSet
+    ? lastSets.find((l) => l.set_index === nextSet.setIndex && l.drop_index === nextSet.dropIndex) ?? null
+    : null;
 
   if (loading) {
     return (
@@ -309,7 +442,8 @@ export function ExerciseLogger({
             href={googleImagesUrl(exercise.name)}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[24px] font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
+            className="block break-words text-[24px] font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
+            style={{ textWrap: 'balance' } as React.CSSProperties}
           >
             {exercise.name}
           </a>
@@ -350,31 +484,24 @@ export function ExerciseLogger({
                 groups.push({ setIndex: s.setIndex, rows: [{ row: s, idx: i }] });
               }
             });
-            const intensifier = parseIntensifier(exercise.notes);
-            const lastSetIndex = groups[groups.length - 1]?.setIndex;
-            return groups.map((group) => {
-              if (intensifier && group.setIndex === lastSetIndex) {
-                return (
-                  <IntensifierBlock key={group.setIndex} setIndex={group.setIndex} pyramid={intensifier} />
-                );
-              }
-              return (
-                <SetGroup
-                  key={group.setIndex}
-                  rows={group.rows}
-                  activeIndex={activeIndex}
-                  savingIdx={savingIdx}
-                  onChange={update}
-                  onComplete={handleComplete}
-                />
-              );
-            });
+            return groups.map((group) => (
+              <SetGroup
+                key={group.setIndex}
+                rows={group.rows}
+                activeIndex={activeIndex}
+                savingIdx={savingIdx}
+                shakeIdx={shakeIdx}
+                onChange={update}
+                onComplete={handleComplete}
+                onEdit={handleEdit}
+              />
+            ));
           })()}
         </div>
 
         {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
 
-        {restActive && (
+        {!USE_REST_OVERLAY && restActive && (
           <div className="mt-6">
             <RestTimer
               remainingMs={restRemainingMs}
@@ -387,7 +514,7 @@ export function ExerciseLogger({
             </div>
           </div>
         )}
-        {!restActive && (
+        {(USE_REST_OVERLAY || !restActive) && !restActive && (
           <div className="mt-5 flex items-center justify-center">
             <RestPicker value={restSeconds} onChange={setRestSeconds} compact />
           </div>
@@ -444,6 +571,31 @@ export function ExerciseLogger({
           )}
         </div>
       </div>
+
+      {USE_REST_OVERLAY && restActive && (
+        <RestOverlay
+          dayName={dayName ?? exercise.body_part ?? 'Rest'}
+          sessionStartedAt={sessionStartedAt ?? null}
+          remainingMs={restRemainingMs}
+          totalMs={restSeconds * 1000}
+          restSeconds={restSeconds}
+          onSetRestSeconds={setRestSeconds}
+          onAdd={() => setRestEndsAt((t) => (t ?? Date.now()) + 15000)}
+          onSubtract={() =>
+            setRestEndsAt((t) => {
+              if (t == null) return t;
+              const next = t - 15000;
+              return next <= Date.now() ? null : next;
+            })
+          }
+          onSkip={() => setRestEndsAt(null)}
+          nextSetName={nextSet ? exercise.name : null}
+          nextSetWeight={nextSet?.weight ?? ''}
+          nextSetReps={nextSet?.reps ?? ''}
+          lastSetWeight={nextSetLastMatch?.weight ?? null}
+          lastSetReps={nextSetLastMatch?.reps ?? null}
+        />
+      )}
     </div>
   );
 }
@@ -479,14 +631,18 @@ function SetGroup({
   rows,
   activeIndex,
   savingIdx,
+  shakeIdx,
   onChange,
   onComplete,
+  onEdit,
 }: {
   rows: { row: SetState; idx: number }[];
   activeIndex: number;
   savingIdx: number | null;
+  shakeIdx: number | null;
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onComplete: (idx: number) => void;
+  onEdit: (idx: number) => void;
 }) {
   const setIndex = rows[0].row.setIndex;
   const mainRow = rows[0].row;
@@ -494,17 +650,20 @@ function SetGroup({
   const scheme = mainRow.scheme;
   const schemeDetail = mainRow.schemeDetail;
   const footerLabel =
-    scheme === 'muscle_round'
-      ? `Muscle round${schemeDetail ? ` · ${schemeDetail}` : ''}`
-      : scheme === 'dropset' || hasDrops
-        ? 'Dropset · no rest between drops'
-        : null;
+    scheme === 'intensifier'
+      ? 'Dumbbell intensifier · work down and back up, no rest'
+      : scheme === 'muscle_round'
+        ? `Muscle round${schemeDetail ? ` · ${schemeDetail}` : ''}`
+        : scheme === 'dropset' || hasDrops
+          ? 'Dropset · no rest between drops'
+          : null;
   return (
     <div className="overflow-hidden rounded-2xl bg-paper-card shadow-card">
       {rows.map(({ row, idx }, ri) => {
         const isMain = row.dropIndex === 0;
         const isActive = !row.completed && idx === activeIndex;
         const isLastInGroup = ri === rows.length - 1;
+        const shaking = shakeIdx === idx;
         return (
           <div
             key={idx}
@@ -512,7 +671,7 @@ function SetGroup({
               !isMain ? 'pl-11 bg-line/30' : ''
             } ${row.completed ? 'opacity-70' : ''} ${
               isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
-            } ${!isLastInGroup ? 'border-b border-line/60' : ''}`}
+            } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
           >
             {!isMain && (
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wider text-muted">
@@ -534,6 +693,12 @@ function SetGroup({
               value={row.weight}
               disabled={row.completed}
               onChange={(e) => onChange(idx, { weight: e.target.value })}
+              onFocus={(e) => {
+                if (row.weight === row.weightSuggested && row.weightSuggested !== '') {
+                  onChange(idx, { weight: '' });
+                }
+                e.target.select();
+              }}
               placeholder="kg"
               className={`w-20 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
                 row.weight === row.weightSuggested && row.weightSuggested !== ''
@@ -549,6 +714,12 @@ function SetGroup({
               value={row.reps}
               disabled={row.completed}
               onChange={(e) => onChange(idx, { reps: e.target.value })}
+              onFocus={(e) => {
+                if (row.reps === row.repsSuggested && row.repsSuggested !== '') {
+                  onChange(idx, { reps: '' });
+                }
+                e.target.select();
+              }}
               placeholder="reps"
               className={`w-16 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
                 row.reps === row.repsSuggested && row.repsSuggested !== ''
@@ -558,9 +729,13 @@ function SetGroup({
             />
             <div className="flex-1" />
             {row.completed ? (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white">
+              <button
+                onClick={() => onEdit(idx)}
+                aria-label="Edit set"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white active:opacity-70"
+              >
                 <Check />
-              </div>
+              </button>
             ) : (
               <button
                 onClick={() => onComplete(idx)}
@@ -573,7 +748,7 @@ function SetGroup({
           </div>
         );
       })}
-      {footerLabel && (hasDrops || scheme === 'muscle_round') && (
+      {footerLabel && (hasDrops || scheme === 'muscle_round' || scheme === 'intensifier') && (
         <div className="border-t border-line/60 bg-line/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
           {footerLabel}
         </div>
@@ -583,6 +758,8 @@ function SetGroup({
 }
 
 
+// Original inline rest timer — preserved as a fallback in case we want to revert.
+// Gated by USE_REST_OVERLAY at the top of this file.
 function RestTimer({
   remainingMs,
   totalMs,
@@ -657,6 +834,231 @@ function RestTimer({
   );
 }
 
+function RestOverlay({
+  dayName,
+  sessionStartedAt,
+  remainingMs,
+  totalMs,
+  restSeconds,
+  onSetRestSeconds,
+  onAdd,
+  onSubtract,
+  onSkip,
+  nextSetName,
+  nextSetWeight,
+  nextSetReps,
+  lastSetWeight,
+  lastSetReps,
+}: {
+  dayName: string;
+  sessionStartedAt: string | null;
+  remainingMs: number;
+  totalMs: number;
+  restSeconds: number;
+  onSetRestSeconds: (s: number) => void;
+  onAdd: () => void;
+  onSubtract: () => void;
+  onSkip: () => void;
+  nextSetName: string | null;
+  nextSetWeight: string;
+  nextSetReps: string;
+  lastSetWeight: number | null;
+  lastSetReps: number | null;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!sessionStartedAt) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [sessionStartedAt]);
+
+  const seconds = Math.ceil(remainingMs / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  const progress = Math.min(1, Math.max(0, remainingMs / totalMs));
+  const radius = 130;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - progress);
+
+  const elapsed = sessionStartedAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(sessionStartedAt).getTime()) / 1000))
+    : null;
+  const elapsedLabel =
+    elapsed != null
+      ? `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
+      : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#0A0A0A] text-white">
+      <div className="mx-auto flex w-full max-w-md flex-col px-5 pt-3">
+        <div className="flex items-center justify-between py-2">
+          <button onClick={onSkip} aria-label="Back" className="-ml-1 p-1 active:opacity-60">
+            <BackChevron />
+          </button>
+          <div className="text-base font-semibold tracking-tight">{dayName}</div>
+          <div className="w-8" />
+        </div>
+
+        {elapsedLabel && (
+          <div className="mt-3 flex flex-col items-center">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+              Workout time
+            </div>
+            <div className="mt-1 font-mono text-base font-semibold tabular-nums">
+              {elapsedLabel}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-8 flex flex-col items-center">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/80">
+            Rest
+          </div>
+          <div className="relative mt-4 h-[300px] w-[300px]">
+            <svg width="300" height="300" viewBox="0 0 300 300">
+              <circle
+                cx="150"
+                cy="150"
+                r={radius}
+                stroke="rgba(255,255,255,0.15)"
+                strokeWidth="3"
+                fill="none"
+              />
+              <circle
+                cx="150"
+                cy="150"
+                r={radius}
+                stroke="#FFFFFF"
+                strokeWidth="3"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+                transform="rotate(-90 150 150)"
+                style={{ transition: 'stroke-dashoffset 250ms linear' }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="font-mono text-[64px] font-bold leading-none tabular-nums">
+                {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+              </div>
+              <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                Until next set
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {nextSetName && (
+          <div className="mt-6 flex flex-col items-center">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+              Next set
+            </div>
+            <div className="mt-1 text-lg font-bold tracking-tight">{nextSetName}</div>
+            {(nextSetWeight || nextSetReps) && (
+              <div className="mt-0.5 text-sm text-white/70">
+                {nextSetWeight || '–'}kg × {nextSetReps || '–'}
+              </div>
+            )}
+            {lastSetWeight != null && lastSetReps != null && (
+              <div className="mt-2 rounded-pill bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/80">
+                Last set: {lastSetWeight}kg × {lastSetReps}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-col items-center">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+            Default rest time
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {REST_OPTIONS.map((s) => {
+              const active = s === restSeconds;
+              return (
+                <button
+                  key={s}
+                  onClick={() => onSetRestSeconds(s)}
+                  className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                    active
+                      ? 'bg-white text-ink'
+                      : 'border border-white/30 text-white/80 active:bg-white/10'
+                  }`}
+                >
+                  {s} sec
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-8 flex items-start justify-around">
+          <RoundAction label={['Subtract', '15 sec']} onClick={onSubtract}>
+            <span className="text-xl font-bold leading-none">−15</span>
+          </RoundAction>
+          <RoundAction label={['Add 15 sec']} onClick={onAdd}>
+            <span className="text-xl font-bold leading-none">+15</span>
+          </RoundAction>
+          <RoundAction label={['Skip', 'rest']} onClick={onSkip}>
+            <FastForward />
+          </RoundAction>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoundAction({
+  children,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  label: string[];
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} className="flex flex-col items-center gap-2 active:opacity-70">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/30 text-white">
+        {children}
+      </div>
+      <div className="text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70">
+        {label.map((l, i) => (
+          <div key={i}>{l}</div>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+function BackChevron() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M15 5l-7 7 7 7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FastForward() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M5 5l7 7-7 7M13 5l7 7-7 7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function WorkoutProgressBar({ value }: { value: number }) {
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
   return (
@@ -720,52 +1122,69 @@ function Improvements({
   sets: SetState[];
   lastSets: LoggedSet[];
 }) {
+  // First time logging this exercise — no comparison possible.
+  if (lastSets.length === 0) {
+    return (
+      <div className="mt-7 rounded-card bg-paper-card p-5 shadow-card">
+        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Nice work
+        </div>
+        <div className="mt-1 text-lg font-bold tracking-tight text-ink">
+          Baseline set — beat it next time.
+        </div>
+      </div>
+    );
+  }
+
+  // Per-set rep improvements
+  const repPRs: { setIndex: number; delta: number }[] = [];
+  for (const s of sets) {
+    const last = lastSets.find((l) => l.set_index === s.setIndex && l.drop_index === s.dropIndex);
+    const reps = parseInt(s.reps, 10) || 0;
+    if (last && last.reps != null && reps > last.reps) {
+      repPRs.push({ setIndex: s.setIndex, delta: reps - last.reps });
+    }
+  }
+  const totalExtraReps = repPRs.reduce((sum, r) => sum + r.delta, 0);
+
+  // Top set weight comparison
+  const lastTop = Math.max(...lastSets.map((l) => l.weight ?? 0), 0);
+  const thisTop = Math.max(...sets.map((s) => parseFloat(s.weight) || 0), 0);
+  const topDelta = thisTop - lastTop;
+
+  // Volume
   const volumeDelta = totalVolume - lastVolume;
   const volumePct = lastVolume > 0 ? Math.round((volumeDelta / lastVolume) * 100) : null;
 
-  const repPRs: string[] = [];
-  for (const s of sets) {
-    const last = lastSets.find((l) => l.set_index === s.setIndex);
-    const reps = parseInt(s.reps, 10) || 0;
-    if (last && last.reps != null && reps > last.reps) {
-      repPRs.push(`+${reps - last.reps} rep${reps - last.reps === 1 ? '' : 's'} on set ${s.setIndex}`);
-    }
-  }
+  // Pick the headline — prioritise the most encouraging signal.
+  let headline: string;
+  let detail: string | null = null;
 
-  const lastTop = Math.max(...lastSets.map((l) => l.weight ?? 0), 0);
-  const thisTop = Math.max(...sets.map((s) => parseFloat(s.weight) || 0), 0);
-  const matchedTop = lastTop > 0 && thisTop >= lastTop;
+  if (totalExtraReps > 0) {
+    const setsWord = repPRs.length === 1 ? `set ${repPRs[0].setIndex}` : `${repPRs.length} sets`;
+    headline = `+${totalExtraReps} rep${totalExtraReps === 1 ? '' : 's'} vs last time. Keep it up!`;
+    detail = `Extra reps on ${setsWord}.`;
+  } else if (topDelta > 0) {
+    headline = `+${topDelta} kg on your top set. Strong work!`;
+  } else if (lastTop > 0 && thisTop === lastTop) {
+    headline = 'Matched your top set — momentum building.';
+  } else if (volumePct != null && volumePct > 0) {
+    headline = `Volume up ${volumePct}% — solid session.`;
+  } else if (volumePct != null && volumePct === 0) {
+    headline = 'Held the line — same as last time.';
+  } else {
+    headline = 'Logged. Next time, aim for one more rep.';
+  }
 
   return (
     <div className="mt-7 rounded-card bg-paper-card p-5 shadow-card">
       <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
         Great work
       </div>
-      <div className="mt-1 text-2xl font-bold tracking-tight text-ink">
-        Volume: {totalVolume.toLocaleString()}
+      <div className="mt-1 text-lg font-bold leading-snug tracking-tight text-ink">
+        {headline}
       </div>
-      {volumePct != null && (
-        <div className="mt-0.5 text-sm text-muted">
-          {volumeDelta >= 0 ? '+' : ''}
-          {volumePct}% vs last time
-        </div>
-      )}
-      {(repPRs.length > 0 || matchedTop) && (
-        <ul className="mt-3 space-y-1.5 text-sm text-ink">
-          {repPRs.map((p, i) => (
-            <li key={i} className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-ink" />
-              {p}
-            </li>
-          ))}
-          {matchedTop && (
-            <li className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-ink" />
-              Matched top set
-            </li>
-          )}
-        </ul>
-      )}
+      {detail && <div className="mt-1 text-sm text-muted">{detail}</div>}
     </div>
   );
 }
@@ -830,35 +1249,6 @@ function parseIntensifier(notes: string | null | undefined): { weight: number; r
     if (!Number.isNaN(weight) && !Number.isNaN(reps)) pairs.push({ weight, reps });
   }
   return pairs.length >= 3 ? pairs : null;
-}
-
-function IntensifierBlock({
-  setIndex,
-  pyramid,
-}: {
-  setIndex: number;
-  pyramid: { weight: number; reps: number }[];
-}) {
-  return (
-    <div className="overflow-hidden rounded-2xl bg-paper-card shadow-card">
-      <div className="border-b border-line px-4 py-3">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-          Set {setIndex} · Dumbbell intensifier
-        </div>
-        <div className="mt-0.5 text-xs text-muted">
-          Work down and back up — no rest between weights
-        </div>
-      </div>
-      <ol className="divide-y divide-line">
-        {pyramid.map((p, i) => (
-          <li key={i} className="flex items-center justify-between px-5 py-2.5">
-            <span className="text-sm font-semibold text-ink tabular-nums">{p.weight} kg</span>
-            <span className="text-sm text-muted tabular-nums">× {p.reps}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
 }
 
 function Chevron({ rotate = 0 }: { rotate?: number }) {

@@ -5,6 +5,82 @@ export interface SessionRow {
   training_day_id: string;
   started_at: string;
   completed_at: string | null;
+  feedback_for_self?: string | null;
+  notes_to_coach?: string | null;
+}
+
+export interface SessionNotes {
+  feedbackForSelf: string;
+  notesToCoach: string;
+}
+
+export async function getSessionNotes(sessionId: string): Promise<SessionNotes> {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('feedback_for_self, notes_to_coach')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    feedbackForSelf: (data?.feedback_for_self as string | null) ?? '',
+    notesToCoach: (data?.notes_to_coach as string | null) ?? '',
+  };
+}
+
+export async function updateSessionNotes(
+  sessionId: string,
+  patch: Partial<SessionNotes>
+): Promise<void> {
+  const update: Record<string, string | null> = {};
+  if ('feedbackForSelf' in patch) {
+    update.feedback_for_self = patch.feedbackForSelf?.trim() ? patch.feedbackForSelf.trim() : null;
+  }
+  if ('notesToCoach' in patch) {
+    update.notes_to_coach = patch.notesToCoach?.trim() ? patch.notesToCoach.trim() : null;
+  }
+  const { error } = await supabase.from('sessions').update(update).eq('id', sessionId);
+  if (error) throw error;
+}
+
+export interface WeekNoteRow {
+  sessionId: string;
+  completedAt: string;
+  dayName: string;
+  feedbackForSelf: string | null;
+  notesToCoach: string | null;
+}
+
+export async function getRecentSessionNotes(daysBack = 7): Promise<WeekNoteRow[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('id, completed_at, feedback_for_self, notes_to_coach, training_days(name)')
+    .eq('user_id', user.id)
+    .not('completed_at', 'is', null)
+    .gte('completed_at', since)
+    .order('completed_at', { ascending: true });
+  if (error) throw error;
+  type Row = {
+    id: string;
+    completed_at: string;
+    feedback_for_self: string | null;
+    notes_to_coach: string | null;
+    training_days: { name: string } | { name: string }[] | null;
+  };
+  return ((data as Row[]) ?? []).map((r) => {
+    const td = Array.isArray(r.training_days) ? r.training_days[0] : r.training_days;
+    return {
+      sessionId: r.id,
+      completedAt: r.completed_at,
+      dayName: td?.name ?? 'Workout',
+      feedbackForSelf: r.feedback_for_self,
+      notesToCoach: r.notes_to_coach,
+    };
+  });
 }
 
 export interface LoggedSet {
@@ -297,7 +373,8 @@ export interface CompletedSessionSummary {
   started_at: string;
   completed_at: string;
   day_name: string;
-  body_parts: string[];
+  total_exercises: number;
+  recorded_exercises: number;
 }
 
 export async function listCompletedSessions(): Promise<CompletedSessionSummary[]> {
@@ -307,7 +384,7 @@ export async function listCompletedSessions(): Promise<CompletedSessionSummary[]
   if (!user) return [];
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, started_at, completed_at, training_days(name, plan_exercises(body_part))')
+    .select('id, started_at, completed_at, training_days(name, plan_exercises(id))')
     .eq('user_id', user.id)
     .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false });
@@ -317,22 +394,41 @@ export async function listCompletedSessions(): Promise<CompletedSessionSummary[]
     started_at: string;
     completed_at: string;
     training_days:
-      | { name: string; plan_exercises: { body_part: string | null }[] }
-      | { name: string; plan_exercises: { body_part: string | null }[] }[]
+      | { name: string; plan_exercises: { id: string }[] }
+      | { name: string; plan_exercises: { id: string }[] }[]
       | null;
   };
-  return ((data as Row[]) ?? []).map((r) => {
-    const td = Array.isArray(r.training_days) ? r.training_days[0] : r.training_days;
-    const parts = new Set<string>();
-    for (const pe of td?.plan_exercises ?? []) {
-      if (pe.body_part) parts.add(pe.body_part);
+  const rows = (data as Row[]) ?? [];
+  const sessionIds = rows.map((r) => r.id);
+
+  const recordedBySession = new Map<string, Set<string>>();
+  if (sessionIds.length > 0) {
+    const { data: logged } = await supabase
+      .from('logged_sets')
+      .select('session_id, plan_exercise_id')
+      .in('session_id', sessionIds);
+    for (const ls of ((logged as { session_id: string; plan_exercise_id: string | null }[]) ?? [])) {
+      if (!ls.plan_exercise_id) continue;
+      let set = recordedBySession.get(ls.session_id);
+      if (!set) {
+        set = new Set();
+        recordedBySession.set(ls.session_id, set);
+      }
+      set.add(ls.plan_exercise_id);
     }
+  }
+
+  return rows.map((r) => {
+    const td = Array.isArray(r.training_days) ? r.training_days[0] : r.training_days;
+    const total = td?.plan_exercises?.length ?? 0;
+    const recorded = recordedBySession.get(r.id)?.size ?? 0;
     return {
       id: r.id,
       started_at: r.started_at,
       completed_at: r.completed_at,
       day_name: td?.name ?? 'Workout',
-      body_parts: [...parts],
+      total_exercises: total,
+      recorded_exercises: recorded,
     };
   });
 }
@@ -393,6 +489,34 @@ export async function logSet(params: {
       reps: params.reps ?? null,
       hold_seconds: params.holdSeconds ?? null,
     })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as LoggedSet;
+}
+
+export async function getAllSessionSets(sessionId: string): Promise<LoggedSet[]> {
+  const { data, error } = await supabase
+    .from('logged_sets')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('completed_at', { ascending: true });
+  if (error) throw error;
+  return (data as LoggedSet[]) ?? [];
+}
+
+export async function updateLoggedSet(
+  id: string,
+  patch: { weight?: number | null; reps?: number | null; holdSeconds?: number | null }
+): Promise<LoggedSet> {
+  const update: Record<string, number | null> = {};
+  if ('weight' in patch) update.weight = patch.weight ?? null;
+  if ('reps' in patch) update.reps = patch.reps ?? null;
+  if ('holdSeconds' in patch) update.hold_seconds = patch.holdSeconds ?? null;
+  const { data, error } = await supabase
+    .from('logged_sets')
+    .update(update)
+    .eq('id', id)
     .select()
     .single();
   if (error) throw error;
