@@ -25,6 +25,7 @@ function Root() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeDay, setActiveDay] = useState<FullPlan['training_days'][number] | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [exerciseIdx, setExerciseIdx] = useState<number | null>(null);
   const [completedSession, setCompletedSession] = useState<{ id: string; dayName: string } | null>(
     null
@@ -86,6 +87,7 @@ function Root() {
       try {
         const sess = await createSession(activeDay.id);
         sid = sess.id;
+        setSessionStartedAt(sess.started_at);
       } catch (e) {
         console.error(e);
         return;
@@ -100,6 +102,8 @@ function Root() {
     return (
       <ExerciseLogger
         sessionId={sessionId!}
+        sessionStartedAt={sessionStartedAt}
+        dayName={activeDay.name}
         exercise={activeExercise}
         hasNext={exerciseIdx < exercises.length - 1}
         hasPrev={exerciseIdx > 0}
@@ -120,6 +124,7 @@ function Root() {
           }
           setExerciseIdx(null);
           setSessionId(null);
+          setSessionStartedAt(null);
           setActiveDay(null);
           if (sid) {
             setCompletedSession({ id: sid, dayName: finishedDay });
@@ -137,6 +142,7 @@ function Root() {
         onBack={() => {
           setActiveDay(null);
           setSessionId(null);
+          setSessionStartedAt(null);
         }}
         onTapExercise={startExercise}
       />
@@ -190,31 +196,73 @@ function TabSwipeContainer({
   onTabChange: (t: Tab) => void;
   children: React.ReactNode;
 }) {
-  const start = useRef<{ x: number; y: number; ignore: boolean } | null>(null);
+  const start = useRef<{ x: number; y: number; ignore: boolean; claimed: boolean } | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  function suppressNextClick() {
+    const node = containerRef.current;
+    if (!node) return;
+    const handler = (ev: Event) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      node.removeEventListener('click', handler, true);
+    };
+    node.addEventListener('click', handler, true);
+    // Safety: clear after a tick in case no click follows
+    window.setTimeout(() => node.removeEventListener('click', handler, true), 350);
+  }
 
   function onPointerDown(e: React.PointerEvent) {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const target = e.target as HTMLElement;
+    // Only bail on form fields where horizontal gestures are part of the UX
+    // (text selection, range scrubbing). Buttons/links are fine — we'll claim
+    // the gesture mid-swipe and suppress their trailing click.
     const ignore = !!target.closest(
-      'input, textarea, select, button, a, [role="button"], [data-no-tab-swipe]'
+      'input, textarea, select, [data-no-tab-swipe]'
     );
-    start.current = { x: e.clientX, y: e.clientY, ignore };
+    start.current = { x: e.clientX, y: e.clientY, ignore, claimed: false };
   }
+
+  function onPointerMove(e: React.PointerEvent) {
+    const s = start.current;
+    if (!s || s.ignore || s.claimed) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    // Claim the gesture once it looks like a horizontal swipe.
+    if (Math.abs(dx) > 24 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      s.claimed = true;
+      try {
+        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   function onPointerUp(e: React.PointerEvent) {
     const s = start.current;
     start.current = null;
     if (!s || s.ignore) return;
     const dx = e.clientX - s.x;
     const dy = e.clientY - s.y;
-    if (Math.abs(dx) < 60 || Math.abs(dy) > 40) return;
+    if (Math.abs(dx) < 60 || Math.abs(dy) > 60) return;
     const idx = TAB_ORDER.indexOf(tab);
     if (idx === -1) return;
     const nextIdx = dx < 0 ? idx + 1 : idx - 1;
     if (nextIdx < 0 || nextIdx >= TAB_ORDER.length) return;
+    if (s.claimed) suppressNextClick();
     onTabChange(TAB_ORDER[nextIdx]);
   }
+
   return (
-    <div onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => (start.current = null)}>
+    <div
+      ref={containerRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => (start.current = null)}
+    >
       {children}
     </div>
   );

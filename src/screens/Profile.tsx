@@ -18,6 +18,7 @@ import {
   setWaterUnit,
   type WaterUnit,
 } from '../lib/waterApi';
+import { getRecentSessionNotes } from '../lib/sessionsApi';
 
 interface Props {
   onUploadPlan: () => void;
@@ -138,7 +139,7 @@ export function Profile({ onUploadPlan, onTabChange, onOpenHistory }: Props) {
                     setWaterUnitState(u);
                     setWaterUnit(u);
                   }}
-                  className="rounded-xl border border-line bg-paper px-2 py-1 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                  className="rounded-xl border border-line bg-paper py-1 pl-3 pr-7 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
                 >
                   <option value="bottles">bottles</option>
                   <option value="glasses">glasses</option>
@@ -151,21 +152,17 @@ export function Profile({ onUploadPlan, onTabChange, onOpenHistory }: Props) {
         </Section>
 
         <Section title="Activity">
-          <button
-            onClick={onOpenHistory}
-            className="flex w-full items-center justify-between rounded-card bg-paper-card px-5 py-4 text-left shadow-card active:bg-line/40"
-          >
-            <div className="text-sm font-semibold text-ink">Workout history</div>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path
-                d="M7 4l5 5-5 5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
+          <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+            <button
+              onClick={onOpenHistory}
+              className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-line/40"
+            >
+              <div className="text-sm font-semibold text-ink">Workout history</div>
+              <ChevronRight />
+            </button>
+            <div className="border-t border-line" />
+            <CoachExportRow />
+          </div>
         </Section>
 
         <Section title="Account">
@@ -217,6 +214,98 @@ function PrefRow<T extends string>({
       </div>
     </div>
   );
+}
+
+function ChevronRight() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path
+        d="M7 4l5 5-5 5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CoachExportRow() {
+  const [copied, setCopied] = useState(false);
+
+  async function exportWeek() {
+    try {
+      const rows = await getRecentSessionNotes(7);
+      const withNotes = rows.filter((r) => (r.notesToCoach ?? '').trim().length > 0);
+      if (withNotes.length === 0) return;
+      const md = buildCoachExport(withNotes);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(md);
+      } else {
+        downloadFile(`coach-notes-${todayIso()}.md`, md);
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // silent — copy is best-effort
+    }
+  }
+
+  return (
+    <button
+      onClick={exportWeek}
+      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-line/40"
+    >
+      <div className="text-sm font-semibold text-ink">
+        {copied ? 'Copied' : "Copy this week's notes for coach"}
+      </div>
+      <CopyIcon />
+    </button>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function buildCoachExport(rows: Awaited<ReturnType<typeof getRecentSessionNotes>>): string {
+  const out: string[] = [];
+  out.push(`# Notes for coach`);
+  out.push(`Week ending ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`);
+  out.push('');
+  for (const r of rows) {
+    const date = new Date(r.completedAt).toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+    out.push(`## ${r.dayName} — ${date}`);
+    if (r.notesToCoach) out.push(r.notesToCoach.trim());
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function downloadFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { getSessionRecap, type SessionRecap } from '../lib/sessionsApi';
+import {
+  getSessionRecap,
+  getSessionNotes,
+  updateSessionNotes,
+  type SessionRecap,
+} from '../lib/sessionsApi';
 import { getLiftWeightUnit } from '../lib/units';
 
 interface Props {
@@ -112,6 +117,23 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
           </div>
         )}
 
+        <div className="mt-9 space-y-3">
+          <NotesAccordion
+            sessionId={sessionId}
+            field="feedbackForSelf"
+            title="Feedback for next time"
+            hint="Private notes for you. Example: push harder on shoulders, up calf raises next week."
+            placeholder="What would you do differently next time?"
+          />
+          <NotesAccordion
+            sessionId={sessionId}
+            field="notesToCoach"
+            title="Notes to coach"
+            hint="Shared with your coach when you export this week."
+            placeholder="Anything you want to flag to your coach about today's session?"
+          />
+        </div>
+
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30">
@@ -154,6 +176,108 @@ const SUBPAR_HEADLINES = [
   'Quiet one in the books',
   'Done is better than skipped',
 ];
+
+function NotesAccordion({
+  sessionId,
+  field,
+  title,
+  hint,
+  placeholder,
+}: {
+  sessionId: string;
+  field: 'feedbackForSelf' | 'notesToCoach';
+  title: string;
+  hint: string;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSessionNotes(sessionId)
+      .then((n) => {
+        if (cancelled) return;
+        setValue(field === 'feedbackForSelf' ? n.feedbackForSelf : n.notesToCoach);
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, field]);
+
+  async function save(next: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      await updateSessionNotes(sessionId, { [field]: next });
+      setSavedAt(Date.now());
+    } catch (e) {
+      setError((e as Error)?.message ?? 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const hasContent = value.trim().length > 0;
+
+  return (
+    <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-5 py-4 text-left active:opacity-70"
+      >
+        <div>
+          <div className="text-sm font-semibold text-ink">{title}</div>
+          {!open && (
+            <div className="mt-0.5 text-xs text-muted">
+              {hasContent ? `${value.length} char${value.length === 1 ? '' : 's'} saved` : 'Tap to add notes'}
+            </div>
+          )}
+        </div>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 18 18"
+          fill="none"
+          style={{ transform: `rotate(${open ? 90 : 0}deg)`, transition: 'transform 200ms ease' }}
+        >
+          <path
+            d="M7 4l5 5-5 5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="border-t border-line/60 px-5 pb-4 pt-3">
+          <p className="text-xs text-muted">{hint}</p>
+          <textarea
+            value={value}
+            disabled={!loaded}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={() => save(value)}
+            placeholder={placeholder}
+            rows={4}
+            className="mt-3 w-full resize-y rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none"
+          />
+          <div className="mt-1.5 text-right text-[11px] text-muted">
+            {error ? <span className="text-red-700">{error}</span> : saving ? 'Saving…' : savedAt ? 'Saved' : ' '}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function pickHeadline(subpar: boolean) {
   const pool = subpar ? SUBPAR_HEADLINES : POSITIVE_HEADLINES;
