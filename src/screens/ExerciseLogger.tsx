@@ -9,6 +9,7 @@ import {
 } from '../lib/sessionsApi';
 import { parseSetMods } from '../lib/parseSetMods';
 import type { PlanExerciseRow } from '../lib/plansApi';
+import BarbellCalculator from '../components/BarbellCalculator';
 
 // Flip to false to revert to the inline rest timer (the original design).
 const USE_REST_OVERLAY = true;
@@ -171,6 +172,7 @@ export function ExerciseLogger({
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
   const [shakeIdx, setShakeIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [calcOpen, setCalcOpen] = useState<number | null>(null);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   const [restSeconds, setRestSecondsState] = useState<number>(() => {
     if (typeof window === 'undefined') return 60;
@@ -498,6 +500,7 @@ export function ExerciseLogger({
                 onChange={update}
                 onComplete={handleComplete}
                 onEdit={handleEdit}
+                onOpenCalculator={(idx) => setCalcOpen(idx)}
               />
             ));
           })()}
@@ -600,6 +603,15 @@ export function ExerciseLogger({
           lastSetReps={nextSetLastMatch?.reps ?? null}
         />
       )}
+
+      <BarbellCalculator
+        open={calcOpen !== null}
+        initialKg={calcOpen !== null ? Number(sets[calcOpen]?.weight) || undefined : undefined}
+        onClose={() => setCalcOpen(null)}
+        onConfirm={(kg) => {
+          if (calcOpen !== null) update(calcOpen, { weight: String(kg) });
+        }}
+      />
     </div>
   );
 }
@@ -726,6 +738,7 @@ function SetGroup({
   onChange,
   onComplete,
   onEdit,
+  onOpenCalculator,
 }: {
   rows: { row: SetState; idx: number }[];
   activeIndex: number;
@@ -734,6 +747,7 @@ function SetGroup({
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
+  onOpenCalculator: (idx: number) => void;
 }) {
   const setIndex = rows[0].row.setIndex;
   const mainRow = rows[0].row;
@@ -829,13 +843,22 @@ function SetGroup({
                 <Check />
               </button>
             ) : (
-              <button
-                onClick={() => onComplete(idx)}
-                disabled={savingIdx === idx}
-                className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-50"
-              >
-                {savingIdx === idx ? '…' : 'Done'}
-              </button>
+              <>
+                <button
+                  onClick={() => onOpenCalculator(idx)}
+                  aria-label="Open barbell calculator"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-ink active:opacity-70"
+                >
+                  <PlateIcon />
+                </button>
+                <button
+                  onClick={() => onComplete(idx)}
+                  disabled={savingIdx === idx}
+                  className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-50"
+                >
+                  {savingIdx === idx ? '…' : 'Done'}
+                </button>
+              </>
             )}
             </div>
           </div>
@@ -1260,6 +1283,16 @@ function Improvements({
       </div>
       {detail && <div className="mt-1 text-sm text-muted">{detail}</div>}
     </div>
+  );
+}
+
+function PlateIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="11" width="20" height="2" fill="currentColor" />
+      <rect x="6" y="6" width="2.5" height="12" rx="0.5" fill="currentColor" />
+      <rect x="15.5" y="6" width="2.5" height="12" rx="0.5" fill="currentColor" />
+    </svg>
   );
 }
 
