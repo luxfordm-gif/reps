@@ -1,11 +1,16 @@
 interface Props {
-  // 7 numbers, Mon-Sun, each 0-1 representing relative effort
-  bars: number[];
+  // 7 entries, Mon-Sun. Each day's entry is an array of relative efforts
+  // (0-1). One workout = one entry. Two workouts on the same day = two
+  // entries that render as stacked segments with a small gap.
+  bars: number[][];
   workoutsDone: number;
   workoutsTarget: number;
 }
 
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const TRACK_HEIGHT = 56;
+const SEGMENT_GAP = 3;
+const EMPTY_HEIGHT = 8;
 const todayIndex = (() => {
   const d = new Date().getDay(); // 0=Sun..6=Sat
   return (d + 6) % 7; // shift so 0=Mon..6=Sun
@@ -22,18 +27,37 @@ export function WeeklyProgress({ bars, workoutsDone, workoutsTarget }: Props) {
       </div>
 
       <div className="mt-5 flex items-end gap-2">
-        {bars.map((value, i) => {
-          const height = Math.max(8, Math.round(value * 56));
+        {bars.map((segments, i) => {
           const isToday = i === todayIndex;
+          const hasAny = segments.length > 0;
           return (
             <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
-              <div className="flex h-14 w-full items-end">
-                <div
-                  className={`w-full rounded-md ${
-                    isToday ? 'bg-white' : value > 0 ? 'bg-white/55' : 'bg-white/15'
-                  }`}
-                  style={{ height: `${height}px` }}
-                />
+              <div
+                className="flex w-full flex-col-reverse items-stretch justify-start"
+                style={{ height: `${TRACK_HEIGHT}px`, gap: `${SEGMENT_GAP}px` }}
+              >
+                {hasAny ? (
+                  segments.map((value, si) => {
+                    // Minimum 12px so any completed session is visible, even
+                    // when it has zero logged volume (body-weight workouts).
+                    const px = Math.max(
+                      12,
+                      Math.round(value * (TRACK_HEIGHT - SEGMENT_GAP * (segments.length - 1)))
+                    );
+                    return (
+                      <div
+                        key={si}
+                        className={`w-full rounded-md ${isToday ? 'bg-white' : 'bg-white/55'}`}
+                        style={{ height: `${px}px` }}
+                      />
+                    );
+                  })
+                ) : (
+                  <div
+                    className="w-full rounded-md bg-white/15"
+                    style={{ height: `${EMPTY_HEIGHT}px` }}
+                  />
+                )}
               </div>
               <div
                 className={`text-[10px] font-medium ${

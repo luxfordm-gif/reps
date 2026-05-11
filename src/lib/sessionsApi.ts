@@ -119,6 +119,41 @@ export async function getLastCompletedTrainingDayName(): Promise<string | null> 
   return td.name ?? null;
 }
 
+export interface ActiveSessionContext {
+  sessionId: string;
+  startedAt: string;
+  trainingDayId: string;
+  trainingDayName: string;
+  lastPlanExerciseId: string | null;
+}
+
+export async function getAnyActiveSession(): Promise<ActiveSessionContext | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('id, started_at, training_day_id, training_days(name)')
+    .eq('user_id', user.id)
+    .is('completed_at', null)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  if (!data) return null;
+  const td = (data as { training_days: { name: string } | { name: string }[] | null }).training_days;
+  const tdObj = Array.isArray(td) ? td[0] : td;
+  const stats = await getSessionStats((data as { id: string }).id);
+  return {
+    sessionId: (data as { id: string }).id,
+    startedAt: (data as { started_at: string }).started_at,
+    trainingDayId: (data as { training_day_id: string }).training_day_id,
+    trainingDayName: tdObj?.name ?? 'Workout',
+    lastPlanExerciseId: stats.lastPlanExerciseId,
+  };
+}
+
 export async function getActiveSessionForDay(
   trainingDayId: string
 ): Promise<SessionRow | null> {
@@ -435,6 +470,85 @@ export async function listCompletedSessions(): Promise<CompletedSessionSummary[]
 
 export async function deleteSession(sessionId: string): Promise<void> {
   const { error } = await supabase.from('sessions').delete().eq('id', sessionId);
+  if (error) throw error;
+}
+
+// Delete every open (not-yet-completed) session belonging to the current user.
+// Used when the user discards a workout — we want a truly clean slate, even if
+// abandoned sessions from older app versions are lurking in the DB.
+export interface WeekSummary {
+  workoutsDone: number;
+  // Mon..Sun. Each day is a list of session efforts (0-1), so a day with two
+  // workouts has two entries that render as stacked segments with a gap.
+  bars: number[][];
+}
+
+export async function getThisWeekSummary(): Promise<WeekSummary> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const empty: number[][] = [[], [], [], [], [], [], []];
+  if (!user) return { workoutsDone: 0, bars: empty };
+
+  // Compute start-of-week (Monday 00:00 local time).
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // 0=Mon..6=Sun
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(nextMonday.getDate() + 7);
+
+  const { data: sessions } = await supabase
+    .from('sessions')
+    .select('id, completed_at')
+    .eq('user_id', user.id)
+    .not('completed_at', 'is', null)
+    .gte('completed_at', monday.toISOString())
+    .lt('completed_at', nextMonday.toISOString());
+  const sessionList = (sessions as { id: string; completed_at: string }[]) ?? [];
+  if (sessionList.length === 0) return { workoutsDone: 0, bars: empty };
+
+  const { data: sets } = await supabase
+    .from('logged_sets')
+    .select('session_id, weight, reps')
+    .in(
+      'session_id',
+      sessionList.map((s) => s.id)
+    );
+  const volumeBySession = new Map<string, number>();
+  for (const r of ((sets as { session_id: string; weight: number | null; reps: number | null }[]) ?? [])) {
+    if (r.weight == null || r.reps == null) continue;
+    volumeBySession.set(r.session_id, (volumeBySession.get(r.session_id) ?? 0) + r.weight * r.reps);
+  }
+
+  const dayBuckets: number[][] = [[], [], [], [], [], [], []];
+  for (const s of sessionList) {
+    const d = new Date(s.completed_at);
+    const idx = (d.getDay() + 6) % 7;
+    dayBuckets[idx].push(volumeBySession.get(s.id) ?? 0);
+  }
+  // Normalize: bar height for any single session is its volume relative to
+  // the heaviest day's TOTAL volume in the week (so the column tops match
+  // the biggest training day).
+  const dayTotals = dayBuckets.map((arr) => arr.reduce((a, b) => a + b, 0));
+  const max = Math.max(...dayTotals, 0);
+  // Preserve segment counts even if all volumes are 0 (e.g. body-weight-only
+  // workouts) so each completed session still gets a visible bar.
+  const bars: number[][] = dayBuckets.map((arr) =>
+    arr.map((v) => (max > 0 ? v / max : 0))
+  );
+  return { workoutsDone: sessionList.length, bars };
+}
+
+export async function deleteAllOpenSessions(): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  const { error } = await supabase
+    .from('sessions')
+    .delete()
+    .eq('user_id', user.id)
+    .is('completed_at', null);
   if (error) throw error;
 }
 

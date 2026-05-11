@@ -4,7 +4,13 @@ import { BottomNav, type Tab } from '../components/BottomNav';
 import { AppHeader } from '../components/AppHeader';
 import { WeeklyProgress } from '../components/WeeklyProgress';
 import { getActivePlan, type FullPlan } from '../lib/plansApi';
-import { getLastCompletedTrainingDayName } from '../lib/sessionsApi';
+import {
+  getLastCompletedTrainingDayName,
+  getAnyActiveSession,
+  getThisWeekSummary,
+  type ActiveSessionContext,
+  type WeekSummary,
+} from '../lib/sessionsApi';
 import {
   getTodayWaterCount,
   adjustWater,
@@ -19,6 +25,12 @@ interface Props {
   onTabChange: (tab: Tab) => void;
   onLogBodyWeight: () => void;
   onTapDay: (day: Day) => void;
+  onResumeWorkout?: (params: {
+    day: Day;
+    exerciseIdx: number;
+    sessionId: string;
+    startedAt: string;
+  }) => void;
 }
 
 const ACCENTS: Record<string, string> = {
@@ -58,7 +70,7 @@ function greeting() {
   return 'Hey';
 }
 
-export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: Props) {
+export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay, onResumeWorkout }: Props) {
   const [plan, setPlan] = useState<FullPlan | null>(null);
   const [lastCompleted, setLastCompleted] = useState<string | null>(null);
   const [waterCount, setWaterCount] = useState(0);
@@ -67,15 +79,28 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
   const [waterBusy, setWaterBusy] = useState(false);
   const [waterError, setWaterError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [active, setActive] = useState<ActiveSessionContext | null>(null);
+  const [weekSummary, setWeekSummary] = useState<WeekSummary>({
+    workoutsDone: 0,
+    bars: [0, 0, 0, 0, 0, 0, 0],
+  });
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getActivePlan(), getLastCompletedTrainingDayName(), getTodayWaterCount()])
-      .then(([p, lc, w]) => {
+    Promise.all([
+      getActivePlan(),
+      getLastCompletedTrainingDayName(),
+      getTodayWaterCount(),
+      getAnyActiveSession(),
+      getThisWeekSummary(),
+    ])
+      .then(([p, lc, w, a, ws]) => {
         if (!mounted) return;
         setPlan(p);
         setLastCompleted(lc);
         setWaterCount(w);
+        setActive(a);
+        setWeekSummary(ws);
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -162,11 +187,29 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
       <div className="mx-auto max-w-md px-5 pt-3">
         <AppHeader />
 
+        {active && (
+          <ActiveWorkoutBanner
+            context={active}
+            onResume={() => {
+              if (!plan || !onResumeWorkout) return;
+              const day = plan.training_days.find((d) => d.id === active.trainingDayId);
+              if (!day) return;
+              const exercises = day.plan_exercises ?? [];
+              const lastIdx = active.lastPlanExerciseId
+                ? exercises.findIndex((e) => e.id === active.lastPlanExerciseId)
+                : 0;
+              onResumeWorkout({
+                day,
+                exerciseIdx: Math.max(0, lastIdx === -1 ? 0 : lastIdx),
+                sessionId: active.sessionId,
+                startedAt: active.startedAt,
+              });
+            }}
+          />
+        )}
+
         <div className="mt-5">
-          <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
-            {today}
-          </div>
-          <h1 className="mt-1 text-[32px] font-bold leading-[1.1] tracking-tight text-ink">
+          <h1 className="text-[32px] font-bold leading-[1.1] tracking-tight text-ink">
             {greeting()}, {FIRST_NAME}.
           </h1>
           <p className="mt-1.5 text-base text-muted">
@@ -175,10 +218,14 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
         </div>
 
         <div className="mt-6">
-          <WeeklyProgress workoutsDone={0} workoutsTarget={5} bars={[0, 0, 0, 0, 0, 0, 0]} />
+          <WeeklyProgress
+            workoutsDone={weekSummary.workoutsDone}
+            workoutsTarget={5}
+            bars={weekSummary.bars}
+          />
         </div>
 
-        {nextDay && (
+        {nextDay && !active && (
           <div className="mt-7">
             <SectionLabel>Today's workout</SectionLabel>
             <div className="mt-3">
@@ -238,6 +285,65 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay }: P
 
       <BottomNav active="home" onChange={onTabChange} />
     </div>
+  );
+}
+
+function ActiveWorkoutBanner({
+  context,
+  onResume,
+}: {
+  context: ActiveSessionContext;
+  onResume: () => void;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const elapsed = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(context.startedAt).getTime()) / 1000)
+  );
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const label = `${String(Math.floor(mins / 60)).padStart(0, '0')}${
+    mins >= 60 ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}` : String(mins)
+  }:${String(secs).padStart(2, '0')}`;
+  // Simpler: hours only when needed
+  const displayLabel =
+    mins >= 60
+      ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+      : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  void label;
+
+  return (
+    <button
+      onClick={onResume}
+      className="mt-4 flex w-full items-center gap-4 rounded-card bg-[#1F1F1F] px-5 py-4 text-left text-white shadow-card active:opacity-80"
+    >
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+        <span className="text-xl font-bold text-white">{context.trainingDayName[0]}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+          Workout in progress
+        </div>
+        <div className="mt-0.5 text-xl font-bold tracking-tight">
+          {context.trainingDayName} ·{' '}
+          <span className="font-mono tabular-nums">{displayLabel}</span>
+        </div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path
+          d="M7 4l5 5-5 5"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
   );
 }
 
