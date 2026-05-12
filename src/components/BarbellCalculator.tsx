@@ -37,8 +37,7 @@ function getStoredOutputMode(): OutputMode | null {
 
 function validModesFor(barId: string): OutputMode[] {
   if (barId === 'none') return ['oneSide', 'withoutBar'];
-  if (barId === 'custom') return ['oneSide', 'withBar', 'withoutBar'];
-  return ['withBar', 'withoutBar'];
+  return ['oneSide', 'withBar', 'withoutBar'];
 }
 
 function defaultModeFor(barId: string): OutputMode {
@@ -239,7 +238,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Select barbell
           </div>
-          <div className="-mx-4 mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+          <div className="mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
             {tiles.map((t) => {
               const selected = barId === t.id;
               return (
@@ -345,15 +344,13 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Tap to choose what to log
           </div>
-          <div className={`mt-2 grid gap-2 ${barId === 'custom' ? 'grid-cols-3' : 'grid-cols-2'}`}>
-            {(barId === 'custom' || barId === 'none') && (
-              <TotalButton
-                label="One side"
-                value={`${formatKg(oneSide)}kg`}
-                active={outputMode === 'oneSide'}
-                onClick={() => pickOutputMode('oneSide')}
-              />
-            )}
+          <div className={`mt-2 grid gap-2 ${barId === 'none' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            <TotalButton
+              label="One side"
+              value={`${formatKg(oneSide)}kg`}
+              active={outputMode === 'oneSide'}
+              onClick={() => pickOutputMode('oneSide')}
+            />
             {barId !== 'none' && (
               <TotalButton
                 label="With bar"
@@ -363,7 +360,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
               />
             )}
             <TotalButton
-              label="Without bar"
+              label={barId === 'none' ? 'Both sides' : 'Without bar'}
               value={`${formatKg(oneSide * 2)}kg`}
               active={outputMode === 'withoutBar'}
               onClick={() => pickOutputMode('withoutBar')}
