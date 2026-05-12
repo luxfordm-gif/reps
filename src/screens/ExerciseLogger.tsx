@@ -8,7 +8,7 @@ import {
   type LoggedSet,
 } from '../lib/sessionsApi';
 import { parseSetMods } from '../lib/parseSetMods';
-import type { PlanExerciseRow } from '../lib/plansApi';
+import { updatePlanExerciseRest, type PlanExerciseRow } from '../lib/plansApi';
 import BarbellCalculator from '../components/BarbellCalculator';
 
 // Flip to false to revert to the inline rest timer (the original design).
@@ -147,6 +147,46 @@ function googleImagesUrl(name: string): string {
   return `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(name + ' gym machine')}`;
 }
 
+const REST_VALID = [30, 60, 90, 120, 180] as const;
+
+function initialRestSeconds(stored: number | null | undefined): number {
+  if (stored != null && REST_VALID.includes(stored as (typeof REST_VALID)[number])) {
+    return stored;
+  }
+  if (typeof window !== 'undefined') {
+    const v = window.localStorage.getItem('reps.restSeconds');
+    const n = v ? parseInt(v, 10) : NaN;
+    if (REST_VALID.includes(n as (typeof REST_VALID)[number])) return n;
+  }
+  return 60;
+}
+
+// Short audible beep when the rest timer ends. Works as a fallback on iOS Safari
+// (no navigator.vibrate) and as reinforcement everywhere else.
+function playRestDoneBeep() {
+  try {
+    type WebAudioWindow = Window &
+      typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+    const w = window as WebAudioWindow;
+    const Ctx = w.AudioContext ?? w.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+    osc.onended = () => ctx.close().catch(() => {});
+  } catch {
+    // Autoplay/permission blocked — ignore silently.
+  }
+}
+
 export function ExerciseLogger({
   sessionId,
   sessionStartedAt,
@@ -174,19 +214,27 @@ export function ExerciseLogger({
   const [error, setError] = useState<string | null>(null);
   const [calcOpen, setCalcOpen] = useState<number | null>(null);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
-  const [restSeconds, setRestSecondsState] = useState<number>(() => {
-    if (typeof window === 'undefined') return 60;
-    const v = window.localStorage.getItem('reps.restSeconds');
-    const n = v ? parseInt(v, 10) : 60;
-    return [30, 60, 90, 120, 180].includes(n) ? n : 60;
-  });
+  const [restSeconds, setRestSecondsState] = useState<number>(() =>
+    initialRestSeconds(exercise.rest_seconds)
+  );
   const [, setNow] = useState(Date.now());
+
+  // When the user switches to a different exercise mid-session, re-pick the
+  // initial rest from that exercise's stored value (falling back to local
+  // default).
+  useEffect(() => {
+    setRestSecondsState(initialRestSeconds(exercise.rest_seconds));
+  }, [exercise.id, exercise.rest_seconds]);
 
   function setRestSeconds(s: number) {
     setRestSecondsState(s);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('reps.restSeconds', String(s));
     }
+    // Fire-and-forget — persists the per-exercise preference.
+    updatePlanExerciseRest(exercise.id, s).catch(() => {
+      // Ignore; localStorage still keeps the value for this session.
+    });
   }
 
   // Keep screen on while resting
@@ -233,7 +281,7 @@ export function ExerciseLogger({
     };
   }, [restEndsAt]);
 
-  // Tick for rest timer
+  // Tick for rest timer + buzz/beep at zero
   useEffect(() => {
     if (restEndsAt == null) return;
     const id = window.setInterval(() => setNow(Date.now()), 250);
@@ -242,11 +290,12 @@ export function ExerciseLogger({
     const buzz = window.setTimeout(() => {
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try {
-          navigator.vibrate(25);
+          navigator.vibrate([200, 80, 200]);
         } catch {
           // ignore
         }
       }
+      playRestDoneBeep();
     }, fireAt);
     return () => {
       window.clearInterval(id);
@@ -425,7 +474,7 @@ export function ExerciseLogger({
           rightAction={
             <ExerciseMenu
               hasNext={hasNext}
-              onSkip={onNext}
+              onSkip={hasNext ? onNext : onFinish}
               onOverview={onOverview}
               onHome={onHome}
               onEndWorkout={onEndWorkout}
@@ -586,7 +635,12 @@ export function ExerciseLogger({
           remainingMs={restRemainingMs}
           totalMs={restSeconds * 1000}
           restSeconds={restSeconds}
-          onSetRestSeconds={setRestSeconds}
+          onSetRestSeconds={(s) => {
+            setRestSeconds(s);
+            if (restEndsAt != null) {
+              setRestEndsAt(Date.now() + s * 1000);
+            }
+          }}
           onAdd={() => setRestEndsAt((t) => (t ?? Date.now()) + 15000)}
           onSubtract={() =>
             setRestEndsAt((t) => {
@@ -668,15 +722,13 @@ function ExerciseMenu({
       </button>
       {open && (
         <div className="absolute right-0 top-11 z-40 w-52 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
-          {hasNext && (
-            <button
-              onClick={() => pick(onSkip)}
-              className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
-            >
-              Skip exercise
-            </button>
-          )}
-          {hasNext && <div className="border-t border-line/60" />}
+          <button
+            onClick={() => pick(onSkip)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+          >
+            {hasNext ? 'Skip exercise' : 'Skip & finish workout'}
+          </button>
+          <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onOverview)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
@@ -1078,7 +1130,7 @@ function RestOverlay({
             </div>
           )}
 
-          <div className="mt-6 flex flex-col items-center">
+          <div className="mt-5 flex flex-col items-center">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
               Default rest time
             </div>

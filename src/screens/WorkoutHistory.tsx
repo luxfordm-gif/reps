@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { NotesAccordion } from '../components/NotesAccordion';
 import {
   listCompletedSessions,
   deleteSession,
@@ -297,6 +298,25 @@ function SessionDetail({
             />
           ))}
         </div>
+
+        {sets != null && (
+          <div className="mt-6 space-y-3">
+            <NotesAccordion
+              sessionId={session.id}
+              field="feedbackForSelf"
+              title="Feedback for next time"
+              hint="Private notes for you. Example: push harder on shoulders, up calf raises next week."
+              placeholder="What would you do differently next time?"
+            />
+            <NotesAccordion
+              sessionId={session.id}
+              field="notesToCoach"
+              title="Notes to coach"
+              hint="Shared with your coach when you export this week."
+              placeholder="Anything you want to flag to your coach about today's session?"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
