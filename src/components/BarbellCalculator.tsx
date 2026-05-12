@@ -235,7 +235,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
 
         <div className="border-t border-line/60" />
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-3">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Select barbell
           </div>
@@ -246,8 +246,8 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
                 <button
                   key={t.id}
                   onClick={() => selectBar(t.id)}
-                  className={`relative flex h-[100px] w-[90px] flex-none snap-start flex-col items-center justify-between rounded-2xl bg-paper-card p-2 text-center transition-all ${
-                    selected ? 'ring-2 ring-ink' : 'ring-1 ring-line/60'
+                  className={`relative flex h-[96px] w-[88px] flex-none snap-start flex-col items-center justify-between rounded-2xl bg-paper-card p-2 text-center transition-colors border-2 ${
+                    selected ? 'border-ink' : 'border-line/60'
                   }`}
                 >
                   {selected && (
@@ -275,7 +275,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
             })}
           </div>
           {barId === 'custom' && (
-            <div className="mt-3 flex items-center gap-2 rounded-2xl bg-paper-card p-3 ring-1 ring-line/60">
+            <div className="mt-2 flex items-center gap-2 rounded-2xl border-2 border-line/60 bg-paper-card p-3">
               <label className="text-xs font-semibold text-ink" htmlFor="custom-bar-kg">
                 Bar weight
               </label>
@@ -295,9 +295,9 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           )}
         </div>
 
-        <div className="border-t border-line/60 mt-4" />
+        <div className="border-t border-line/60 mt-3" />
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-3">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Build your load (one side)
           </div>
@@ -305,7 +305,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
             {plates.length === 0 ? 'Tap a plate to add it' : 'Tap a plate on the bar to remove it'}
           </div>
 
-          <div className="mt-3 grid grid-cols-[1fr_140px] items-center gap-3">
+          <div className="mt-2 grid grid-cols-[1fr_140px] items-center gap-3">
             <BarVisualisation plates={plates} onRemoveAt={removePlateAt} showBar={barId !== 'none'} />
             <ChipStack
               grouped={grouped}
@@ -315,7 +315,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-3">
           <div className="grid grid-cols-5 gap-2">
             {HEAVY_PLATES.map((kg) => (
               <PlateButton key={kg} kg={kg} variant="heavy" onClick={() => addPlate(kg)} />
@@ -341,7 +341,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-3">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Tap to choose what to log
           </div>
@@ -371,7 +371,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="sticky bottom-0 mt-4 bg-paper px-4 pb-4 pt-2">
+        <div className="sticky bottom-0 mt-3 bg-paper px-4 pb-4 pt-2">
           <button
             onClick={handleConfirm}
             className="w-full rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
@@ -407,8 +407,8 @@ function TotalButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex flex-col items-start rounded-2xl p-3 text-left transition-colors ${
-        active ? 'bg-ink ring-2 ring-ink' : 'bg-paper-card ring-1 ring-line/60 active:bg-paper-card/70'
+      className={`relative flex flex-col items-start rounded-2xl p-3 text-left transition-colors border-2 ${
+        active ? 'bg-ink border-ink' : 'bg-paper-card border-line/60 active:bg-paper-card/70'
       }`}
     >
       {active && (
@@ -527,7 +527,7 @@ function BarVisualisation({
   onRemoveAt: (arrayIndex: number) => void;
   showBar?: boolean;
 }) {
-  const VIEW_H = 140;
+  const VIEW_H = 120;
   const handleX = 0;
   const handleW = showBar ? 70 : 0;
   const sleeveStartX = handleW;
@@ -535,14 +535,22 @@ function BarVisualisation({
   const plateGap = 1;
   const sleevePadLeft = showBar ? 4 : 0;
   const sleevePadRight = showBar ? 6 : 0;
-  const emptySleeveW = showBar ? 36 : 0;
+  const emptySleeveW = showBar ? 36 : 14;
 
   const platesWidth = plates.reduce((sum, kg) => sum + plateWidth(kg), 0) + Math.max(0, plates.length - 1) * plateGap;
   const sleeveW = Math.max(emptySleeveW, platesWidth + sleevePadLeft + sleevePadRight);
   const VIEW_W = handleW + sleeveW + (showBar ? 6 : 0);
 
+  const NO_BAR_SCALE = 2;
   return (
-    <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} width="100%" preserveAspectRatio="xMidYMid meet" className="select-none">
+    <svg
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      width={showBar ? '100%' : VIEW_W * NO_BAR_SCALE}
+      height={showBar ? undefined : VIEW_H * NO_BAR_SCALE}
+      preserveAspectRatio="xMidYMid meet"
+      className="select-none"
+      style={!showBar ? { maxWidth: '100%', display: 'block', margin: '0 auto' } : undefined}
+    >
       {showBar && (
         <>
           <rect x={handleX} y={VIEW_H / 2 - 6} width={handleW + 6} height={12} rx={6} fill="#C7C7CC" />
