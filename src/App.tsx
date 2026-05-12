@@ -49,6 +49,27 @@ function Root() {
     }
   }, [session]);
 
+  const screenKey = loading
+    ? 'loading'
+    : passwordRecovery
+      ? 'pw'
+      : !session
+        ? 'login'
+        : modal
+          ? `modal:${modal}`
+          : completedSession
+            ? 'complete'
+            : activeDay && exerciseIdx != null
+              ? `exercise:${exerciseIdx}`
+              : activeDay
+                ? `day:${activeDay.id}`
+                : `tab:${tab}`;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.scrollTo(0, 0);
+  }, [screenKey]);
+
   function dismissWhatsNew() {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('reps.lastSeenVersion', APP_VERSION);
