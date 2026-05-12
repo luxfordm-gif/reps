@@ -27,6 +27,14 @@ function formatKg(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
 }
 
+type OutputMode = 'oneSide' | 'withBar' | 'withoutBar';
+
+function getStoredOutputMode(): OutputMode | null {
+  if (typeof window === 'undefined') return null;
+  const v = window.localStorage.getItem('reps.calc.outputMode');
+  return v === 'oneSide' || v === 'withBar' || v === 'withoutBar' ? v : null;
+}
+
 export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
   const [barId, setBarId] = useState<string>(() => getLastBarId() ?? 'mens');
   const [customBarKg, setCustomBarKgState] = useState<number | null>(() => getCustomBarKg());
@@ -34,6 +42,20 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
   const [customPlates, setCustomPlates] = useState<number[]>(() => getCustomPlates());
   const [render, setRender] = useState(open);
   const [visible, setVisible] = useState(false);
+  const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    const stored = getStoredOutputMode();
+    const lastBar = getLastBarId() ?? 'mens';
+    if (lastBar !== 'custom' && stored === 'oneSide') return 'withBar';
+    return stored ?? (lastBar === 'custom' ? 'oneSide' : 'withBar');
+  });
+
+  function pickOutputMode(m: OutputMode) {
+    setOutputMode(m);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('reps.calc.outputMode', m);
+    }
+    hapticBuzz(8);
+  }
 
   useEffect(() => {
     if (open) {
@@ -74,6 +96,13 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
       return;
     }
     setBarId(id);
+    // Real bars don't expose the "one side" option, so retreat to "with bar".
+    if (outputMode === 'oneSide') {
+      setOutputMode('withBar');
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('reps.calc.outputMode', 'withBar');
+      }
+    }
     hapticBuzz(8);
   }
 
@@ -132,7 +161,9 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
   function handleConfirm() {
     setLastBarId(barId);
     hapticBuzz([10, 30, 10]);
-    onConfirm(total);
+    const chosen =
+      outputMode === 'oneSide' ? oneSide : outputMode === 'withoutBar' ? oneSide * 2 : total;
+    onConfirm(chosen);
     onClose();
   }
 
@@ -191,25 +222,6 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Select barbell
           </div>
-          {barId === 'custom' && (
-            <div className="mt-2 flex items-center gap-2 rounded-2xl bg-paper-card p-3 ring-1 ring-line/60">
-              <label className="text-xs font-semibold text-ink" htmlFor="custom-bar-kg">
-                Bar weight
-              </label>
-              <input
-                id="custom-bar-kg"
-                type="number"
-                inputMode="decimal"
-                step="0.5"
-                autoFocus
-                placeholder="e.g. 20"
-                value={customBarDraft}
-                onChange={(e) => commitCustomBar(e.target.value)}
-                className="w-24 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold text-ink focus:border-ink focus:outline-none"
-              />
-              <span className="text-xs text-muted">kg</span>
-            </div>
-          )}
           <div className="mt-2 grid grid-cols-4 gap-2">
             {tiles.map((t) => {
               const selected = barId === t.id;
@@ -243,6 +255,25 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
               );
             })}
           </div>
+          {barId === 'custom' && (
+            <div className="mt-3 flex items-center gap-2 rounded-2xl bg-paper-card p-3 ring-1 ring-line/60">
+              <label className="text-xs font-semibold text-ink" htmlFor="custom-bar-kg">
+                Bar weight
+              </label>
+              <input
+                id="custom-bar-kg"
+                type="number"
+                inputMode="decimal"
+                step="0.5"
+                autoFocus
+                placeholder="e.g. 20"
+                value={customBarDraft}
+                onChange={(e) => commitCustomBar(e.target.value)}
+                className="w-24 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold text-ink focus:border-ink focus:outline-none"
+              />
+              <span className="text-xs text-muted">kg</span>
+            </div>
+          )}
         </div>
 
         <div className="border-t border-line/60 mt-4" />
@@ -293,9 +324,48 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
 
         <div className="px-4 pt-4">
           <div className="grid grid-cols-3 rounded-card bg-paper-card p-4 shadow-card">
-            <TotalCell label="One side" value={`${formatKg(oneSide)}kg`} />
-            <TotalCell label="With bar" value={`${formatKg(total)}kg`} divider />
-            <TotalCell label="Without bar" value={`${formatKg(oneSide * 2)}kg`} divider />
+            <TotalCell
+              label="One side"
+              value={`${formatKg(oneSide)}kg`}
+              active={outputMode === 'oneSide'}
+            />
+            <TotalCell
+              label="With bar"
+              value={`${formatKg(total)}kg`}
+              divider
+              active={outputMode === 'withBar'}
+            />
+            <TotalCell
+              label="Without bar"
+              value={`${formatKg(oneSide * 2)}kg`}
+              divider
+              active={outputMode === 'withoutBar'}
+            />
+          </div>
+        </div>
+
+        <div className="px-4 pt-4">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Confirm as
+          </div>
+          <div className="mt-2 flex gap-1.5 rounded-pill bg-paper-card p-1 ring-1 ring-line/60">
+            {barId === 'custom' && (
+              <OutputModePill
+                label="One side"
+                active={outputMode === 'oneSide'}
+                onClick={() => pickOutputMode('oneSide')}
+              />
+            )}
+            <OutputModePill
+              label="With bar"
+              active={outputMode === 'withBar'}
+              onClick={() => pickOutputMode('withBar')}
+            />
+            <OutputModePill
+              label="Without bar"
+              active={outputMode === 'withoutBar'}
+              onClick={() => pickOutputMode('withoutBar')}
+            />
           </div>
         </div>
 
@@ -320,14 +390,54 @@ function groupPlates(plates: number[]): { kg: number; count: number }[] {
     .sort((a, b) => b.kg - a.kg);
 }
 
-function TotalCell({ label, value, divider }: { label: string; value: string; divider?: boolean }) {
+function TotalCell({
+  label,
+  value,
+  divider,
+  active,
+}: {
+  label: string;
+  value: string;
+  divider?: boolean;
+  active?: boolean;
+}) {
   return (
     <div className={`px-2 ${divider ? 'border-l border-line/60' : ''}`}>
-      <div className="whitespace-pre-line text-[10px] font-semibold uppercase tracking-wider text-muted">
+      <div
+        className={`whitespace-pre-line text-[10px] font-semibold uppercase tracking-wider ${
+          active ? 'text-ink' : 'text-muted'
+        }`}
+      >
         {label}
       </div>
-      <div className="mt-1 text-xl font-bold tracking-tight text-ink">{value}</div>
+      <div
+        className={`mt-1 text-xl font-bold tracking-tight ${active ? 'text-ink' : 'text-ink/60'}`}
+      >
+        {value}
+      </div>
     </div>
+  );
+}
+
+function OutputModePill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 rounded-pill px-3 py-2 text-xs font-semibold transition-colors ${
+        active ? 'bg-ink text-white' : 'text-muted active:text-ink'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

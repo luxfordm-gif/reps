@@ -29,6 +29,18 @@ export interface PlanExerciseRow {
   set_scheme: string;
   superset_group: number | null;
   position: number;
+  rest_seconds: number | null;
+}
+
+export async function updatePlanExerciseRest(
+  exerciseId: string,
+  restSeconds: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('plan_exercises')
+    .update({ rest_seconds: restSeconds })
+    .eq('id', exerciseId);
+  if (error) throw error;
 }
 
 export interface FullPlan extends PlanRow {
