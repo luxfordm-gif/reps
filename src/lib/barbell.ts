@@ -9,8 +9,8 @@ export type Bar = {
 
 export const BARS: Bar[] = [
   { id: 'easy', label: 'Easy bar', weightKg: 10, icon: 'easy' },
-  { id: 'womens', label: "Women's 15kg bar", weightKg: 15, icon: 'standard' },
-  { id: 'mens', label: '25kg bar', weightKg: 25, icon: 'standard' },
+  { id: 'mens', label: 'Olympic bar', weightKg: 25, icon: 'standard' },
+  { id: 'womens', label: "Women's bar", weightKg: 15, icon: 'standard' },
 ];
 
 export const STANDARD_PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25, 0.5] as const;
