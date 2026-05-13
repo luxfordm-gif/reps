@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { extractPdfText } from '../lib/extractPdfText';
 import {
   parseTrainingPlan,
@@ -6,7 +6,7 @@ import {
   type ParsedPlan,
 } from '../lib/parseTrainingPlan';
 import { parseSetMods } from '../lib/parseSetMods';
-import { savePlan } from '../lib/plansApi';
+import { getActivePlan, savePlan } from '../lib/plansApi';
 import { PageHeader } from '../components/PageHeader';
 
 function parseTargetReps(repRange: string): number | null {
@@ -14,6 +14,53 @@ function parseTargetReps(repRange: string): number | null {
   if (!match) return null;
   const hi = match[2] ? parseInt(match[2], 10) : parseInt(match[1], 10);
   return Number.isFinite(hi) ? hi : null;
+}
+
+function tokenize(s: string): Set<string> {
+  return new Set(
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length >= 2)
+  );
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter += 1;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+type PreviousExercise = { name: string; normalizedName: string };
+type MatchKind = 'exact' | 'fuzzy' | 'none';
+type Match = {
+  kind: MatchKind;
+  candidate?: PreviousExercise;
+  decision: 'pending' | 'same' | 'different';
+};
+
+const FUZZY_THRESHOLD = 0.5;
+
+function computeMatch(
+  ex: ParsedExercise,
+  previous: PreviousExercise[]
+): Match {
+  if (previous.length === 0) return { kind: 'none', decision: 'pending' };
+  const exact = previous.find((p) => p.normalizedName === ex.normalizedName);
+  if (exact) return { kind: 'exact', candidate: exact, decision: 'same' };
+  const newTokens = tokenize(ex.name);
+  let best: { p: PreviousExercise; score: number } | null = null;
+  for (const p of previous) {
+    const score = jaccard(newTokens, tokenize(p.name));
+    if (!best || score > best.score) best = { p, score };
+  }
+  if (best && best.score >= FUZZY_THRESHOLD) {
+    return { kind: 'fuzzy', candidate: best.p, decision: 'pending' };
+  }
+  return { kind: 'none', decision: 'pending' };
 }
 
 interface Props {
@@ -29,6 +76,43 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const [rawText, setRawText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previousExercises, setPreviousExercises] = useState<PreviousExercise[]>([]);
+  const [matches, setMatches] = useState<Map<string, Match>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    getActivePlan()
+      .then((plan) => {
+        if (cancelled || !plan) return;
+        const list: PreviousExercise[] = [];
+        for (const d of plan.training_days ?? []) {
+          for (const ex of d.plan_exercises ?? []) {
+            list.push({ name: ex.name, normalizedName: ex.normalized_name });
+          }
+        }
+        setPreviousExercises(list);
+      })
+      .catch(() => {
+        // Non-fatal — the matcher just won't surface candidates.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!parsed) {
+      setMatches(new Map());
+      return;
+    }
+    const next = new Map<string, Match>();
+    parsed.days.forEach((day, dayIdx) => {
+      day.exercises.forEach((ex, exIdx) => {
+        next.set(`${dayIdx}:${exIdx}`, computeMatch(ex, previousExercises));
+      });
+    });
+    setMatches(next);
+  }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
     setError(null);
@@ -83,6 +167,45 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     });
   }
 
+  function answerSameMachine(dayIdx: number, exIdx: number) {
+    const key = `${dayIdx}:${exIdx}`;
+    const match = matches.get(key);
+    if (!match || !match.candidate) return;
+    const candidate = match.candidate;
+    setParsed((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== dayIdx
+            ? d
+            : {
+                ...d,
+                exercises: d.exercises.map((e, j) =>
+                  j !== exIdx ? e : { ...e, normalizedName: candidate.normalizedName }
+                ),
+              }
+        ),
+      };
+    });
+    setMatches((prev) => {
+      const next = new Map(prev);
+      next.set(key, { ...match, decision: 'same' });
+      return next;
+    });
+  }
+
+  function answerDifferentMachine(dayIdx: number, exIdx: number) {
+    const key = `${dayIdx}:${exIdx}`;
+    setMatches((prev) => {
+      const next = new Map(prev);
+      const current = next.get(key);
+      if (!current) return prev;
+      next.set(key, { ...current, decision: 'different' });
+      return next;
+    });
+  }
+
   const totalExercises =
     parsed?.days.reduce((sum, d) => sum + d.exercises.length, 0) ?? 0;
 
@@ -97,6 +220,14 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     }
     return n;
   }, [parsed]);
+
+  const pendingMatchCount = useMemo(() => {
+    let n = 0;
+    for (const m of matches.values()) {
+      if (m.kind === 'fuzzy' && m.decision === 'pending') n += 1;
+    }
+    return n;
+  }, [matches]);
 
   return (
     <div className="min-h-screen bg-paper pb-12">
@@ -178,6 +309,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                   {overrideCount === 1 ? 'exercise' : 'exercises'} below — give them a quick check.
                 </div>
               )}
+              {pendingMatchCount > 0 && (
+                <div className="mt-2 text-xs text-muted">
+                  <span className="font-semibold text-ink">{pendingMatchCount}</span>{' '}
+                  {pendingMatchCount === 1 ? 'exercise looks' : 'exercises look'} similar to your previous plan — confirm whether to keep history.
+                </div>
+              )}
             </div>
 
             <div className="mt-4 space-y-4">
@@ -196,7 +333,10 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                       <li key={`${ex.name}-${ex.position}`}>
                         <ExerciseReviewRow
                           exercise={ex}
+                          match={matches.get(`${dayIdx}:${exIdx}`)}
                           onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
+                          onSameMachine={() => answerSameMachine(dayIdx, exIdx)}
+                          onDifferentMachine={() => answerDifferentMachine(dayIdx, exIdx)}
                         />
                       </li>
                     ))}
@@ -260,10 +400,16 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
 
 function ExerciseReviewRow({
   exercise,
+  match,
   onNotesChange,
+  onSameMachine,
+  onDifferentMachine,
 }: {
   exercise: ParsedExercise;
+  match?: Match;
   onNotesChange: (notes: string) => void;
+  onSameMachine: () => void;
+  onDifferentMachine: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(exercise.notes ?? '');
@@ -310,6 +456,50 @@ function ExerciseReviewRow({
           <div>{exercise.repRange || '—'} reps</div>
         </div>
       </div>
+
+      {match && match.kind !== 'none' && (
+        <div className="mt-3">
+          {(match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')) && (
+            <div className="flex items-center gap-1.5 text-xs text-ink/70">
+              <span aria-hidden>✓</span>
+              <span>
+                Tracking history from{' '}
+                <span className="font-semibold text-ink">
+                  {match.candidate?.name ?? 'previous plan'}
+                </span>
+              </span>
+            </div>
+          )}
+          {match.kind === 'fuzzy' && match.decision === 'pending' && (
+            <div className="rounded-xl bg-ink/5 px-3 py-2.5">
+              <div className="text-xs text-ink/80">
+                Looks similar to{' '}
+                <span className="font-semibold text-ink">{match.candidate?.name}</span>{' '}
+                from your last plan. Same machine?
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={onSameMachine}
+                  className="flex-1 rounded-pill bg-ink py-1.5 text-xs font-semibold text-white active:opacity-80"
+                >
+                  Same — keep history
+                </button>
+                <button
+                  onClick={onDifferentMachine}
+                  className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40"
+                >
+                  Different machine
+                </button>
+              </div>
+            </div>
+          )}
+          {match.kind === 'fuzzy' && match.decision === 'different' && (
+            <div className="text-xs text-muted">
+              Treated as a new exercise — past history won't carry over.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {sets.map((s) => (
