@@ -14,7 +14,7 @@ export interface DropTarget {
   repTarget?: number;
 }
 
-export type SchemeTag = 'dropset' | 'back_off' | 'muscle_round';
+export type SchemeTag = 'dropset' | 'back_off' | 'muscle_round' | 'amrap';
 
 export interface SetMod {
   drops: DropTarget[];
@@ -35,22 +35,53 @@ export function parseSetMods(notes: string, totalSets: number): SetModsResult {
   const upper = text.toUpperCase();
 
   // Pattern: explicit "Set N: X reps, drop, Y reps, drop, Z reps"
-  // Captures rep numbers per drop target where present.
+  // Captures the main set's rep target and each drop target where present.
   const setHeaderRe = /SET\s+(\d+)\s*:\s*([^.]*)/gi;
   for (const match of upper.matchAll(setHeaderRe)) {
     const setIdx = parseInt(match[1], 10);
     if (Number.isNaN(setIdx) || setIdx < 1 || setIdx > totalSets) continue;
     const body = match[2];
-    if (!/DROP/.test(body)) continue;
     const chunks = body.split(/\bDROP\b/);
     // chunks[0] is the main set's text; chunks[1..] are drop chunks
+    const mainMatch = chunks[0].match(/(\d+)\s*REPS?/);
+    const mainTarget = mainMatch ? parseInt(mainMatch[1], 10) : undefined;
     const dropChunks = chunks.slice(1);
-    if (dropChunks.length === 0) continue;
+    if (dropChunks.length === 0 && mainTarget == null) continue;
     const drops: DropTarget[] = dropChunks.map((chunk) => {
       const repMatch = chunk.match(/(\d+)\s*REPS?/);
       return repMatch ? { repTarget: parseInt(repMatch[1], 10) } : {};
     });
-    out.set(setIdx, { drops });
+    out.set(setIdx, { drops, ...(mainTarget != null ? { repTarget: mainTarget } : {}) });
+  }
+
+  // Pattern: "LAST SET: X REPS" (and "LAST SET X REPS") — override the final
+  // set's rep target without involving drops.
+  const lastSetMatch = upper.match(/LAST\s+SET\s*:?\s*(\d+)\s*REPS?/);
+  if (lastSetMatch && totalSets >= 1) {
+    const reps = parseInt(lastSetMatch[1], 10);
+    const existing = out.get(totalSets) ?? { drops: [] };
+    if (existing.repTarget == null) {
+      out.set(totalSets, { ...existing, repTarget: reps });
+    }
+  }
+
+  // Pattern: AMRAP / "max reps" — mark the relevant set(s) with a scheme tag.
+  if (/\bAMRAP\b|MAX\s+REPS|TO\s+FAILURE/.test(upper)) {
+    const setNumMatch = upper.match(/SET\s+(\d+)[^.]*?(AMRAP|MAX\s+REPS|TO\s+FAILURE)/);
+    const onLast = /LAST\s+SET[^.]*?(AMRAP|MAX\s+REPS|TO\s+FAILURE)/.test(upper);
+    const targetSet = setNumMatch
+      ? parseInt(setNumMatch[1], 10)
+      : onLast
+        ? totalSets
+        : null;
+    if (targetSet != null && targetSet >= 1 && targetSet <= totalSets) {
+      const existing = out.get(targetSet) ?? { drops: [] };
+      out.set(targetSet, {
+        ...existing,
+        schemeDetail: 'AMRAP',
+        scheme: existing.scheme ?? 'amrap',
+      });
+    }
   }
 
   // Pattern: "last set double drop set" / "last set triple drop set" / "last set drop set"

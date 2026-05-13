@@ -45,7 +45,7 @@ interface SetState {
   weightSuggested: string;
   repsSuggested: string;
   repRangeLabel?: string;
-  scheme?: 'dropset' | 'back_off' | 'muscle_round' | 'intensifier';
+  scheme?: 'dropset' | 'back_off' | 'muscle_round' | 'intensifier' | 'amrap';
   schemeDetail?: string;
   completed: boolean;
   loggedId?: string;
