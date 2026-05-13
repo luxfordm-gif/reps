@@ -9,7 +9,11 @@ import {
   type LoggedSet,
 } from '../lib/sessionsApi';
 import { parseSetMods } from '../lib/parseSetMods';
-import { updatePlanExerciseRest, type PlanExerciseRow } from '../lib/plansApi';
+import {
+  updatePlanExerciseName,
+  updatePlanExerciseRest,
+  type PlanExerciseRow,
+} from '../lib/plansApi';
 import BarbellCalculator from '../components/BarbellCalculator';
 
 // Flip to false to revert to the inline rest timer (the original design).
@@ -239,13 +243,16 @@ export function ExerciseLogger({
     initialRestSeconds(exercise.rest_seconds)
   );
   const [, setNow] = useState(Date.now());
+  const [displayName, setDisplayName] = useState(exercise.name);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   // When the user switches to a different exercise mid-session, re-pick the
   // initial rest from that exercise's stored value (falling back to local
-  // default).
+  // default), and reset the displayed name to the canonical one.
   useEffect(() => {
     setRestSecondsState(initialRestSeconds(exercise.rest_seconds));
-  }, [exercise.id, exercise.rest_seconds]);
+    setDisplayName(exercise.name);
+  }, [exercise.id, exercise.rest_seconds, exercise.name]);
 
   function setRestSeconds(s: number) {
     setRestSecondsState(s);
@@ -330,7 +337,11 @@ export function ExerciseLogger({
     setLoading(true);
     Promise.all([
       getSessionSets(sessionId, exercise.id),
-      getLastSessionSetsForExercise(exercise.normalized_name, sessionId),
+      getLastSessionSetsForExercise(
+        exercise.normalized_name,
+        sessionId,
+        exercise.baseline_reset_at
+      ),
     ])
       .then(([existing, last]) => {
         if (!mounted) return;
@@ -500,6 +511,7 @@ export function ExerciseLogger({
               onOverview={onOverview}
               onHome={onHome}
               onEndWorkout={onEndWorkout}
+              onEditName={() => setRenameOpen(true)}
             />
           }
         />
@@ -516,13 +528,13 @@ export function ExerciseLogger({
 
         <div className="mt-7">
           <a
-            href={googleImagesUrl(exercise.name)}
+            href={googleImagesUrl(displayName)}
             target="_blank"
             rel="noopener noreferrer"
             className="block break-words text-[24px] font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
             style={{ textWrap: 'balance' } as React.CSSProperties}
           >
-            {exercise.name}
+            {displayName}
           </a>
           <div className="mt-1 text-sm text-muted">{exercise.body_part}</div>
         </div>
@@ -672,7 +684,7 @@ export function ExerciseLogger({
             })
           }
           onSkip={() => setRestEndsAt(null)}
-          nextSetName={nextSet ? exercise.name : null}
+          nextSetName={nextSet ? displayName : null}
           nextSetWeight={nextSet?.weight ?? ''}
           nextSetReps={nextSet?.reps ?? ''}
           lastSetWeight={nextSetLastMatch?.weight ?? null}
@@ -688,6 +700,24 @@ export function ExerciseLogger({
           if (calcOpen !== null) update(calcOpen, { weight: String(kg) });
         }}
       />
+      {renameOpen && (
+        <RenameExerciseModal
+          initialName={displayName}
+          onCancel={() => setRenameOpen(false)}
+          onConfirm={async (newName, resetBaseline) => {
+            try {
+              await updatePlanExerciseName(exercise.id, newName, { resetBaseline });
+            } catch (e) {
+              console.error(e);
+              setError('Could not save the new name. Try again.');
+              return;
+            }
+            setDisplayName(newName);
+            if (resetBaseline) setLastSets([]);
+            setRenameOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -698,12 +728,14 @@ function ExerciseMenu({
   onOverview,
   onHome,
   onEndWorkout,
+  onEditName,
 }: {
   hasNext: boolean;
   onSkip: () => void;
   onOverview: () => void;
   onHome: () => void;
   onEndWorkout: () => void;
+  onEditName: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -743,7 +775,14 @@ function ExerciseMenu({
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-11 z-40 w-52 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
+        <div className="absolute right-0 top-11 z-40 w-56 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
+          <button
+            onClick={() => pick(onEditName)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+          >
+            Edit exercise name
+          </button>
+          <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onSkip)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
@@ -773,6 +812,69 @@ function ExerciseMenu({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function RenameExerciseModal({
+  initialName,
+  onCancel,
+  onConfirm,
+}: {
+  initialName: string;
+  onCancel: () => void;
+  onConfirm: (newName: string, resetBaseline: boolean) => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const trimmed = name.trim();
+  const valid = trimmed.length > 0 && trimmed !== initialName.trim();
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-base font-semibold text-ink">Edit exercise name</h2>
+        <p className="mt-1 text-xs text-muted">
+          Renames this exercise across your plan.
+        </p>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="mt-4 w-full rounded-xl border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+        />
+        <p className="mt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Is this the same machine?
+        </p>
+        <div className="mt-2 grid gap-2">
+          <button
+            onClick={() => onConfirm(trimmed, false)}
+            disabled={!valid}
+            className="w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+          >
+            Same machine — keep history
+          </button>
+          <button
+            onClick={() => onConfirm(trimmed, true)}
+            disabled={!valid}
+            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink disabled:opacity-40 active:bg-line/40"
+          >
+            Different machine — reset to baseline
+          </button>
+          <button
+            onClick={onCancel}
+            className="w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
