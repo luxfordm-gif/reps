@@ -483,6 +483,42 @@ export interface WeekSummary {
   bars: number[][];
 }
 
+function startOfThisWeek(): Date {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // 0=Mon..6=Sun
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+}
+
+export async function getCompletedDayNamesThisWeek(): Promise<string[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const monday = startOfThisWeek();
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(nextMonday.getDate() + 7);
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('completed_at, training_days(name)')
+    .eq('user_id', user.id)
+    .not('completed_at', 'is', null)
+    .gte('completed_at', monday.toISOString())
+    .lt('completed_at', nextMonday.toISOString())
+    .order('completed_at', { ascending: true });
+  if (error) return [];
+  type Row = {
+    completed_at: string;
+    training_days: { name: string } | { name: string }[] | null;
+  };
+  const rows = (data as Row[]) ?? [];
+  const names: string[] = [];
+  for (const r of rows) {
+    const td = Array.isArray(r.training_days) ? r.training_days[0] : r.training_days;
+    if (td?.name) names.push(td.name);
+  }
+  return names;
+}
+
 export async function getThisWeekSummary(): Promise<WeekSummary> {
   const {
     data: { user },
