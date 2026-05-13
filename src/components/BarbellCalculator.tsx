@@ -27,13 +27,47 @@ function formatKg(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
 }
 
+type OutputMode = 'oneSide' | 'withBar' | 'withoutBar';
+
+function getStoredOutputMode(): OutputMode | null {
+  if (typeof window === 'undefined') return null;
+  const v = window.localStorage.getItem('reps.calc.outputMode');
+  return v === 'oneSide' || v === 'withBar' || v === 'withoutBar' ? v : null;
+}
+
+function validModesFor(barId: string): OutputMode[] {
+  if (barId === 'none') return ['oneSide', 'withoutBar'];
+  return ['oneSide', 'withBar', 'withoutBar'];
+}
+
+function defaultModeFor(barId: string): OutputMode {
+  if (barId === 'none') return 'withoutBar';
+  if (barId === 'custom') return 'oneSide';
+  return 'withBar';
+}
+
 export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
-  const [barId, setBarId] = useState<string>(() => getLastBarId() ?? 'mens');
+  const [barId, setBarId] = useState<string>(() => getLastBarId() ?? 'none');
   const [customBarKg, setCustomBarKgState] = useState<number | null>(() => getCustomBarKg());
   const [plates, setPlates] = useState<number[]>([]);
   const [customPlates, setCustomPlates] = useState<number[]>(() => getCustomPlates());
   const [render, setRender] = useState(open);
   const [visible, setVisible] = useState(false);
+  const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    const stored = getStoredOutputMode();
+    const lastBar = getLastBarId() ?? 'none';
+    const valid = validModesFor(lastBar);
+    if (stored && valid.includes(stored)) return stored;
+    return defaultModeFor(lastBar);
+  });
+
+  function pickOutputMode(m: OutputMode) {
+    setOutputMode(m);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('reps.calc.outputMode', m);
+    }
+    hapticBuzz(8);
+  }
 
   useEffect(() => {
     if (open) {
@@ -59,7 +93,10 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
     if (barId === 'custom') {
       return { id: 'custom', label: 'Other', weightKg: customBarKg ?? 20, icon: 'standard' };
     }
-    return BARS.find((b) => b.id === barId) ?? BARS[2];
+    if (barId === 'none') {
+      return { id: 'none', label: 'None', weightKg: 0, icon: 'standard' };
+    }
+    return BARS.find((b) => b.id === barId) ?? BARS[0];
   }, [barId, customBarKg]);
 
   const { oneSide, total } = totalKg(bar.weightKg, plates);
@@ -74,6 +111,13 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
       return;
     }
     setBarId(id);
+    if (!validModesFor(id).includes(outputMode)) {
+      const next = defaultModeFor(id);
+      setOutputMode(next);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('reps.calc.outputMode', next);
+      }
+    }
     hapticBuzz(8);
   }
 
@@ -132,22 +176,25 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
   function handleConfirm() {
     setLastBarId(barId);
     hapticBuzz([10, 30, 10]);
-    onConfirm(total);
+    const chosen =
+      outputMode === 'oneSide' ? oneSide : outputMode === 'withoutBar' ? oneSide * 2 : total;
+    onConfirm(chosen);
     onClose();
   }
 
   if (!render) return null;
 
-  const tiles: { id: string; label: string; weightKg: number; icon: 'easy' | 'standard' | 'other' }[] = [
-    { id: 'easy', label: 'Easy bar', weightKg: 10, icon: 'easy' },
-    { id: 'womens', label: "Women's 15kg bar", weightKg: 15, icon: 'standard' },
-    { id: 'mens', label: '25kg bar', weightKg: 25, icon: 'standard' },
+  const tiles: { id: string; label: string; weightKg: number; icon: 'easy' | 'standard' | 'other' | 'none' }[] = [
+    { id: 'none', label: 'None', weightKg: 0, icon: 'none' },
     {
       id: 'custom',
       label: customBarKg ? `Other · ${formatKg(customBarKg)}kg` : 'Other',
       weightKg: customBarKg ?? 0,
       icon: 'other',
     },
+    { id: 'mens', label: 'Olympic bar', weightKg: 25, icon: 'standard' },
+    { id: 'womens', label: "Women's bar", weightKg: 15, icon: 'standard' },
+    { id: 'easy', label: 'Easy bar', weightKg: 10, icon: 'easy' },
   ];
 
   const grouped = groupPlates(plates);
@@ -187,38 +234,19 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
 
         <div className="border-t border-line/60" />
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-3">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Select barbell
           </div>
-          {barId === 'custom' && (
-            <div className="mt-2 flex items-center gap-2 rounded-2xl bg-paper-card p-3 ring-1 ring-line/60">
-              <label className="text-xs font-semibold text-ink" htmlFor="custom-bar-kg">
-                Bar weight
-              </label>
-              <input
-                id="custom-bar-kg"
-                type="number"
-                inputMode="decimal"
-                step="0.5"
-                autoFocus
-                placeholder="e.g. 20"
-                value={customBarDraft}
-                onChange={(e) => commitCustomBar(e.target.value)}
-                className="w-24 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold text-ink focus:border-ink focus:outline-none"
-              />
-              <span className="text-xs text-muted">kg</span>
-            </div>
-          )}
-          <div className="mt-2 grid grid-cols-4 gap-2">
+          <div className="mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
             {tiles.map((t) => {
               const selected = barId === t.id;
               return (
                 <button
                   key={t.id}
                   onClick={() => selectBar(t.id)}
-                  className={`relative flex h-[100px] flex-col items-center justify-between rounded-2xl bg-paper-card p-2 text-center transition-all ${
-                    selected ? 'ring-2 ring-ink' : 'ring-1 ring-line/60'
+                  className={`relative flex h-[96px] w-[88px] flex-none snap-start flex-col items-center justify-between rounded-2xl bg-paper-card p-2 text-center transition-colors border-2 ${
+                    selected ? 'border-ink' : 'border-line/60'
                   }`}
                 >
                   {selected && (
@@ -236,18 +264,39 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
                         ? customBarKg
                           ? `${formatKg(customBarKg)}kg`
                           : 'Tap to set'
-                        : `${t.weightKg}kg`}
+                        : t.icon === 'none'
+                          ? '0kg'
+                          : `${t.weightKg}kg`}
                     </div>
                   </div>
                 </button>
               );
             })}
           </div>
+          {barId === 'custom' && (
+            <div className="mt-2 flex items-center gap-2 rounded-2xl border-2 border-line/60 bg-paper-card p-3">
+              <label className="text-xs font-semibold text-ink" htmlFor="custom-bar-kg">
+                Bar weight
+              </label>
+              <input
+                id="custom-bar-kg"
+                type="number"
+                inputMode="decimal"
+                step="0.5"
+                autoFocus
+                placeholder="e.g. 20"
+                value={customBarDraft}
+                onChange={(e) => commitCustomBar(e.target.value)}
+                className="w-24 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold text-ink focus:border-ink focus:outline-none"
+              />
+              <span className="text-xs text-muted">kg</span>
+            </div>
+          )}
         </div>
 
-        <div className="border-t border-line/60 mt-4" />
+        <div className="border-t border-line/60 mt-3" />
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-3">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Build your load (one side)
           </div>
@@ -255,8 +304,8 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
             {plates.length === 0 ? 'Tap a plate to add it' : 'Tap a plate on the bar to remove it'}
           </div>
 
-          <div className="mt-3 grid grid-cols-[1fr_140px] items-center gap-3">
-            <BarVisualisation plates={plates} onRemoveAt={removePlateAt} />
+          <div className="mt-2 grid grid-cols-[1fr_140px] items-center gap-3">
+            <BarVisualisation plates={plates} onRemoveAt={removePlateAt} showBar={barId !== 'none'} />
             <ChipStack
               grouped={grouped}
               onTap={removeOneOfSize}
@@ -265,7 +314,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-3">
           <div className="grid grid-cols-5 gap-2">
             {HEAVY_PLATES.map((kg) => (
               <PlateButton key={kg} kg={kg} variant="heavy" onClick={() => addPlate(kg)} />
@@ -291,15 +340,35 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-4">
-          <div className="grid grid-cols-3 rounded-card bg-paper-card p-4 shadow-card">
-            <TotalCell label="One side" value={`${formatKg(oneSide)}kg`} />
-            <TotalCell label="With bar" value={`${formatKg(total)}kg`} divider />
-            <TotalCell label="Without bar" value={`${formatKg(oneSide * 2)}kg`} divider />
+        <div className="px-4 pt-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Tap to choose what to log
+          </div>
+          <div className={`mt-2 grid gap-2 ${barId === 'none' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            <TotalButton
+              label="One side"
+              value={`${formatKg(oneSide)}kg`}
+              active={outputMode === 'oneSide'}
+              onClick={() => pickOutputMode('oneSide')}
+            />
+            {barId !== 'none' && (
+              <TotalButton
+                label="With bar"
+                value={`${formatKg(total)}kg`}
+                active={outputMode === 'withBar'}
+                onClick={() => pickOutputMode('withBar')}
+              />
+            )}
+            <TotalButton
+              label={barId === 'none' ? 'Both sides' : 'Without bar'}
+              value={`${formatKg(oneSide * 2)}kg`}
+              active={outputMode === 'withoutBar'}
+              onClick={() => pickOutputMode('withoutBar')}
+            />
           </div>
         </div>
 
-        <div className="sticky bottom-0 mt-4 bg-paper px-4 pb-4 pt-2">
+        <div className="sticky bottom-0 mt-3 bg-paper px-4 pb-4 pt-2">
           <button
             onClick={handleConfirm}
             className="w-full rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
@@ -320,14 +389,41 @@ function groupPlates(plates: number[]): { kg: number; count: number }[] {
     .sort((a, b) => b.kg - a.kg);
 }
 
-function TotalCell({ label, value, divider }: { label: string; value: string; divider?: boolean }) {
+function TotalButton({
+  label,
+  value,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className={`px-2 ${divider ? 'border-l border-line/60' : ''}`}>
-      <div className="whitespace-pre-line text-[10px] font-semibold uppercase tracking-wider text-muted">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative flex flex-col items-start rounded-2xl p-3 text-left transition-colors border-2 ${
+        active ? 'bg-ink border-ink' : 'bg-paper-card border-line/60 active:bg-paper-card/70'
+      }`}
+    >
+      {active && (
+        <div className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-white text-ink">
+          <CheckIcon dark />
+        </div>
+      )}
+      <div
+        className={`text-[10px] font-semibold uppercase tracking-wider ${
+          active ? 'text-white/80' : 'text-muted'
+        }`}
+      >
         {label}
       </div>
-      <div className="mt-1 text-xl font-bold tracking-tight text-ink">{value}</div>
-    </div>
+      <div className={`mt-1 text-xl font-bold tracking-tight ${active ? 'text-white' : 'text-ink'}`}>
+        {value}
+      </div>
+    </button>
   );
 }
 
@@ -422,29 +518,43 @@ function Chip({
 function BarVisualisation({
   plates,
   onRemoveAt,
+  showBar = true,
 }: {
   plates: number[];
   onRemoveAt: (arrayIndex: number) => void;
+  showBar?: boolean;
 }) {
-  const VIEW_H = 140;
+  const VIEW_H = 120;
   const handleX = 0;
-  const handleW = 70;
+  const handleW = showBar ? 70 : 0;
   const sleeveStartX = handleW;
-  const collarW = 4;
+  const collarW = showBar ? 4 : 0;
   const plateGap = 1;
-  const sleevePadLeft = 4;
-  const sleevePadRight = 6;
-  const emptySleeveW = 36;
+  const sleevePadLeft = showBar ? 4 : 0;
+  const sleevePadRight = showBar ? 6 : 0;
+  const emptySleeveW = showBar ? 36 : 14;
 
   const platesWidth = plates.reduce((sum, kg) => sum + plateWidth(kg), 0) + Math.max(0, plates.length - 1) * plateGap;
   const sleeveW = Math.max(emptySleeveW, platesWidth + sleevePadLeft + sleevePadRight);
-  const VIEW_W = handleW + sleeveW + 6;
+  const VIEW_W = handleW + sleeveW + (showBar ? 6 : 0);
 
+  const NO_BAR_SCALE = 2;
   return (
-    <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} width="100%" preserveAspectRatio="xMidYMid meet" className="select-none">
-      <rect x={handleX} y={VIEW_H / 2 - 6} width={handleW + 6} height={12} rx={6} fill="#C7C7CC" />
-      <rect x={sleeveStartX} y={VIEW_H / 2 - 10} width={collarW} height={20} fill="#8E8E93" />
-      <rect x={sleeveStartX + collarW} y={VIEW_H / 2 - 6} width={sleeveW - collarW} height={12} rx={2} fill="#8E8E93" />
+    <svg
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      width={showBar ? '100%' : VIEW_W * NO_BAR_SCALE}
+      height={showBar ? undefined : VIEW_H * NO_BAR_SCALE}
+      preserveAspectRatio="xMidYMid meet"
+      className="select-none"
+      style={!showBar ? { maxWidth: '100%', display: 'block', margin: '0 auto' } : undefined}
+    >
+      {showBar && (
+        <>
+          <rect x={handleX} y={VIEW_H / 2 - 6} width={handleW + 6} height={12} rx={6} fill="#C7C7CC" />
+          <rect x={sleeveStartX} y={VIEW_H / 2 - 10} width={collarW} height={20} fill="#8E8E93" />
+          <rect x={sleeveStartX + collarW} y={VIEW_H / 2 - 6} width={sleeveW - collarW} height={12} rx={2} fill="#8E8E93" />
+        </>
+      )}
 
       {(() => {
         let x = sleeveStartX + sleevePadLeft + collarW;
@@ -507,7 +617,7 @@ function plateHeight(kg: number): number {
   return 36;
 }
 
-function BarTileIcon({ kind }: { kind: 'easy' | 'standard' | 'other' }) {
+function BarTileIcon({ kind }: { kind: 'easy' | 'standard' | 'other' | 'none' }) {
   if (kind === 'easy') {
     return (
       <svg viewBox="0 0 60 24" width="56" height="24">
@@ -530,6 +640,14 @@ function BarTileIcon({ kind }: { kind: 'easy' | 'standard' | 'other' }) {
       </div>
     );
   }
+  if (kind === 'none') {
+    return (
+      <svg viewBox="0 0 60 24" width="56" height="24">
+        <circle cx="30" cy="12" r="9" stroke="#0A0A0A" strokeWidth="2" fill="none" />
+        <line x1="23" y1="19" x2="37" y2="5" stroke="#0A0A0A" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
   return (
     <svg viewBox="0 0 60 24" width="56" height="24">
       <rect x="2" y="11" width="56" height="2" fill="#0A0A0A" />
@@ -541,10 +659,16 @@ function BarTileIcon({ kind }: { kind: 'easy' | 'standard' | 'other' }) {
   );
 }
 
-function CheckIcon() {
+function CheckIcon({ dark }: { dark?: boolean } = {}) {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-      <path d="M5 12.5l4.5 4.5L19 7.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M5 12.5l4.5 4.5L19 7.5"
+        stroke={dark ? '#0A0A0A' : 'white'}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

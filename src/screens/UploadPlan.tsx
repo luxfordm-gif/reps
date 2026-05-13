@@ -1,76 +1,146 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { extractPdfText } from '../lib/extractPdfText';
-import { parseTrainingPlan, type ParsedPlan } from '../lib/parseTrainingPlan';
-import { savePlan, getActivePlan } from '../lib/plansApi';
+import {
+  parseTrainingPlan,
+  type ParsedExercise,
+  type ParsedPlan,
+} from '../lib/parseTrainingPlan';
+import { parseSetMods } from '../lib/parseSetMods';
+import { getActivePlan, savePlan } from '../lib/plansApi';
 import { PageHeader } from '../components/PageHeader';
-import { ConfirmModal } from '../components/ConfirmModal';
+
+function parseTargetReps(repRange: string): number | null {
+  const match = repRange.match(/(\d+)\s*(?:-\s*(\d+))?/);
+  if (!match) return null;
+  const hi = match[2] ? parseInt(match[2], 10) : parseInt(match[1], 10);
+  return Number.isFinite(hi) ? hi : null;
+}
+
+function tokenize(s: string): Set<string> {
+  return new Set(
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length >= 2)
+  );
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter += 1;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+type PreviousExercise = { name: string; normalizedName: string };
+type MatchKind = 'exact' | 'fuzzy' | 'none';
+type Match = {
+  kind: MatchKind;
+  candidate?: PreviousExercise;
+  decision: 'pending' | 'same' | 'different';
+};
+
+const FUZZY_THRESHOLD = 0.5;
+
+function computeMatch(
+  ex: ParsedExercise,
+  previous: PreviousExercise[]
+): Match {
+  if (previous.length === 0) return { kind: 'none', decision: 'pending' };
+  const exact = previous.find((p) => p.normalizedName === ex.normalizedName);
+  if (exact) return { kind: 'exact', candidate: exact, decision: 'same' };
+  const newTokens = tokenize(ex.name);
+  let best: { p: PreviousExercise; score: number } | null = null;
+  for (const p of previous) {
+    const score = jaccard(newTokens, tokenize(p.name));
+    if (!best || score > best.score) best = { p, score };
+  }
+  if (best && best.score >= FUZZY_THRESHOLD) {
+    return { kind: 'fuzzy', candidate: best.p, decision: 'pending' };
+  }
+  return { kind: 'none', decision: 'pending' };
+}
 
 interface Props {
   onCancel: () => void;
   onSaved: () => void;
 }
 
-type Stage =
-  | { kind: 'idle' }
-  | { kind: 'reading' }
-  | { kind: 'parsing'; stages: string[] }
-  | { kind: 'preview' }
-  | { kind: 'saved'; daysCount: number; exercisesCount: number };
-
 export function UploadPlan({ onCancel, onSaved }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [planName, setPlanName] = useState('');
+  const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<ParsedPlan | null>(null);
   const [rawText, setRawText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stage, setStage] = useState<Stage>({ kind: 'idle' });
-  const [replaceConfirm, setReplaceConfirm] = useState<{ oldName: string } | null>(null);
+  const [previousExercises, setPreviousExercises] = useState<PreviousExercise[]>([]);
+  const [matches, setMatches] = useState<Map<string, Match>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    getActivePlan()
+      .then((plan) => {
+        if (cancelled || !plan) return;
+        const list: PreviousExercise[] = [];
+        for (const d of plan.training_days ?? []) {
+          for (const ex of d.plan_exercises ?? []) {
+            list.push({ name: ex.name, normalizedName: ex.normalized_name });
+          }
+        }
+        setPreviousExercises(list);
+      })
+      .catch(() => {
+        // Non-fatal — the matcher just won't surface candidates.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!parsed) {
+      setMatches(new Map());
+      return;
+    }
+    const next = new Map<string, Match>();
+    parsed.days.forEach((day, dayIdx) => {
+      day.exercises.forEach((ex, exIdx) => {
+        next.set(`${dayIdx}:${exIdx}`, computeMatch(ex, previousExercises));
+      });
+    });
+    setMatches(next);
+  }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
     setError(null);
+    setParsing(true);
     setFile(f);
     if (!planName) {
+      // Default name from filename without extension
       setPlanName(f.name.replace(/\.pdf$/i, ''));
     }
-    setStage({ kind: 'reading' });
     try {
       const text = await extractPdfText(f);
       setRawText(text);
-      // Short pause so the user sees the stages animate; this is feedback-only.
-      const stages: string[] = ['Reading PDF…'];
-      setStage({ kind: 'parsing', stages: [...stages] });
-      await tinyDelay();
       const result = parseTrainingPlan(text);
-      stages.push(`Found ${result.days.length} training ${result.days.length === 1 ? 'day' : 'days'}`);
-      setStage({ kind: 'parsing', stages: [...stages] });
-      await tinyDelay();
-      const totalExercises = result.days.reduce((s, d) => s + d.exercises.length, 0);
-      stages.push(`Found ${totalExercises} ${totalExercises === 1 ? 'exercise' : 'exercises'}`);
-      setStage({ kind: 'parsing', stages: [...stages] });
-      const flagged = countFlagged(result);
-      if (flagged > 0) {
-        await tinyDelay();
-        stages.push(`Flagged ${flagged} for review`);
-        setStage({ kind: 'parsing', stages: [...stages] });
-      }
-      await tinyDelay(250);
       setParsed(result);
-      setStage({ kind: 'preview' });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to parse PDF');
-      setStage({ kind: 'idle' });
+    } finally {
+      setParsing(false);
     }
   }
 
-  async function actuallySave() {
+  async function handleSave() {
     if (!parsed || !planName) return;
     setSaving(true);
     setError(null);
     try {
-      await savePlan(parsed, planName.trim(), rawText);
-      const totalExercises = parsed.days.reduce((s, d) => s + d.exercises.length, 0);
-      setStage({ kind: 'saved', daysCount: parsed.days.length, exercisesCount: totalExercises });
+      await savePlan(parsed, planName, rawText);
+      onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save plan');
     } finally {
@@ -78,349 +148,431 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     }
   }
 
-  async function handleSave() {
-    if (!parsed || !planName) return;
-    setError(null);
-    try {
-      const current = await getActivePlan();
-      if (current) {
-        setReplaceConfirm({ oldName: current.name });
-        return;
-      }
-    } catch {
-      // If we can't check, just proceed — the user can re-activate via Plans.
-    }
-    actuallySave();
+  function setExerciseNotes(dayIdx: number, exIdx: number, notes: string) {
+    setParsed((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== dayIdx
+            ? d
+            : {
+                ...d,
+                exercises: d.exercises.map((e, j) =>
+                  j !== exIdx ? e : { ...e, notes }
+                ),
+              }
+        ),
+      };
+    });
   }
 
-  function resetForNewUpload() {
-    setParsed(null);
-    setFile(null);
-    setRawText('');
-    setStage({ kind: 'idle' });
-    setError(null);
+  function answerSameMachine(dayIdx: number, exIdx: number) {
+    const key = `${dayIdx}:${exIdx}`;
+    const match = matches.get(key);
+    if (!match || !match.candidate) return;
+    const candidate = match.candidate;
+    setParsed((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== dayIdx
+            ? d
+            : {
+                ...d,
+                exercises: d.exercises.map((e, j) =>
+                  j !== exIdx ? e : { ...e, normalizedName: candidate.normalizedName }
+                ),
+              }
+        ),
+      };
+    });
+    setMatches((prev) => {
+      const next = new Map(prev);
+      next.set(key, { ...match, decision: 'same' });
+      return next;
+    });
+  }
+
+  function answerDifferentMachine(dayIdx: number, exIdx: number) {
+    const key = `${dayIdx}:${exIdx}`;
+    setMatches((prev) => {
+      const next = new Map(prev);
+      const current = next.get(key);
+      if (!current) return prev;
+      next.set(key, { ...current, decision: 'different' });
+      return next;
+    });
   }
 
   const totalExercises =
     parsed?.days.reduce((sum, d) => sum + d.exercises.length, 0) ?? 0;
+
+  const overrideCount = useMemo(() => {
+    if (!parsed) return 0;
+    let n = 0;
+    for (const d of parsed.days) {
+      for (const e of d.exercises) {
+        const mods = parseSetMods(e.notes ?? '', e.totalSets ?? 0);
+        if (mods.bySetIndex.size > 0) n += 1;
+      }
+    }
+    return n;
+  }, [parsed]);
+
+  const pendingMatchCount = useMemo(() => {
+    let n = 0;
+    for (const m of matches.values()) {
+      if (m.kind === 'fuzzy' && m.decision === 'pending') n += 1;
+    }
+    return n;
+  }, [matches]);
 
   return (
     <div className="min-h-screen bg-paper pb-12">
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title="Upload plan" onBack={onCancel} />
 
-        {stage.kind === 'saved' ? (
-          <SuccessCard
-            planName={planName}
-            daysCount={stage.daysCount}
-            exercisesCount={stage.exercisesCount}
-            onDone={onSaved}
-          />
-        ) : (
+        <p className="mt-6 text-base text-muted">
+          Drop in the PDF from your trainer. Reps will turn it into your training days.
+        </p>
+
+        {!parsed && (
+          <label
+            className={`mt-8 flex h-44 cursor-pointer items-center justify-center rounded-card border-2 border-dashed border-line bg-paper-card px-5 text-center transition-colors ${
+              parsing ? 'opacity-60' : 'active:border-ink'
+            }`}
+          >
+            <input
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              disabled={parsing}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+            />
+            <div>
+              {parsing ? (
+                <div className="text-sm text-muted">Reading PDF…</div>
+              ) : file ? (
+                <>
+                  <div className="text-sm font-semibold text-ink">{file.name}</div>
+                  <div className="mt-1 text-xs text-muted">Tap to choose a different file</div>
+                </>
+              ) : (
+                <>
+                  <UploadIcon />
+                  <div className="mt-2 text-sm font-semibold text-ink">
+                    Tap to choose a PDF
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted">Max ~10MB</div>
+                </>
+              )}
+            </div>
+          </label>
+        )}
+
+        {error && (
+          <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {parsed && (
           <>
-            <p className="mt-6 text-base text-muted">
-              Drop in the PDF from your trainer. Reps will turn it into your training days.
-            </p>
-
-            {!parsed && (
-              <label
-                className={`mt-8 flex h-44 cursor-pointer items-center justify-center rounded-card border-2 border-dashed border-line bg-paper-card px-5 text-center transition-colors ${
-                  stage.kind === 'reading' || stage.kind === 'parsing'
-                    ? 'opacity-60'
-                    : 'active:border-ink'
-                }`}
-              >
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  disabled={stage.kind === 'reading' || stage.kind === 'parsing'}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleFile(f);
-                  }}
-                />
-                <div className="w-full">
-                  {stage.kind === 'parsing' ? (
-                    <StageList stages={stage.stages} />
-                  ) : stage.kind === 'reading' ? (
-                    <StageList stages={['Reading PDF…']} />
-                  ) : file ? (
-                    <>
-                      <div className="text-sm font-semibold text-ink">{file.name}</div>
-                      <div className="mt-1 text-xs text-muted">Tap to choose a different file</div>
-                    </>
-                  ) : (
-                    <>
-                      <UploadIcon />
-                      <div className="mt-2 text-sm font-semibold text-ink">
-                        Tap to choose a PDF
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted">Max ~10MB</div>
-                    </>
-                  )}
-                </div>
+            <div className="mt-8">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                Plan name
               </label>
-            )}
+              <input
+                type="text"
+                value={planName}
+                onChange={(e) => setPlanName(e.target.value)}
+                className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-base text-ink focus:border-ink focus:outline-none"
+              />
+            </div>
 
-            {error && (
-              <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
+            <div className="mt-6 rounded-card bg-paper-card p-5 shadow-card">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                Detected
+              </div>
+              <div className="mt-1 text-2xl font-bold tracking-tight text-ink">
+                {parsed.days.length} days · {totalExercises} exercises
+              </div>
+              {overrideCount > 0 && (
+                <div className="mt-3 text-xs text-muted">
+                  Coach notes change the set scheme on{' '}
+                  <span className="font-semibold text-ink">{overrideCount}</span>{' '}
+                  {overrideCount === 1 ? 'exercise' : 'exercises'} below — give them a quick check.
+                </div>
+              )}
+              {pendingMatchCount > 0 && (
+                <div className="mt-2 text-xs text-muted">
+                  <span className="font-semibold text-ink">{pendingMatchCount}</span>{' '}
+                  {pendingMatchCount === 1 ? 'exercise looks' : 'exercises look'} similar to your previous plan — confirm whether to keep history.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {parsed.days.map((day, dayIdx) => (
+                <div key={day.name} className="rounded-card bg-paper-card shadow-card">
+                  <div className="border-b border-line/60 px-5 py-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                      Day {day.position + 1}
+                    </div>
+                    <div className="mt-0.5 text-base font-semibold text-ink">
+                      {day.name}
+                    </div>
+                  </div>
+                  <ul className="divide-y divide-line/60">
+                    {day.exercises.map((ex, exIdx) => (
+                      <li key={`${ex.name}-${ex.position}`}>
+                        <ExerciseReviewRow
+                          exercise={ex}
+                          match={matches.get(`${dayIdx}:${exIdx}`)}
+                          onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
+                          onSameMachine={() => answerSameMachine(dayIdx, exIdx)}
+                          onDifferentMachine={() => answerDifferentMachine(dayIdx, exIdx)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            {parsed.warnings.length > 0 && (
+              <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <div className="font-semibold">Warnings</div>
+                <ul className="mt-1 list-inside list-disc">
+                  {parsed.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
               </div>
             )}
 
-            {parsed && stage.kind === 'preview' && (
-              <>
-                <div className="mt-8">
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                    Plan name
-                  </label>
-                  <input
-                    type="text"
-                    value={planName}
-                    onChange={(e) => setPlanName(e.target.value)}
-                    maxLength={80}
-                    className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-base text-ink focus:border-ink focus:outline-none"
-                  />
-                </div>
-
-                <div className="mt-6 rounded-card bg-paper-card p-5 shadow-card">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                    Detected
-                  </div>
-                  <div className="mt-1 text-2xl font-bold tracking-tight text-ink">
-                    {parsed.days.length} days · {totalExercises} exercises
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {parsed.days.map((d) => (
-                      <DayPreview key={d.name} day={d} />
-                    ))}
-                  </div>
-                </div>
-
-                {parsed.warnings.length > 0 && (
-                  <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    <div className="font-semibold">Warnings</div>
-                    <ul className="mt-1 list-inside list-disc">
-                      {parsed.warnings.map((w, i) => (
-                        <li key={i}>{w}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {parsed.unparsedLines.length > 0 && (
-                  <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
-                    <div className="font-semibold">Lines that didn't fit a row:</div>
-                    <ul className="mt-1 list-inside list-disc">
-                      {parsed.unparsedLines.slice(0, 5).map((u, i) => (
-                        <li key={i} className="truncate">
-                          {u}
-                        </li>
-                      ))}
-                      {parsed.unparsedLines.length > 5 && (
-                        <li className="font-semibold">
-                          …and {parsed.unparsedLines.length - 5} more
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleSave}
-                  disabled={saving || !planName.trim()}
-                  className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : 'Save plan'}
-                </button>
-                <button
-                  onClick={resetForNewUpload}
-                  className="mt-3 w-full text-center text-sm text-muted"
-                >
-                  Upload a different PDF
-                </button>
-              </>
+            {parsed.unparsedLines.length > 0 && (
+              <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                <div className="font-semibold">Lines that didn't fit a row:</div>
+                <ul className="mt-1 list-inside list-disc">
+                  {parsed.unparsedLines.slice(0, 5).map((u, i) => (
+                    <li key={i} className="truncate">
+                      {u}
+                    </li>
+                  ))}
+                  {parsed.unparsedLines.length > 5 && (
+                    <li className="font-semibold">
+                      …and {parsed.unparsedLines.length - 5} more
+                    </li>
+                  )}
+                </ul>
+              </div>
             )}
+
+            <button
+              onClick={handleSave}
+              disabled={saving || !planName}
+              className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save plan'}
+            </button>
+            <button
+              onClick={() => {
+                setParsed(null);
+                setFile(null);
+                setRawText('');
+              }}
+              className="mt-3 w-full text-center text-sm text-muted"
+            >
+              Upload a different PDF
+            </button>
           </>
         )}
       </div>
-
-      {replaceConfirm && (
-        <ConfirmModal
-          title={`Replace "${replaceConfirm.oldName}"?`}
-          message={`Saving will set "${planName.trim()}" as your active plan. "${replaceConfirm.oldName}" will stay in your plan library — you can switch back any time.`}
-          confirmLabel="Replace"
-          cancelLabel="Cancel"
-          onConfirm={() => {
-            setReplaceConfirm(null);
-            actuallySave();
-          }}
-          onCancel={() => setReplaceConfirm(null)}
-        />
-      )}
     </div>
   );
 }
 
-function StageList({ stages }: { stages: string[] }) {
-  return (
-    <ul className="space-y-1.5 text-left">
-      {stages.map((s, i) => (
-        <li
-          key={i}
-          className="flex items-center gap-2 text-sm text-ink"
-          style={{ animation: 'reps-stage-in 220ms ease-out' }}
-        >
-          <CheckDot done={i < stages.length - 1} />
-          <span className={i < stages.length - 1 ? 'text-muted' : 'font-semibold text-ink'}>
-            {s}
-          </span>
-        </li>
-      ))}
-      <style>{`
-        @keyframes reps-stage-in {
-          from { opacity: 0; transform: translateY(2px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-    </ul>
-  );
-}
-
-function CheckDot({ done }: { done: boolean }) {
-  if (done) {
-    return (
-      <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 text-ink">
-        <circle cx="7" cy="7" r="6" fill="currentColor" />
-        <path d="M4 7l2 2 4-4" stroke="white" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  return (
-    <span
-      className="inline-block h-2 w-2 shrink-0 rounded-full bg-ink"
-      style={{ animation: 'reps-pulse 900ms ease-in-out infinite' }}
-    >
-      <style>{`
-        @keyframes reps-pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50%      { transform: scale(0.65); opacity: 0.55; }
-        }
-      `}</style>
-    </span>
-  );
-}
-
-function DayPreview({ day }: { day: import('../lib/parseTrainingPlan').ParsedTrainingDay }) {
-  const [open, setOpen] = useState(false);
-  const flagged = day.exercises.filter((e) => e.repRangeUncertain || e.tempoUncertain).length;
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-baseline justify-between gap-2 text-left text-sm"
-      >
-        <span className="font-medium text-ink">{day.name}</span>
-        <span className="flex items-center gap-2 text-muted">
-          {flagged > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              {flagged} to review
-            </span>
-          )}
-          <span>
-            {day.exercises.length} {day.exercises.length === 1 ? 'exercise' : 'exercises'}
-          </span>
-        </span>
-      </button>
-      {open && (
-        <ul className="mt-2 space-y-1 border-l border-line pl-3">
-          {day.exercises.map((ex, i) => (
-            <li key={i} className="flex items-start gap-2 text-xs">
-              <span className="mt-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{
-                background: ex.repRangeUncertain || ex.tempoUncertain ? '#F59E0B' : '#D1D5DB',
-              }} />
-              <span className="flex-1">
-                <span className="text-ink">{ex.name}</span>
-                <span className="ml-1 text-muted">
-                  · {ex.totalSets ?? '?'} sets · {ex.repRange || '?'}
-                  {ex.tempo ? ` · ${ex.tempo}` : ''}
-                </span>
-                {(ex.repRangeUncertain || ex.tempoUncertain) && (
-                  <span className="mt-0.5 block text-[10px] font-medium text-amber-700">
-                    {[
-                      ex.repRangeUncertain ? 'Rep range unclear' : null,
-                      ex.tempoUncertain ? 'Tempo missing' : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function SuccessCard({
-  planName,
-  daysCount,
-  exercisesCount,
-  onDone,
+function ExerciseReviewRow({
+  exercise,
+  match,
+  onNotesChange,
+  onSameMachine,
+  onDifferentMachine,
 }: {
-  planName: string;
-  daysCount: number;
-  exercisesCount: number;
-  onDone: () => void;
+  exercise: ParsedExercise;
+  match?: Match;
+  onNotesChange: (notes: string) => void;
+  onSameMachine: () => void;
+  onDifferentMachine: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(exercise.notes ?? '');
+
+  const sets = useMemo(() => {
+    const totalSets = Math.max(1, exercise.totalSets ?? 1);
+    const baseTarget = parseTargetReps(exercise.repRange);
+    const mods = parseSetMods(exercise.notes ?? '', totalSets);
+    const out: { idx: number; reps: string; drops: string[]; tag?: string }[] = [];
+    for (let i = 1; i <= totalSets; i++) {
+      const m = mods.bySetIndex.get(i);
+      const reps =
+        m?.repTarget != null
+          ? String(m.repTarget)
+          : m?.repRangeOverride ?? (baseTarget != null ? String(baseTarget) : '—');
+      const drops = (m?.drops ?? []).map((d) =>
+        d.repTarget != null ? String(d.repTarget) : '—'
+      );
+      out.push({
+        idx: i,
+        reps,
+        drops,
+        tag: m?.schemeDetail ?? (m?.scheme && m.scheme !== 'dropset' ? m.scheme : undefined),
+      });
+    }
+    return out;
+  }, [exercise.notes, exercise.repRange, exercise.totalSets]);
+
   return (
-    <div className="mt-10 rounded-card bg-paper-card p-8 text-center shadow-card">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E8F5E9]">
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="14" stroke="#2E7D32" strokeWidth="2" />
-          <path
-            d="M10 16l4 4 8-9"
-            stroke="#2E7D32"
-            strokeWidth="2.2"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+    <div className="px-5 py-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-[15px] font-semibold text-ink">
+            {exercise.name}
+          </div>
+          {exercise.bodyPart && (
+            <div className="mt-0.5 text-xs text-muted">{exercise.bodyPart}</div>
+          )}
+        </div>
+        <div className="shrink-0 text-right text-xs text-muted">
+          <div>
+            <span className="text-ink">{exercise.totalSets ?? '—'}</span> sets
+          </div>
+          <div>{exercise.repRange || '—'} reps</div>
+        </div>
       </div>
-      <h2 className="mt-5 text-2xl font-bold tracking-tight text-ink">Plan saved</h2>
-      <p className="mt-2 text-sm text-muted">
-        <span className="font-semibold text-ink">{planName}</span>
-        <br />
-        {daysCount} days · {exercisesCount} exercises · Week 1 starts now
-      </p>
-      <button
-        onClick={onDone}
-        className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80"
-      >
-        Let's go
-      </button>
+
+      {match && match.kind !== 'none' && (
+        <div className="mt-3">
+          {(match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')) && (
+            <div className="flex items-center gap-1.5 text-xs text-ink/70">
+              <span aria-hidden>✓</span>
+              <span>
+                Tracking history from{' '}
+                <span className="font-semibold text-ink">
+                  {match.candidate?.name ?? 'previous plan'}
+                </span>
+              </span>
+            </div>
+          )}
+          {match.kind === 'fuzzy' && match.decision === 'pending' && (
+            <div className="rounded-xl bg-ink/5 px-3 py-2.5">
+              <div className="text-xs text-ink/80">
+                Looks similar to{' '}
+                <span className="font-semibold text-ink">{match.candidate?.name}</span>{' '}
+                from your last plan. Same machine?
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={onSameMachine}
+                  className="flex-1 rounded-pill bg-ink py-1.5 text-xs font-semibold text-white active:opacity-80"
+                >
+                  Same — keep history
+                </button>
+                <button
+                  onClick={onDifferentMachine}
+                  className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40"
+                >
+                  Different machine
+                </button>
+              </div>
+            </div>
+          )}
+          {match.kind === 'fuzzy' && match.decision === 'different' && (
+            <div className="text-xs text-muted">
+              Treated as a new exercise — past history won't carry over.
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {sets.map((s) => (
+          <div
+            key={s.idx}
+            className="flex items-center gap-1 rounded-pill border border-line bg-paper px-2.5 py-1 text-xs"
+          >
+            <span className="font-semibold text-muted">S{s.idx}</span>
+            <span className="text-ink">{s.reps}</span>
+            {s.drops.map((d, di) => (
+              <span key={di} className="flex items-center gap-1 text-muted">
+                <span aria-hidden>↓</span>
+                <span className="text-ink">{d}</span>
+              </span>
+            ))}
+            {s.tag && (
+              <span className="ml-1 rounded-pill bg-ink/10 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink">
+                {s.tag}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {(exercise.notes || editing) && (
+        <div className="mt-3">
+          {editing ? (
+            <div>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={3}
+                className="w-full rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-ink focus:outline-none"
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setDraft(exercise.notes ?? '');
+                    setEditing(false);
+                  }}
+                  className="rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    onNotesChange(draft);
+                    setEditing(false);
+                  }}
+                  className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80"
+                >
+                  Save notes
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setDraft(exercise.notes ?? '');
+                setEditing(true);
+              }}
+              className="block w-full rounded-xl bg-paper px-3 py-2 text-left text-xs text-muted active:bg-line/40"
+            >
+              <span className="font-semibold uppercase tracking-wider">Coach notes</span>
+              <div className="mt-1 whitespace-pre-wrap text-ink/80">
+                {exercise.notes || 'Tap to add notes'}
+              </div>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
-}
-
-function tinyDelay(ms = 350): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function countFlagged(p: ParsedPlan): number {
-  let n = 0;
-  for (const d of p.days) {
-    for (const e of d.exercises) {
-      if (e.repRangeUncertain || e.tempoUncertain) n++;
-    }
-  }
-  return n;
 }
 
 function UploadIcon() {
