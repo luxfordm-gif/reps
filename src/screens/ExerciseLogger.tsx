@@ -470,6 +470,7 @@ export function ExerciseLogger({
     <div className="min-h-screen bg-paper pb-28">
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader
+          large={false}
           title={`${exerciseIndex + 1} / ${totalExercises}`}
           onBack={hasPrev ? onPrev : onBack}
           rightAction={
