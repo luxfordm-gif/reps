@@ -1,8 +1,20 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { extractPdfText } from '../lib/extractPdfText';
-import { parseTrainingPlan, type ParsedPlan } from '../lib/parseTrainingPlan';
+import {
+  parseTrainingPlan,
+  type ParsedExercise,
+  type ParsedPlan,
+} from '../lib/parseTrainingPlan';
+import { parseSetMods } from '../lib/parseSetMods';
 import { savePlan } from '../lib/plansApi';
 import { PageHeader } from '../components/PageHeader';
+
+function parseTargetReps(repRange: string): number | null {
+  const match = repRange.match(/(\d+)\s*(?:-\s*(\d+))?/);
+  if (!match) return null;
+  const hi = match[2] ? parseInt(match[2], 10) : parseInt(match[1], 10);
+  return Number.isFinite(hi) ? hi : null;
+}
 
 interface Props {
   onCancel: () => void;
@@ -52,8 +64,39 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     }
   }
 
+  function setExerciseNotes(dayIdx: number, exIdx: number, notes: string) {
+    setParsed((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== dayIdx
+            ? d
+            : {
+                ...d,
+                exercises: d.exercises.map((e, j) =>
+                  j !== exIdx ? e : { ...e, notes }
+                ),
+              }
+        ),
+      };
+    });
+  }
+
   const totalExercises =
     parsed?.days.reduce((sum, d) => sum + d.exercises.length, 0) ?? 0;
+
+  const overrideCount = useMemo(() => {
+    if (!parsed) return 0;
+    let n = 0;
+    for (const d of parsed.days) {
+      for (const e of d.exercises) {
+        const mods = parseSetMods(e.notes ?? '', e.totalSets ?? 0);
+        if (mods.bySetIndex.size > 0) n += 1;
+      }
+    }
+    return n;
+  }, [parsed]);
 
   return (
     <div className="min-h-screen bg-paper pb-12">
@@ -128,16 +171,38 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               <div className="mt-1 text-2xl font-bold tracking-tight text-ink">
                 {parsed.days.length} days · {totalExercises} exercises
               </div>
-              <div className="mt-4 space-y-1.5">
-                {parsed.days.map((d) => (
-                  <div key={d.name} className="flex items-baseline justify-between text-sm">
-                    <span className="font-medium text-ink">{d.name}</span>
-                    <span className="text-muted">
-                      {d.exercises.length} {d.exercises.length === 1 ? 'exercise' : 'exercises'}
-                    </span>
+              {overrideCount > 0 && (
+                <div className="mt-3 text-xs text-muted">
+                  Coach notes change the set scheme on{' '}
+                  <span className="font-semibold text-ink">{overrideCount}</span>{' '}
+                  {overrideCount === 1 ? 'exercise' : 'exercises'} below — give them a quick check.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {parsed.days.map((day, dayIdx) => (
+                <div key={day.name} className="rounded-card bg-paper-card shadow-card">
+                  <div className="border-b border-line/60 px-5 py-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                      Day {day.position + 1}
+                    </div>
+                    <div className="mt-0.5 text-base font-semibold text-ink">
+                      {day.name}
+                    </div>
                   </div>
-                ))}
-              </div>
+                  <ul className="divide-y divide-line/60">
+                    {day.exercises.map((ex, exIdx) => (
+                      <li key={`${ex.name}-${ex.position}`}>
+                        <ExerciseReviewRow
+                          exercise={ex}
+                          onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
 
             {parsed.warnings.length > 0 && (
@@ -189,6 +254,133 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function ExerciseReviewRow({
+  exercise,
+  onNotesChange,
+}: {
+  exercise: ParsedExercise;
+  onNotesChange: (notes: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(exercise.notes ?? '');
+
+  const sets = useMemo(() => {
+    const totalSets = Math.max(1, exercise.totalSets ?? 1);
+    const baseTarget = parseTargetReps(exercise.repRange);
+    const mods = parseSetMods(exercise.notes ?? '', totalSets);
+    const out: { idx: number; reps: string; drops: string[]; tag?: string }[] = [];
+    for (let i = 1; i <= totalSets; i++) {
+      const m = mods.bySetIndex.get(i);
+      const reps =
+        m?.repTarget != null
+          ? String(m.repTarget)
+          : m?.repRangeOverride ?? (baseTarget != null ? String(baseTarget) : '—');
+      const drops = (m?.drops ?? []).map((d) =>
+        d.repTarget != null ? String(d.repTarget) : '—'
+      );
+      out.push({
+        idx: i,
+        reps,
+        drops,
+        tag: m?.schemeDetail ?? (m?.scheme && m.scheme !== 'dropset' ? m.scheme : undefined),
+      });
+    }
+    return out;
+  }, [exercise.notes, exercise.repRange, exercise.totalSets]);
+
+  return (
+    <div className="px-5 py-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-[15px] font-semibold text-ink">
+            {exercise.name}
+          </div>
+          {exercise.bodyPart && (
+            <div className="mt-0.5 text-xs text-muted">{exercise.bodyPart}</div>
+          )}
+        </div>
+        <div className="shrink-0 text-right text-xs text-muted">
+          <div>
+            <span className="text-ink">{exercise.totalSets ?? '—'}</span> sets
+          </div>
+          <div>{exercise.repRange || '—'} reps</div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {sets.map((s) => (
+          <div
+            key={s.idx}
+            className="flex items-center gap-1 rounded-pill border border-line bg-paper px-2.5 py-1 text-xs"
+          >
+            <span className="font-semibold text-muted">S{s.idx}</span>
+            <span className="text-ink">{s.reps}</span>
+            {s.drops.map((d, di) => (
+              <span key={di} className="flex items-center gap-1 text-muted">
+                <span aria-hidden>↓</span>
+                <span className="text-ink">{d}</span>
+              </span>
+            ))}
+            {s.tag && (
+              <span className="ml-1 rounded-pill bg-ink/10 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink">
+                {s.tag}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {(exercise.notes || editing) && (
+        <div className="mt-3">
+          {editing ? (
+            <div>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={3}
+                className="w-full rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-ink focus:outline-none"
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setDraft(exercise.notes ?? '');
+                    setEditing(false);
+                  }}
+                  className="rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    onNotesChange(draft);
+                    setEditing(false);
+                  }}
+                  className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80"
+                >
+                  Save notes
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setDraft(exercise.notes ?? '');
+                setEditing(true);
+              }}
+              className="block w-full rounded-xl bg-paper px-3 py-2 text-left text-xs text-muted active:bg-line/40"
+            >
+              <span className="font-semibold uppercase tracking-wider">Coach notes</span>
+              <div className="mt-1 whitespace-pre-wrap text-ink/80">
+                {exercise.notes || 'Tap to add notes'}
+              </div>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
