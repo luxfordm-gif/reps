@@ -650,7 +650,8 @@ export async function getSessionSets(sessionId: string, planExerciseId: string):
 
 export async function getLastSessionSetsForExercise(
   normalizedName: string,
-  excludeSessionId?: string
+  excludeSessionId?: string,
+  baselineResetAt?: string | null
 ): Promise<LoggedSet[]> {
   const {
     data: { user },
@@ -664,6 +665,7 @@ export async function getLastSessionSetsForExercise(
     .order('completed_at', { ascending: false })
     .limit(20);
   if (excludeSessionId) query = query.neq('session_id', excludeSessionId);
+  if (baselineResetAt) query = query.gte('completed_at', baselineResetAt);
   const { data, error } = await query;
   if (error) throw error;
   if (!data || data.length === 0) return [];

@@ -30,6 +30,7 @@ export interface PlanExerciseRow {
   superset_group: number | null;
   position: number;
   rest_seconds: number | null;
+  baseline_reset_at: string | null;
 }
 
 export async function updatePlanExerciseRest(
@@ -41,6 +42,25 @@ export async function updatePlanExerciseRest(
     .update({ rest_seconds: restSeconds })
     .eq('id', exerciseId);
   if (error) throw error;
+}
+
+export async function updatePlanExerciseName(
+  exerciseId: string,
+  name: string,
+  options: { resetBaseline: boolean }
+): Promise<string | null> {
+  const update: { name: string; baseline_reset_at?: string } = { name };
+  if (options.resetBaseline) {
+    update.baseline_reset_at = new Date().toISOString();
+  }
+  const { data, error } = await supabase
+    .from('plan_exercises')
+    .update(update)
+    .eq('id', exerciseId)
+    .select('baseline_reset_at')
+    .single();
+  if (error) throw error;
+  return (data?.baseline_reset_at as string | null) ?? null;
 }
 
 export interface FullPlan extends PlanRow {
