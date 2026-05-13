@@ -22,7 +22,6 @@ import {
   formatStoneLb,
   type BodyWeightUnit,
 } from '../lib/units';
-import { BottomNav } from '../components/BottomNav';
 import { PageHeader } from '../components/PageHeader';
 import { CalendarPopover } from '../components/Calendar';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -360,7 +359,6 @@ export function BodyWeight({ onBack }: Props) {
         </div>
       </div>
 
-      <BottomNav active="home" />
       {pendingDeleteId && (
         <ConfirmModal
           title="Delete this entry?"

@@ -1,14 +1,11 @@
 import { PageHeader } from '../components/PageHeader';
-import { BottomNav, type Tab } from '../components/BottomNav';
 
 interface Props {
-  active: Tab;
   title: string;
   subtitle?: string;
-  onTabChange: (tab: Tab) => void;
 }
 
-export function ComingSoon({ active, title, subtitle, onTabChange }: Props) {
+export function ComingSoon({ title, subtitle }: Props) {
   return (
     <div className="min-h-screen bg-paper pb-28">
       <div className="mx-auto max-w-md px-5 pt-3">
@@ -20,7 +17,6 @@ export function ComingSoon({ active, title, subtitle, onTabChange }: Props) {
           </p>
         </div>
       </div>
-      <BottomNav active={active} onChange={onTabChange} />
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { PageHeader } from '../components/PageHeader';
-import { BottomNav, type Tab } from '../components/BottomNav';
 import { getActivePlan, type FullPlan } from '../lib/plansApi';
 import {
   getBodyWeightUnit,
@@ -22,11 +21,10 @@ import { getRecentSessionNotes } from '../lib/sessionsApi';
 
 interface Props {
   onUploadPlan: () => void;
-  onTabChange?: (tab: Tab) => void;
   onOpenHistory?: () => void;
 }
 
-export function Profile({ onUploadPlan, onTabChange, onOpenHistory }: Props) {
+export function Profile({ onUploadPlan, onOpenHistory }: Props) {
   const { session, signOut } = useAuth();
   const [plan, setPlan] = useState<FullPlan | null>(null);
   const [bwUnit, setBwUnitState] = useState<BodyWeightUnit>(getBodyWeightUnit());
@@ -175,7 +173,6 @@ export function Profile({ onUploadPlan, onTabChange, onOpenHistory }: Props) {
         </Section>
       </div>
 
-      <BottomNav active="profile" onChange={onTabChange} />
     </div>
   );
 }

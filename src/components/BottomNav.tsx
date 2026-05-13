@@ -53,11 +53,17 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
 interface Props {
   active?: Tab;
   onChange?: (tab: Tab) => void;
+  visible?: boolean;
 }
 
-export function BottomNav({ active = 'home', onChange }: Props) {
+export function BottomNav({ active = 'home', onChange, visible = true }: Props) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-6 pt-3">
+    <div
+      className={`fixed inset-x-0 bottom-0 z-40 px-4 pb-6 pt-3 transition-transform duration-300 ease-out ${
+        visible ? 'translate-y-0' : 'pointer-events-none translate-y-[140%]'
+      }`}
+      aria-hidden={!visible}
+    >
       <div className="mx-auto flex max-w-md items-center justify-between rounded-pill bg-ink p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
         {TABS.map((tab) => {
           const isActive = tab.id === active;

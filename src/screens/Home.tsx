@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrainingDayCard } from '../components/TrainingDayCard';
-import { BottomNav, type Tab } from '../components/BottomNav';
 import { AppHeader } from '../components/AppHeader';
 import { WeeklyProgress } from '../components/WeeklyProgress';
 import { getActivePlan, type FullPlan } from '../lib/plansApi';
@@ -22,7 +21,6 @@ type Day = FullPlan['training_days'][number];
 
 interface Props {
   onUploadPlan: () => void;
-  onTabChange: (tab: Tab) => void;
   onLogBodyWeight: () => void;
   onTapDay: (day: Day) => void;
   onResumeWorkout?: (params: {
@@ -70,7 +68,7 @@ function greeting() {
   return 'Hey';
 }
 
-export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay, onResumeWorkout }: Props) {
+export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout }: Props) {
   const [plan, setPlan] = useState<FullPlan | null>(null);
   const [lastCompleted, setLastCompleted] = useState<string | null>(null);
   const [waterCount, setWaterCount] = useState(0);
@@ -159,7 +157,6 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay, onR
             </button>
           </div>
         </div>
-        <BottomNav active="home" onChange={onTabChange} />
       </div>
     );
   }
@@ -278,8 +275,6 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay, onR
           </div>
         </div>
       </div>
-
-      <BottomNav active="home" onChange={onTabChange} />
     </div>
   );
 }

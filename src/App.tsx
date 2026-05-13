@@ -20,7 +20,7 @@ import {
   completeSession,
   deleteAllOpenSessions,
 } from './lib/sessionsApi';
-import type { Tab } from './components/BottomNav';
+import { BottomNav, type Tab } from './components/BottomNav';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 
 type Modal = null | 'upload' | 'bodyWeight' | 'history';
@@ -81,22 +81,25 @@ function Root() {
   const activeExercise: PlanExerciseRow | null =
     exerciseIdx != null && exercises[exerciseIdx] ? exercises[exerciseIdx] : null;
 
+  const navVisible =
+    screenKey === 'tab:home' ||
+    screenKey === 'tab:performance' ||
+    screenKey === 'tab:profile';
+
+  let body: React.ReactNode = null;
+
   if (loading) {
-    return (
+    body = (
       <div className="flex min-h-screen items-center justify-center bg-paper">
         <div className="text-sm text-muted">Loading…</div>
       </div>
     );
-  }
-
-  if (passwordRecovery) {
-    return <SetNewPassword onDone={clearPasswordRecovery} />;
-  }
-
-  if (!session) return <Login />;
-
-  if (modal === 'upload') {
-    return (
+  } else if (passwordRecovery) {
+    body = <SetNewPassword onDone={clearPasswordRecovery} />;
+  } else if (!session) {
+    body = <Login />;
+  } else if (modal === 'upload') {
+    body = (
       <UploadPlan
         onCancel={() => setModal(null)}
         onSaved={() => {
@@ -106,25 +109,133 @@ function Root() {
         }}
       />
     );
-  }
-
-  if (modal === 'bodyWeight') {
-    return <BodyWeight onBack={() => setModal(null)} />;
-  }
-
-  if (modal === 'history') {
-    return <WorkoutHistory onBack={() => setModal(null)} />;
-  }
-
-  if (completedSession) {
-    return (
+  } else if (modal === 'bodyWeight') {
+    body = <BodyWeight onBack={() => setModal(null)} />;
+  } else if (modal === 'history') {
+    body = <WorkoutHistory onBack={() => setModal(null)} />;
+  } else if (completedSession) {
+    body = (
       <WorkoutComplete
         sessionId={completedSession.id}
         dayName={completedSession.dayName}
         onDone={() => setCompletedSession(null)}
       />
     );
+  } else if (activeDay && exerciseIdx != null && activeExercise) {
+    body = (
+      <>
+        <ExerciseLogger
+          sessionId={sessionId!}
+          sessionStartedAt={sessionStartedAt}
+          dayName={activeDay.name}
+          exercise={activeExercise}
+          hasNext={exerciseIdx < exercises.length - 1}
+          hasPrev={exerciseIdx > 0}
+          totalExercises={exercises.length}
+          exerciseIndex={exerciseIdx}
+          onBack={() => setExerciseIdx(null)}
+          onPrev={() => setExerciseIdx((i) => (i != null && i > 0 ? i - 1 : i))}
+          onNext={() => setExerciseIdx((i) => (i != null ? i + 1 : null))}
+          onOverview={() => setExerciseIdx(null)}
+          onHome={() => {
+            setExerciseIdx(null);
+            setActiveDay(null);
+          }}
+          onEndWorkout={() => setEndWorkoutOpen(true)}
+          onFinish={async () => {
+            const sid = sessionId;
+            const finishedDay = activeDay?.name ?? 'Workout';
+            if (sid) {
+              try {
+                await completeSession(sid);
+              } catch (e) {
+                console.error(e);
+              }
+            }
+            setExerciseIdx(null);
+            setSessionId(null);
+            setSessionStartedAt(null);
+            setActiveDay(null);
+            if (sid) {
+              setCompletedSession({ id: sid, dayName: finishedDay });
+              setRefreshKey((k) => k + 1);
+            }
+          }}
+        />
+        {endWorkoutOpen && (
+          <EndWorkoutDialog
+            onSave={handleEndSave}
+            onDiscard={handleEndDiscard}
+            onCancel={() => setEndWorkoutOpen(false)}
+          />
+        )}
+      </>
+    );
+  } else if (activeDay) {
+    body = (
+      <DayView
+        day={activeDay}
+        onBack={() => {
+          setActiveDay(null);
+          setSessionId(null);
+          setSessionStartedAt(null);
+        }}
+        onTapExercise={startExercise}
+      />
+    );
+  } else {
+    let screen: React.ReactNode = null;
+    switch (tab) {
+      case 'home':
+        screen = (
+          <Home
+            key={refreshKey}
+            onUploadPlan={() => setModal('upload')}
+            onLogBodyWeight={() => setModal('bodyWeight')}
+            onTapDay={setActiveDay}
+            onResumeWorkout={({ day, exerciseIdx, sessionId: sid, startedAt }) => {
+              setActiveDay(day);
+              setSessionId(sid);
+              setSessionStartedAt(startedAt);
+              setExerciseIdx(exerciseIdx);
+            }}
+          />
+        );
+        break;
+      case 'performance':
+        screen = (
+          <ComingSoon
+            title="Performance"
+            subtitle="PRs, est. 1RM, body weight trend, exercise history."
+          />
+        );
+        break;
+      case 'profile':
+        screen = (
+          <Profile
+            onUploadPlan={() => setModal('upload')}
+            onOpenHistory={() => setModal('history')}
+          />
+        );
+        break;
+    }
+    const entry = getEntryForVersion(APP_VERSION);
+    body = (
+      <>
+        <TabSwipeContainer tab={tab} onTabChange={setTab}>{screen}</TabSwipeContainer>
+        {showWhatsNew && entry && (
+          <WhatsNewModal entry={entry} onDismiss={dismissWhatsNew} />
+        )}
+      </>
+    );
   }
+
+  return (
+    <>
+      {body}
+      <BottomNav active={tab} onChange={setTab} visible={navVisible} />
+    </>
+  );
 
   async function startExercise(exercise: PlanExerciseRow, existingSessionId?: string) {
     if (!activeDay) return;
@@ -181,121 +292,6 @@ function Root() {
     setActiveDay(null);
     setRefreshKey((k) => k + 1);
   }
-
-  if (activeDay && exerciseIdx != null && activeExercise) {
-    return (
-      <>
-        <ExerciseLogger
-        sessionId={sessionId!}
-        sessionStartedAt={sessionStartedAt}
-        dayName={activeDay.name}
-        exercise={activeExercise}
-        hasNext={exerciseIdx < exercises.length - 1}
-        hasPrev={exerciseIdx > 0}
-        totalExercises={exercises.length}
-        exerciseIndex={exerciseIdx}
-        onBack={() => setExerciseIdx(null)}
-        onPrev={() => setExerciseIdx((i) => (i != null && i > 0 ? i - 1 : i))}
-        onNext={() => setExerciseIdx((i) => (i != null ? i + 1 : null))}
-        onOverview={() => setExerciseIdx(null)}
-        onHome={() => {
-          setExerciseIdx(null);
-          setActiveDay(null);
-        }}
-        onEndWorkout={() => setEndWorkoutOpen(true)}
-        onFinish={async () => {
-          const sid = sessionId;
-          const finishedDay = activeDay?.name ?? 'Workout';
-          if (sid) {
-            try {
-              await completeSession(sid);
-            } catch (e) {
-              console.error(e);
-            }
-          }
-          setExerciseIdx(null);
-          setSessionId(null);
-          setSessionStartedAt(null);
-          setActiveDay(null);
-          if (sid) {
-            setCompletedSession({ id: sid, dayName: finishedDay });
-            setRefreshKey((k) => k + 1);
-          }
-        }}
-      />
-        {endWorkoutOpen && (
-          <EndWorkoutDialog
-            onSave={handleEndSave}
-            onDiscard={handleEndDiscard}
-            onCancel={() => setEndWorkoutOpen(false)}
-          />
-        )}
-      </>
-    );
-  }
-
-  if (activeDay) {
-    return (
-      <DayView
-        day={activeDay}
-        onBack={() => {
-          setActiveDay(null);
-          setSessionId(null);
-          setSessionStartedAt(null);
-        }}
-        onTapExercise={startExercise}
-      />
-    );
-  }
-
-  let screen: React.ReactNode = null;
-  switch (tab) {
-    case 'home':
-      screen = (
-        <Home
-          key={refreshKey}
-          onUploadPlan={() => setModal('upload')}
-          onTabChange={setTab}
-          onLogBodyWeight={() => setModal('bodyWeight')}
-          onTapDay={setActiveDay}
-          onResumeWorkout={({ day, exerciseIdx, sessionId: sid, startedAt }) => {
-            setActiveDay(day);
-            setSessionId(sid);
-            setSessionStartedAt(startedAt);
-            setExerciseIdx(exerciseIdx);
-          }}
-        />
-      );
-      break;
-    case 'performance':
-      screen = (
-        <ComingSoon
-          active="performance"
-          title="Performance"
-          subtitle="PRs, est. 1RM, body weight trend, exercise history."
-          onTabChange={setTab}
-        />
-      );
-      break;
-    case 'profile':
-      screen = (
-        <Profile
-          onUploadPlan={() => setModal('upload')}
-          onTabChange={setTab}
-          onOpenHistory={() => setModal('history')}
-        />
-      );
-      break;
-  }
-  const entry = getEntryForVersion(APP_VERSION);
-  return (
-    <>
-      <TabSwipeContainer tab={tab} onTabChange={setTab}>{screen}</TabSwipeContainer>
-      {showWhatsNew && entry && (
-        <WhatsNewModal entry={entry} onDismiss={dismissWhatsNew} />
-      )}
-    </>
-  );
 }
 
 const TAB_ORDER: Tab[] = ['home', 'performance', 'profile'];
