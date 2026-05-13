@@ -3,7 +3,7 @@ import { TrainingDayCard } from '../components/TrainingDayCard';
 import { BottomNav, type Tab } from '../components/BottomNav';
 import { AppHeader } from '../components/AppHeader';
 import { WeeklyProgress } from '../components/WeeklyProgress';
-import { getActivePlan, type FullPlan } from '../lib/plansApi';
+import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import {
   getLastCompletedTrainingDayName,
   getAnyActiveSession,
@@ -87,24 +87,26 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay, onR
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([
-      getActivePlan(),
-      getLastCompletedTrainingDayName(),
-      getTodayWaterCount(),
-      getAnyActiveSession(),
-      getThisWeekSummary(),
-    ])
-      .then(([p, lc, w, a, ws]) => {
+    (async () => {
+      try {
+        const p = await getActivePlan();
         if (!mounted) return;
         setPlan(p);
+        const [lc, w, a, ws] = await Promise.all([
+          getLastCompletedTrainingDayName(p?.activated_at ?? null),
+          getTodayWaterCount(),
+          getAnyActiveSession(),
+          getThisWeekSummary(),
+        ]);
+        if (!mounted) return;
         setLastCompleted(lc);
         setWaterCount(w);
         setActive(a);
         setWeekSummary(ws);
-      })
-      .finally(() => {
+      } finally {
         if (mounted) setLoading(false);
-      });
+      }
+    })();
     return () => {
       mounted = false;
     };
@@ -218,6 +220,7 @@ export function Home({ onUploadPlan, onTabChange, onLogBodyWeight, onTapDay, onR
             workoutsDone={weekSummary.workoutsDone}
             workoutsTarget={5}
             bars={weekSummary.bars}
+            planWeek={plan ? weeksOnPlan(plan.activated_at) : null}
           />
         </div>
 

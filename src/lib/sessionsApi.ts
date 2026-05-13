@@ -97,19 +97,22 @@ export interface LoggedSet {
   completed_at: string;
 }
 
-export async function getLastCompletedTrainingDayName(): Promise<string | null> {
+export async function getLastCompletedTrainingDayName(
+  sinceIso?: string | null
+): Promise<string | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data, error } = await supabase
+  let query = supabase
     .from('sessions')
     .select('training_day_id, completed_at, training_days(name)')
     .eq('user_id', user.id)
     .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+  if (sinceIso) query = query.gte('completed_at', sinceIso);
+  const { data, error } = await query.maybeSingle();
   if (error) return null;
   if (!data) return null;
   // training_days may come through as object or array depending on PostgREST inference

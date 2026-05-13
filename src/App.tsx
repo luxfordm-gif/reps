@@ -9,6 +9,7 @@ import { Login } from './screens/Login';
 import { UploadPlan } from './screens/UploadPlan';
 import { BodyWeight } from './screens/BodyWeight';
 import { Profile } from './screens/Profile';
+import { Plans } from './screens/Plans';
 import { ComingSoon } from './screens/ComingSoon';
 import { DayView } from './screens/DayView';
 import { ExerciseLogger } from './screens/ExerciseLogger';
@@ -23,7 +24,7 @@ import {
 import type { Tab } from './components/BottomNav';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 
-type Modal = null | 'upload' | 'bodyWeight' | 'history';
+type Modal = null | 'upload' | 'bodyWeight' | 'history' | 'plans';
 
 function Root() {
   const { session, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
@@ -93,6 +94,16 @@ function Root() {
 
   if (modal === 'history') {
     return <WorkoutHistory onBack={() => setModal(null)} />;
+  }
+
+  if (modal === 'plans') {
+    return (
+      <Plans
+        onBack={() => setModal(null)}
+        onUpload={() => setModal('upload')}
+        onAfterActivate={() => setRefreshKey((k) => k + 1)}
+      />
+    );
   }
 
   if (completedSession) {
@@ -262,6 +273,7 @@ function Root() {
           onUploadPlan={() => setModal('upload')}
           onTabChange={setTab}
           onOpenHistory={() => setModal('history')}
+          onOpenPlans={() => setModal('plans')}
         />
       );
       break;

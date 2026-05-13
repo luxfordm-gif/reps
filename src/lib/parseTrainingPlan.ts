@@ -27,6 +27,8 @@ export interface ParsedExercise {
   notes: string;
   setScheme: SetScheme;
   position: number;
+  repRangeUncertain?: boolean;
+  tempoUncertain?: boolean;
 }
 
 export interface ParsedTrainingDay {
@@ -187,16 +189,29 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
       const prettyName = toSentenceCase(cleanedName);
       const prettyBodyPart = toSentenceCase(bodyPart.replace(/\s+/g, ' '));
       const prettyNotes = toSentenceCase(cleanedNotes);
+      const cleanedRepRange = repRange.replace(/\s+/g, ' ').trim();
+      // Rep range is well-formed if it's a numeric range, single number, or a recognised
+      // "Max Reps" / "Max Hold" sentinel. Anything else is flagged for review.
+      const repRangeUncertain =
+        !cleanedRepRange ||
+        !(
+          /^\d+(\s*-\s*\d+)?$/.test(cleanedRepRange) ||
+          /^max\s+(reps|hold)$/i.test(cleanedRepRange)
+        );
+      // Tempo missing (N/A in the PDF) — flag so the user can supply one if intended.
+      const tempoUncertain = tempo === null;
       const exercise: ParsedExercise = {
         bodyPart: prettyBodyPart,
         name: prettyName,
         normalizedName: normalizeName(cleanedName),
         totalSets: Number.isNaN(parseInt(totalSetsStr, 10)) ? null : parseInt(totalSetsStr, 10),
-        repRange: repRange.replace(/\s+/g, ' ').trim(),
+        repRange: cleanedRepRange,
         tempo,
         notes: prettyNotes,
         setScheme: detectSetScheme(cleanedNotes, repRange),
         position: exercisePosition++,
+        repRangeUncertain,
+        tempoUncertain,
       };
       currentDay.exercises.push(exercise);
       lastExercise = exercise;
