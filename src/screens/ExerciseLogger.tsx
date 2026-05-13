@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
+import { useThemeColor } from '../lib/useThemeColor';
 import {
   logSet,
   updateLoggedSet,
@@ -1033,6 +1034,7 @@ function RestOverlay({
   lastSetWeight: number | null;
   lastSetReps: number | null;
 }) {
+  useThemeColor('#0A0A0A');
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!sessionStartedAt) return;
