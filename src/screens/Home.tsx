@@ -7,6 +7,7 @@ import {
   getLastCompletedTrainingDayName,
   getAnyActiveSession,
   getThisWeekSummary,
+  getCompletedDayNamesThisWeek,
   type ActiveSessionContext,
   type WeekSummary,
 } from '../lib/sessionsApi';
@@ -51,9 +52,20 @@ function bodyPartsForDay(exercises: { body_part: string | null }[]): string {
   return parts.join(' · ');
 }
 
-function getNextDayName(days: { name: string }[], lastCompleted: string | null) {
+function getNextDayName(
+  days: { name: string }[],
+  lastCompleted: string | null,
+  completedThisWeek: string[]
+) {
   if (days.length === 0) return null;
-  // No prior history — start from the first day in plan order.
+  // Prefer the earliest plan-day that hasn't been done yet this week — so
+  // if someone skips Legs and does Arms instead, Legs still comes up next
+  // instead of wrapping back to Push.
+  const doneThisWeek = new Set(completedThisWeek);
+  const firstUnfinished = days.find((d) => !doneThisWeek.has(d.name));
+  if (firstUnfinished) return firstUnfinished.name;
+  // Every plan-day has been done this week — fall back to "next after last
+  // completed, wrapping" so we suggest something rather than nothing.
   if (!lastCompleted) return days[0].name;
   const idx = days.findIndex((d) => d.name === lastCompleted);
   if (idx === -1) return days[0].name;
@@ -82,6 +94,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
     workoutsDone: 0,
     bars: [[], [], [], [], [], [], []],
   });
+  const [completedThisWeek, setCompletedThisWeek] = useState<string[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -91,14 +104,16 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
       getTodayWaterCount(),
       getAnyActiveSession(),
       getThisWeekSummary(),
+      getCompletedDayNamesThisWeek(),
     ])
-      .then(([p, lc, w, a, ws]) => {
+      .then(([p, lc, w, a, ws, dn]) => {
         if (!mounted) return;
         setPlan(p);
         setLastCompleted(lc);
         setWaterCount(w);
         setActive(a);
         setWeekSummary(ws);
+        setCompletedThisWeek(dn);
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -164,7 +179,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
   const days = plan.training_days ?? [];
   const mainDays = days.filter((d) => d.name !== 'Abs');
   const absDay = days.find((d) => d.name === 'Abs');
-  const nextDayName = getNextDayName(mainDays, lastCompleted);
+  const nextDayName = getNextDayName(mainDays, lastCompleted, completedThisWeek);
   const nextDay = nextDayName ? mainDays.find((d) => d.name === nextDayName) : undefined;
   // List order: each main day in plan order, with Abs inserted after Pull and after Arms.
   const listDays: { day: Day; slot: 'main' | 'abs' }[] = [];
