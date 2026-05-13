@@ -50,14 +50,9 @@ export function Profile({ onUploadPlan, onOpenHistory }: Props) {
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title="Profile" />
 
-        <div className="mt-6">
-          <h1 className="text-[28px] font-bold leading-[1.1] tracking-tight text-ink">
-            Account
-          </h1>
-          <p className="mt-1.5 break-all text-base text-muted">
-            {session?.user.email}
-          </p>
-        </div>
+        <p className="mt-3 break-all text-sm text-muted">
+          {session?.user.email}
+        </p>
 
         <Section title="Active plan">
           <div className="rounded-card bg-paper-card p-5 shadow-card">

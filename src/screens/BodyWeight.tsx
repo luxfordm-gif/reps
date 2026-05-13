@@ -149,12 +149,12 @@ export function BodyWeight({ onBack }: Props) {
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title="Body weight" onBack={onBack} />
 
-        <div className="mt-6">
-          <h1 className="text-[28px] font-bold leading-[1.1] tracking-tight text-ink">
+        <div className="mt-3">
+          <div className="text-[15px] font-semibold tracking-tight text-ink">
             {todayEntry ? 'Logged today' : "Log today's weight"}
-          </h1>
+          </div>
           {todayEntry && (
-            <p className="mt-1.5 text-base text-muted">
+            <p className="mt-1 text-sm text-muted">
               {primaryDisplay(todayEntry.weight_kg, unit)}
               {' · '}
               <span className="text-muted">

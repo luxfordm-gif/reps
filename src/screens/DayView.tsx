@@ -117,17 +117,12 @@ export function DayView({ day, onBack, onTapExercise }: Props) {
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title={day.name} onBack={onBack} />
 
-        <div className="mt-8">
-          <h1 className="text-[32px] font-bold leading-[1.1] tracking-tight text-ink">
-            {day.name}
-          </h1>
-          <div className="mt-1.5 flex items-center gap-3 text-sm text-muted">
-            <span>{exercises.length} exercises</span>
-            <span className="h-1 w-1 rounded-full bg-muted/50" />
-            <span>{totalSets} working sets</span>
-            <span className="h-1 w-1 rounded-full bg-muted/50" />
-            <span>~{estimatedMinutes(totalSets)} min</span>
-          </div>
+        <div className="mt-3 flex items-center gap-3 text-sm text-muted">
+          <span>{exercises.length} exercises</span>
+          <span className="h-1 w-1 rounded-full bg-muted/50" />
+          <span>{totalSets} working sets</span>
+          <span className="h-1 w-1 rounded-full bg-muted/50" />
+          <span>~{estimatedMinutes(totalSets)} min</span>
         </div>
 
         <button
