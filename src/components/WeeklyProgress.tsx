@@ -5,6 +5,7 @@ interface Props {
   bars: number[][];
   workoutsDone: number;
   workoutsTarget: number;
+  planWeek?: number | null;
 }
 
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -16,11 +17,18 @@ const todayIndex = (() => {
   return (d + 6) % 7; // shift so 0=Mon..6=Sun
 })();
 
-export function WeeklyProgress({ bars, workoutsDone, workoutsTarget }: Props) {
+export function WeeklyProgress({ bars, workoutsDone, workoutsTarget, planWeek }: Props) {
   return (
     <div className="rounded-card bg-ink p-5 text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
-      <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
-        Weekly Progress
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
+          Weekly Progress
+        </div>
+        {planWeek != null && (
+          <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
+            Week {planWeek}
+          </div>
+        )}
       </div>
       <div className="mt-1 text-2xl font-bold tracking-tight">
         {workoutsDone} of {workoutsTarget} workouts

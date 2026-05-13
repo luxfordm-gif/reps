@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { PageHeader } from '../components/PageHeader';
-import { getActivePlan, type FullPlan } from '../lib/plansApi';
+import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import {
   getBodyWeightUnit,
   setBodyWeightUnit,
@@ -22,9 +22,10 @@ import { getRecentSessionNotes } from '../lib/sessionsApi';
 interface Props {
   onUploadPlan: () => void;
   onOpenHistory?: () => void;
+  onOpenPlans?: () => void;
 }
 
-export function Profile({ onUploadPlan, onOpenHistory }: Props) {
+export function Profile({ onUploadPlan, onOpenHistory, onOpenPlans }: Props) {
   const { session, signOut } = useAuth();
   const [plan, setPlan] = useState<FullPlan | null>(null);
   const [bwUnit, setBwUnitState] = useState<BodyWeightUnit>(getBodyWeightUnit());
@@ -59,14 +60,14 @@ export function Profile({ onUploadPlan, onOpenHistory }: Props) {
             {plan ? (
               <>
                 <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                  Currently active
+                  Week {weeksOnPlan(plan.activated_at)}
                 </div>
                 <div className="mt-1 text-xl font-bold tracking-tight text-ink">
                   {plan.name}
                 </div>
                 <div className="mt-0.5 text-sm text-muted">
-                  Uploaded{' '}
-                  {new Date(plan.uploaded_at).toLocaleDateString('en-GB', {
+                  Started{' '}
+                  {new Date(plan.activated_at ?? plan.uploaded_at).toLocaleDateString('en-GB', {
                     day: 'numeric',
                     month: 'long',
                     year: 'numeric',
@@ -78,10 +79,10 @@ export function Profile({ onUploadPlan, onOpenHistory }: Props) {
               <div className="text-sm text-muted">No plan loaded.</div>
             )}
             <button
-              onClick={onUploadPlan}
+              onClick={plan && onOpenPlans ? onOpenPlans : onUploadPlan}
               className="mt-4 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
             >
-              {plan ? 'Upload new plan' : 'Upload plan'}
+              {plan ? 'Switch or manage plans' : 'Upload plan'}
             </button>
           </div>
         </Section>
