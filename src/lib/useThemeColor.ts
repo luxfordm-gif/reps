@@ -5,9 +5,11 @@ const DEFAULT = '#FAFAFA';
 
 function apply() {
   if (typeof document === 'undefined') return;
+  const next = stack[stack.length - 1] ?? DEFAULT;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (!meta) return;
-  meta.setAttribute('content', stack[stack.length - 1] ?? DEFAULT);
+  if (meta) meta.setAttribute('content', next);
+  document.documentElement.style.backgroundColor = next;
+  document.body.style.backgroundColor = next;
 }
 
 export function useThemeColor(color: string) {
