@@ -162,8 +162,9 @@ function initialRestSeconds(stored: number | null | undefined): number {
   return 60;
 }
 
-// Short audible beep when the rest timer ends. Works as a fallback on iOS Safari
-// (no navigator.vibrate) and as reinforcement everywhere else.
+// Bell-like "ding" when the rest timer ends. Plays everywhere as the audible
+// cue; on iOS Safari (no navigator.vibrate) it's the only signal, and on
+// Android it reinforces the haptic.
 function playRestDoneBeep() {
   try {
     type WebAudioWindow = Window &
@@ -172,17 +173,36 @@ function playRestDoneBeep() {
     const Ctx = w.AudioContext ?? w.webkitAudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.3);
-    osc.onended = () => ctx.close().catch(() => {});
+
+    // Bell: a fundamental + a perfect-fifth partial, both with an exponential
+    // decay so it reads as a "ding" rather than a sine beep.
+    const now = ctx.currentTime;
+    const peak = 0.5;
+    const tail = 0.8;
+
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(peak, now + 0.01);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + tail);
+    master.connect(ctx.destination);
+
+    function partial(freq: number, mix: number) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      g.gain.value = mix;
+      o.connect(g).connect(master);
+      o.start(now);
+      o.stop(now + tail + 0.05);
+      return o;
+    }
+
+    const fundamental = partial(880, 1.0);
+    partial(1320, 0.45);
+    partial(1760, 0.2);
+
+    fundamental.onended = () => ctx.close().catch(() => {});
   } catch {
     // Autoplay/permission blocked — ignore silently.
   }
@@ -291,7 +311,7 @@ export function ExerciseLogger({
     const buzz = window.setTimeout(() => {
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try {
-          navigator.vibrate([200, 80, 200]);
+          navigator.vibrate([400, 120, 400, 120, 400]);
         } catch {
           // ignore
         }
