@@ -487,9 +487,17 @@ export interface WeekSummary {
 }
 
 function startOfThisWeek(): Date {
+  return mondayOfWeek(0);
+}
+
+export function mondayOfWeek(offsetWeeks: number): Date {
   const now = new Date();
   const dow = (now.getDay() + 6) % 7; // 0=Mon..6=Sun
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - dow + offsetWeeks * 7
+  );
 }
 
 export async function getCompletedDayNamesThisWeek(): Promise<string[]> {
@@ -529,10 +537,7 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
   const empty: number[][] = [[], [], [], [], [], [], []];
   if (!user) return { workoutsDone: 0, bars: empty };
 
-  // Compute start-of-week (Monday 00:00 local time).
-  const now = new Date();
-  const dow = (now.getDay() + 6) % 7; // 0=Mon..6=Sun
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  const monday = mondayOfWeek(0);
   const nextMonday = new Date(monday);
   nextMonday.setDate(nextMonday.getDate() + 7);
 
@@ -576,6 +581,158 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
     arr.map((v) => (max > 0 ? v / max : 0))
   );
   return { workoutsDone: sessionList.length, bars };
+}
+
+export interface BodyPartStats {
+  bodyPart: string;
+  volume: number;
+  setCount: number;
+  sessionCount: number;
+  topSet: { exercise: string; weight: number; reps: number } | null;
+}
+
+export interface WeeklySessionRef {
+  trainingDayName: string;
+  completedAt: string;
+}
+
+export interface WeeklyWorkoutSummary {
+  weekStart: Date;
+  weekEnd: Date;
+  workoutsDone: number;
+  totalVolume: number;
+  totalSets: number;
+  sessions: WeeklySessionRef[];
+  byBodyPart: BodyPartStats[];
+}
+
+export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWorkoutSummary> {
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const empty: WeeklyWorkoutSummary = {
+    weekStart,
+    weekEnd,
+    workoutsDone: 0,
+    totalVolume: 0,
+    totalSets: 0,
+    sessions: [],
+    byBodyPart: [],
+  };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return empty;
+
+  const { data: sessionRows, error: sessErr } = await supabase
+    .from('sessions')
+    .select('id, completed_at, training_days(name)')
+    .eq('user_id', user.id)
+    .not('completed_at', 'is', null)
+    .gte('completed_at', weekStart.toISOString())
+    .lt('completed_at', weekEnd.toISOString())
+    .order('completed_at', { ascending: true });
+  if (sessErr) throw sessErr;
+  type SRow = {
+    id: string;
+    completed_at: string;
+    training_days: { name: string } | { name: string }[] | null;
+  };
+  const sessions = (sessionRows as SRow[]) ?? [];
+  if (sessions.length === 0) return empty;
+
+  const sessionIds = sessions.map((s) => s.id);
+  const sessionRefs: WeeklySessionRef[] = sessions.map((s) => {
+    const td = Array.isArray(s.training_days) ? s.training_days[0] : s.training_days;
+    return { trainingDayName: td?.name ?? 'Workout', completedAt: s.completed_at };
+  });
+
+  const { data: setsRows, error: setsErr } = await supabase
+    .from('logged_sets')
+    .select(
+      'session_id, exercise_display_name, weight, reps, plan_exercises(body_part)'
+    )
+    .in('session_id', sessionIds);
+  if (setsErr) throw setsErr;
+  type LRow = {
+    session_id: string;
+    exercise_display_name: string;
+    weight: number | null;
+    reps: number | null;
+    plan_exercises: { body_part: string | null } | { body_part: string | null }[] | null;
+  };
+  const setRows = (setsRows as LRow[]) ?? [];
+
+  const groups = new Map<
+    string,
+    {
+      volume: number;
+      setCount: number;
+      sessions: Set<string>;
+      topSet: { exercise: string; weight: number; reps: number } | null;
+    }
+  >();
+  let totalVolume = 0;
+  let totalSets = 0;
+  for (const r of setRows) {
+    const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
+    const bodyPart = pe?.body_part?.trim() ? pe.body_part.trim() : 'Other';
+    let group = groups.get(bodyPart);
+    if (!group) {
+      group = { volume: 0, setCount: 0, sessions: new Set(), topSet: null };
+      groups.set(bodyPart, group);
+    }
+    group.setCount += 1;
+    group.sessions.add(r.session_id);
+    totalSets += 1;
+    if (r.weight != null && r.reps != null) {
+      const v = r.weight * r.reps;
+      group.volume += v;
+      totalVolume += v;
+      if (!group.topSet || r.weight > group.topSet.weight) {
+        group.topSet = {
+          exercise: r.exercise_display_name,
+          weight: r.weight,
+          reps: r.reps,
+        };
+      }
+    }
+  }
+
+  const byBodyPart: BodyPartStats[] = [...groups.entries()]
+    .map(([bodyPart, g]) => ({
+      bodyPart,
+      volume: g.volume,
+      setCount: g.setCount,
+      sessionCount: g.sessions.size,
+      topSet: g.topSet,
+    }))
+    .sort((a, b) => b.volume - a.volume || b.setCount - a.setCount);
+
+  return {
+    weekStart,
+    weekEnd,
+    workoutsDone: sessions.length,
+    totalVolume,
+    totalSets,
+    sessions: sessionRefs,
+    byBodyPart,
+  };
+}
+
+export async function hasAnySessionsBefore(iso: string): Promise<boolean> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { count, error } = await supabase
+    .from('sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .not('completed_at', 'is', null)
+    .lt('completed_at', iso);
+  if (error) return false;
+  return (count ?? 0) > 0;
 }
 
 export async function deleteAllOpenSessions(): Promise<void> {

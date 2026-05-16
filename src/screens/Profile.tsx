@@ -17,7 +17,15 @@ import {
   setWaterUnit,
   type WaterUnit,
 } from '../lib/waterApi';
-import { getRecentSessionNotes } from '../lib/sessionsApi';
+import {
+  getRecentSessionNotes,
+  getWeeklyWorkoutSummary,
+  hasAnySessionsBefore,
+  mondayOfWeek,
+  type WeeklyWorkoutSummary,
+  type BodyPartStats,
+} from '../lib/sessionsApi';
+import { kgToLb } from '../lib/units';
 
 interface Props {
   onUploadPlan: () => void;
@@ -156,6 +164,8 @@ export function Profile({ onUploadPlan, onOpenHistory, onOpenPlans }: Props) {
             </button>
             <div className="border-t border-line" />
             <CoachExportRow />
+            <div className="border-t border-line" />
+            <CoachWeeklySummaryRow />
           </div>
         </Section>
 
@@ -282,6 +292,135 @@ function buildCoachExport(rows: Awaited<ReturnType<typeof getRecentSessionNotes>
     out.push('');
   }
   return out.join('\n');
+}
+
+function CoachWeeklySummaryRow() {
+  const [copied, setCopied] = useState(false);
+
+  async function exportSummary() {
+    try {
+      const thisWeekStart = mondayOfWeek(0);
+      const [thisWeek, hasHistory] = await Promise.all([
+        getWeeklyWorkoutSummary(thisWeekStart),
+        hasAnySessionsBefore(thisWeekStart.toISOString()),
+      ]);
+      if (thisWeek.workoutsDone === 0) return;
+      const prevWeek = hasHistory
+        ? await getWeeklyWorkoutSummary(mondayOfWeek(-1))
+        : null;
+      const md = buildCoachWeeklySummary(thisWeek, prevWeek);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(md);
+      } else {
+        downloadFile(`coach-weekly-summary-${todayIso()}.md`, md);
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // silent — copy is best-effort
+    }
+  }
+
+  return (
+    <button
+      onClick={exportSummary}
+      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-line/40"
+    >
+      <div className="text-sm font-semibold text-ink">
+        {copied ? 'Copied' : "Copy weekly summary for coach"}
+      </div>
+      <CopyIcon />
+    </button>
+  );
+}
+
+function buildCoachWeeklySummary(
+  current: WeeklyWorkoutSummary,
+  previous: WeeklyWorkoutSummary | null
+): string {
+  const unit = getLiftWeightUnit();
+  const fmtWeight = (kg: number) => {
+    const v = unit === 'lb' ? kgToLb(kg) : kg;
+    return `${Math.round(v).toLocaleString('en-GB')} ${unit}`;
+  };
+  const dateLong = (d: Date) =>
+    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const dayAndDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+
+  // Last day of the week is the day before weekEnd (Sunday).
+  const lastDay = new Date(current.weekEnd);
+  lastDay.setDate(lastDay.getDate() - 1);
+
+  const out: string[] = [];
+  out.push(`# Weekly workout summary`);
+  out.push(`Week of ${dateLong(current.weekStart)} – ${dateLong(lastDay)}`);
+  if (!previous) out.push(`First week of data — no comparison available.`);
+  out.push('');
+
+  const headline = `${current.workoutsDone} workout${current.workoutsDone === 1 ? '' : 's'} · ${fmtWeight(current.totalVolume)} total volume`;
+  out.push(previous ? `${headline} ${deltaSuffix(current.totalVolume, previous.totalVolume)}` : headline);
+  if (current.sessions.length > 0) {
+    const list = current.sessions
+      .map((s) => `${s.trainingDayName} (${dayAndDate(s.completedAt)})`)
+      .join(', ');
+    out.push(`Sessions: ${list}`);
+  }
+  out.push('');
+
+  // Merge body parts from this week and (if comparing) last week so dropped
+  // areas still show up at the bottom.
+  const prevByName = new Map<string, BodyPartStats>();
+  if (previous) {
+    for (const p of previous.byBodyPart) prevByName.set(p.bodyPart, p);
+  }
+  const seen = new Set<string>();
+  const ordered: { current: BodyPartStats | null; previous: BodyPartStats | null }[] = [];
+  for (const cur of current.byBodyPart) {
+    seen.add(cur.bodyPart);
+    ordered.push({ current: cur, previous: prevByName.get(cur.bodyPart) ?? null });
+  }
+  if (previous) {
+    const dropped = previous.byBodyPart
+      .filter((p) => !seen.has(p.bodyPart))
+      .sort((a, b) => b.volume - a.volume);
+    for (const p of dropped) ordered.push({ current: null, previous: p });
+  }
+
+  for (const row of ordered) {
+    const name = (row.current ?? row.previous)!.bodyPart;
+    if (row.current) {
+      const c = row.current;
+      const volPart = c.volume > 0 ? fmtWeight(c.volume) : `${c.setCount} set${c.setCount === 1 ? '' : 's'}`;
+      const delta = previous ? ` ${deltaSuffix(c.volume, row.previous?.volume ?? 0)}` : '';
+      const sessions = c.sessionCount > 1 ? ` · ×${c.sessionCount} sessions` : '';
+      out.push(`## ${name} — ${volPart}${delta}${sessions}`);
+      if (c.topSet) {
+        out.push(
+          `Top set: ${c.topSet.exercise} — ${fmtWeight(c.topSet.weight)} × ${c.topSet.reps}`
+        );
+      }
+    } else if (row.previous) {
+      out.push(`## ${name} — ${fmtWeight(0)} (−100% vs last week)`);
+      out.push(`Not trained this week.`);
+    }
+    out.push('');
+  }
+  return out.join('\n').trimEnd() + '\n';
+}
+
+function deltaSuffix(current: number, previous: number): string {
+  if (previous === 0) {
+    return current === 0 ? '(no change vs last week)' : '(new this week)';
+  }
+  const pct = ((current - previous) / previous) * 100;
+  const rounded = Math.round(pct);
+  const sign = rounded > 0 ? '+' : rounded < 0 ? '−' : '';
+  return `(${sign}${Math.abs(rounded)}% vs last week)`;
 }
 
 function todayIso(): string {
