@@ -97,6 +97,36 @@ export interface LoggedSet {
   completed_at: string;
 }
 
+export async function getRecentSessionPositions(
+  trainingDayIds: string[],
+  limit: number = 6
+): Promise<number[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || trainingDayIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('training_day_id, completed_at, training_days(position)')
+    .eq('user_id', user.id)
+    .not('completed_at', 'is', null)
+    .in('training_day_id', trainingDayIds)
+    .order('completed_at', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  type Row = {
+    training_day_id: string;
+    completed_at: string;
+    training_days: { position: number } | { position: number }[] | null;
+  };
+  return ((data as Row[]) ?? [])
+    .map((r) => {
+      const td = Array.isArray(r.training_days) ? r.training_days[0] : r.training_days;
+      return td?.position ?? -1;
+    })
+    .filter((p) => p >= 0);
+}
+
 export async function getLastCompletedTrainingDayName(
   sinceIso?: string | null
 ): Promise<string | null> {
