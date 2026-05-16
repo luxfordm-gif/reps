@@ -6,6 +6,7 @@ import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import {
   getLastCompletedTrainingDayName,
   getAnyActiveSession,
+  getRecentSessionPositions,
   getThisWeekSummary,
   getCompletedDayNamesThisWeek,
   type ActiveSessionContext,
@@ -72,6 +73,23 @@ function getNextDayName(
   return days[(idx + 1) % days.length].name;
 }
 
+// Hide the "Up next" banner once the user has clearly stopped following plan
+// order, so they don't get a suggestion that doesn't match what they're
+// actually about to do. recentPositions is newest-first.
+export function shouldShowUpNext(recentPositions: number[], planLength: number): boolean {
+  if (planLength <= 0 || recentPositions.length < 2) return true;
+  const inOrder: boolean[] = [];
+  for (let i = 0; i < recentPositions.length - 1; i++) {
+    const expected = (recentPositions[i + 1] + 1) % planLength;
+    inOrder.push(recentPositions[i] === expected);
+  }
+  // Recovery: last two completed sessions were both in plan order → resume.
+  if (inOrder.length >= 2 && inOrder[0] && inOrder[1]) return true;
+  // Suppress: the three most recent sessions were all jumps.
+  if (inOrder.length >= 3 && !inOrder[0] && !inOrder[1] && !inOrder[2]) return false;
+  return true;
+}
+
 function greeting() {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -96,6 +114,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
     dayDetails: [[], [], [], [], [], [], []],
   });
   const [completedThisWeek, setCompletedThisWeek] = useState<string[]>([]);
+  const [recentPositions, setRecentPositions] = useState<number[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -104,12 +123,16 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
         const p = await getActivePlan();
         if (!mounted) return;
         setPlan(p);
-        const [lc, w, a, ws, dn] = await Promise.all([
+        const mainDayIds = (p?.training_days ?? [])
+          .filter((d) => d.name !== 'Abs')
+          .map((d) => d.id);
+        const [lc, w, a, ws, dn, rp] = await Promise.all([
           getLastCompletedTrainingDayName(p?.activated_at ?? null),
           getTodayWaterCount(),
           getAnyActiveSession(),
           getThisWeekSummary(),
           getCompletedDayNamesThisWeek(),
+          getRecentSessionPositions(mainDayIds, 6),
         ]);
         if (!mounted) return;
         setLastCompleted(lc);
@@ -117,6 +140,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
         setActive(a);
         setWeekSummary(ws);
         setCompletedThisWeek(dn);
+        setRecentPositions(rp);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -184,6 +208,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
   const absDay = days.find((d) => d.name === 'Abs');
   const nextDayName = getNextDayName(mainDays, lastCompleted, completedThisWeek);
   const nextDay = nextDayName ? mainDays.find((d) => d.name === nextDayName) : undefined;
+  const showNextDay = shouldShowUpNext(recentPositions, mainDays.length);
   // List order: each main day in plan order, with Abs inserted after Pull and after Arms.
   const listDays: { day: Day; slot: 'main' | 'abs' }[] = [];
   for (const d of mainDays) {
@@ -238,7 +263,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
           />
         </div>
 
-        {nextDay && !active && (
+        {nextDay && !active && showNextDay && (
           <div className="mt-7">
             <SectionLabel>Today's workout</SectionLabel>
             <div className="mt-3">
