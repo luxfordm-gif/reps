@@ -164,10 +164,11 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
       <div className="min-h-screen bg-paper pb-28">
         <div
           className="mx-auto max-w-md px-5"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 28px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
         >
           <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink">
-            {greeting()}, {FIRST_NAME}.
+            {greeting()},
+            <span className="block">{FIRST_NAME}.</span>
           </h1>
           <p className="mt-1.5 text-base text-muted">Ready to crush your goals today?</p>
           <div className="mt-6 h-[180px] animate-pulse rounded-card bg-paper-card shadow-card" />
@@ -183,7 +184,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
       <div className="min-h-screen bg-paper pb-28">
         <div
           className="mx-auto max-w-md px-5"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 28px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
         >
           <div className="mt-12 rounded-card bg-paper-card p-8 text-center shadow-card">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFE9D6]">
@@ -227,7 +228,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
     <div className="min-h-screen bg-paper pb-28">
       <div
         className="mx-auto max-w-md px-5"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 28px)' }}
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
       >
         {active && (
           <ActiveWorkoutBanner
@@ -252,7 +253,8 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
 
         <div className={active ? 'mt-5' : ''}>
           <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink">
-            {greeting()}, {FIRST_NAME}.
+            {greeting()},
+            <span className="block">{FIRST_NAME}.</span>
           </h1>
           <p className="mt-1.5 text-base text-muted">
             Ready to crush your goals today?
