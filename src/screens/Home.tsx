@@ -178,7 +178,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
       <div className="min-h-screen bg-paper pb-28">
         <div
           className="mx-auto max-w-md px-5"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 32px)' }}
         >
           <div className="mt-12 rounded-card bg-paper-card p-8 text-center shadow-card">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFE9D6]">
@@ -222,7 +222,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
     <div className="min-h-screen bg-paper pb-28">
       <div
         className="mx-auto max-w-md px-5"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 32px)' }}
       >
         {active && (
           <ActiveWorkoutBanner
