@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrainingDayCard } from '../components/TrainingDayCard';
-import { AppHeader } from '../components/AppHeader';
 import { WeeklyProgress } from '../components/WeeklyProgress';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import {
@@ -177,10 +176,11 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
   if (!plan) {
     return (
       <div className="min-h-screen bg-paper pb-28">
-        <div className="mx-auto max-w-md px-5 pt-3">
-          <AppHeader />
-
-          <div className="mt-16 rounded-card bg-paper-card p-8 text-center shadow-card">
+        <div
+          className="mx-auto max-w-md px-5"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        >
+          <div className="mt-12 rounded-card bg-paper-card p-8 text-center shadow-card">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFE9D6]">
               <UploadCloudIcon />
             </div>
@@ -220,9 +220,10 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
 
   return (
     <div className="min-h-screen bg-paper pb-28">
-      <div className="mx-auto max-w-md px-5 pt-3">
-        <AppHeader />
-
+      <div
+        className="mx-auto max-w-md px-5"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+      >
         {active && (
           <ActiveWorkoutBanner
             context={active}
@@ -244,7 +245,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
           />
         )}
 
-        <div className="mt-5">
+        <div className={active ? 'mt-5' : 'mt-1'}>
           <h1 className="text-[32px] font-bold leading-[1.1] tracking-tight text-ink">
             {greeting()}, {FIRST_NAME}.
           </h1>

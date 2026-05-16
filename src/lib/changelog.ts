@@ -1,6 +1,6 @@
-// Bump VERSION whenever you ship a release you want users to see a
-// "What's new" popup for. Add an entry at the top of CHANGELOG.
-export const APP_VERSION = '2026-05-13';
+// Add a new entry at the TOP of CHANGELOG for every deploy you want
+// users to see a "What's new" popup for. That's the only step — the
+// app reads CHANGELOG[0] as the current version automatically.
 
 export interface ChangelogEntry {
   version: string;
@@ -10,6 +10,21 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '2026-05-16',
+    emoji: '✨',
+    title: "What's new",
+    bullets: [
+      "Black splash screen on launch and a tighter, logo-less top across Home, Performance and Profile",
+      'New "Copy weekly summary for coach" on Profile — body parts, top lifts and a week-on-week breakdown',
+      'Completion screen now opens with a short summary of your session and shows gold/silver/bronze medals next to your top lifts',
+      'Tap the LAST TIME pill on an exercise to see every set you logged last session, including drop sets',
+      'Weekly chart on Home keeps the popover open by default so you can see what your last workout was at a glance',
+      'Done-this-week tick appears on workout cards; "Up next" hides when you\'ve jumped around the plan and comes back when you\'re back in order',
+      'Kudos on the exercise screen now reward weight PRs and rep PRs together, with fresher wording',
+      'Renaming an exercise to something close to one you already have prompts "Did you mean…?" and merges history if you confirm',
+    ],
+  },
   {
     version: '2026-05-13',
     emoji: '✨',
@@ -37,6 +52,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
 ];
+
+export const LATEST_CHANGELOG_ENTRY: ChangelogEntry = CHANGELOG[0];
 
 export function getEntryForVersion(version: string): ChangelogEntry | null {
   return CHANGELOG.find((c) => c.version === version) ?? null;
