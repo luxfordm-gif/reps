@@ -1,22 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrainingDayCard } from '../components/TrainingDayCard';
 import { WeeklyProgress } from '../components/WeeklyProgress';
-import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
+import { weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import {
-  getLastCompletedTrainingDayName,
-  getAnyActiveSession,
-  getRecentSessionPositions,
-  getThisWeekSummary,
-  getCompletedDayNamesThisWeek,
   type ActiveSessionContext,
   type WeekSummary,
 } from '../lib/sessionsApi';
-import {
-  getTodayWaterCount,
-  adjustWater,
-  getWaterGoal,
-  getWaterUnit,
-} from '../lib/waterApi';
+import { adjustWater, getWaterGoal, getWaterUnit } from '../lib/waterApi';
+import { getCachedHomeData, loadHomeData, patchHomeCache } from '../lib/homeCache';
 
 type Day = FullPlan['training_days'][number];
 
@@ -98,48 +89,50 @@ function greeting() {
 }
 
 export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout }: Props) {
-  const [plan, setPlan] = useState<FullPlan | null>(null);
-  const [lastCompleted, setLastCompleted] = useState<string | null>(null);
-  const [waterCount, setWaterCount] = useState(0);
+  // Hydrate synchronously from the module-level cache so tab switches don't
+  // flash the skeleton. A background refresh always runs on mount to pick up
+  // any drift.
+  const initial = getCachedHomeData();
+  const [plan, setPlan] = useState<FullPlan | null>(initial?.plan ?? null);
+  const [lastCompleted, setLastCompleted] = useState<string | null>(
+    initial?.lastCompleted ?? null
+  );
+  const [waterCount, setWaterCount] = useState(initial?.waterCount ?? 0);
   const [waterGoal] = useState(() => getWaterGoal());
   const [waterUnit] = useState(() => getWaterUnit());
   const [waterBusy, setWaterBusy] = useState(false);
   const [waterError, setWaterError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState<ActiveSessionContext | null>(null);
-  const [weekSummary, setWeekSummary] = useState<WeekSummary>({
-    workoutsDone: 0,
-    bars: [[], [], [], [], [], [], []],
-    dayDetails: [[], [], [], [], [], [], []],
-  });
-  const [completedThisWeek, setCompletedThisWeek] = useState<string[]>([]);
-  const [recentPositions, setRecentPositions] = useState<number[]>([]);
+  const [loading, setLoading] = useState(!initial);
+  const [active, setActive] = useState<ActiveSessionContext | null>(
+    initial?.active ?? null
+  );
+  const [weekSummary, setWeekSummary] = useState<WeekSummary>(
+    initial?.weekSummary ?? {
+      workoutsDone: 0,
+      bars: [[], [], [], [], [], [], []],
+      dayDetails: [[], [], [], [], [], [], []],
+    }
+  );
+  const [completedThisWeek, setCompletedThisWeek] = useState<string[]>(
+    initial?.completedThisWeek ?? []
+  );
+  const [recentPositions, setRecentPositions] = useState<number[]>(
+    initial?.recentPositions ?? []
+  );
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const p = await getActivePlan();
+        const data = await loadHomeData();
         if (!mounted) return;
-        setPlan(p);
-        const mainDayIds = (p?.training_days ?? [])
-          .filter((d) => d.name !== 'Abs')
-          .map((d) => d.id);
-        const [lc, w, a, ws, dn, rp] = await Promise.all([
-          getLastCompletedTrainingDayName(p?.activated_at ?? null),
-          getTodayWaterCount(),
-          getAnyActiveSession(),
-          getThisWeekSummary(),
-          getCompletedDayNamesThisWeek(),
-          getRecentSessionPositions(mainDayIds, 6),
-        ]);
-        if (!mounted) return;
-        setLastCompleted(lc);
-        setWaterCount(w);
-        setActive(a);
-        setWeekSummary(ws);
-        setCompletedThisWeek(dn);
-        setRecentPositions(rp);
+        setPlan(data.plan);
+        setLastCompleted(data.lastCompleted);
+        setWaterCount(data.waterCount);
+        setActive(data.active);
+        setWeekSummary(data.weekSummary);
+        setCompletedThisWeek(data.completedThisWeek);
+        setRecentPositions(data.recentPositions);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -156,6 +149,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
     try {
       const next = await adjustWater(delta);
       setWaterCount(next);
+      patchHomeCache({ waterCount: next });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not save water count';
       setWaterError(msg);
