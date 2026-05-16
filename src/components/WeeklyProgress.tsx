@@ -1,14 +1,21 @@
+import { useEffect, useRef, useState } from 'react';
+import type { WeekSessionBreakdown } from '../lib/sessionsApi';
+
 interface Props {
   // 7 entries, Mon-Sun. Each day's entry is an array of relative efforts
   // (0-1). One workout = one entry. Two workouts on the same day = two
   // entries that render as stacked segments with a small gap.
   bars: number[][];
+  // 7 entries, Mon-Sun. Per-session breakdown for the popover. Same length
+  // and order as `bars`.
+  dayDetails: WeekSessionBreakdown[][];
   workoutsDone: number;
   workoutsTarget: number;
   planWeek?: number | null;
 }
 
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const FULL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TRACK_HEIGHT = 56;
 const SEGMENT_GAP = 3;
 const EMPTY_HEIGHT = 8;
@@ -17,9 +24,34 @@ const todayIndex = (() => {
   return (d + 6) % 7; // shift so 0=Mon..6=Sun
 })();
 
-export function WeeklyProgress({ bars, workoutsDone, workoutsTarget, planWeek }: Props) {
+export function WeeklyProgress({
+  bars,
+  dayDetails,
+  workoutsDone,
+  workoutsTarget,
+  planWeek,
+}: Props) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (selected == null) return;
+    function onDoc(e: PointerEvent) {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        setSelected(null);
+      }
+    }
+    document.addEventListener('pointerdown', onDoc);
+    return () => document.removeEventListener('pointerdown', onDoc);
+  }, [selected]);
+
+  const selectedDetails = selected != null ? dayDetails[selected] ?? [] : [];
+
   return (
-    <div className="rounded-card bg-ink p-5 text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+    <div
+      ref={cardRef}
+      className="rounded-card bg-ink p-5 text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+    >
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
           Weekly Progress
@@ -38,24 +70,40 @@ export function WeeklyProgress({ bars, workoutsDone, workoutsTarget, planWeek }:
         {bars.map((segments, i) => {
           const isToday = i === todayIndex;
           const hasAny = segments.length > 0;
+          const isSelected = selected === i;
+          const onClick = () => {
+            if (!hasAny) return;
+            setSelected((cur) => (cur === i ? null : i));
+          };
           return (
-            <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
+            <button
+              type="button"
+              key={i}
+              onClick={onClick}
+              disabled={!hasAny}
+              aria-label={`${FULL_DAYS[i]} workouts`}
+              aria-pressed={isSelected}
+              className="flex flex-1 flex-col items-center gap-1.5 disabled:cursor-default"
+            >
               <div
                 className="flex w-full flex-col-reverse items-stretch justify-start"
                 style={{ height: `${TRACK_HEIGHT}px`, gap: `${SEGMENT_GAP}px` }}
               >
                 {hasAny ? (
                   segments.map((value, si) => {
-                    // Minimum 12px so any completed session is visible, even
-                    // when it has zero logged volume (body-weight workouts).
                     const px = Math.max(
                       12,
                       Math.round(value * (TRACK_HEIGHT - SEGMENT_GAP * (segments.length - 1)))
                     );
+                    const bg = isSelected
+                      ? 'bg-white'
+                      : isToday
+                        ? 'bg-white'
+                        : 'bg-white/55';
                     return (
                       <div
                         key={si}
-                        className={`w-full rounded-md ${isToday ? 'bg-white' : 'bg-white/55'}`}
+                        className={`w-full rounded-md ${bg}`}
                         style={{ height: `${px}px` }}
                       />
                     );
@@ -69,15 +117,33 @@ export function WeeklyProgress({ bars, workoutsDone, workoutsTarget, planWeek }:
               </div>
               <div
                 className={`text-[10px] font-medium ${
-                  isToday ? 'text-white' : 'text-white/45'
+                  isSelected || isToday ? 'text-white' : 'text-white/45'
                 }`}
               >
                 {DAYS[i]}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
+
+      {selected != null && selectedDetails.length > 0 && (
+        <div className="mt-4 rounded-xl bg-white/10 px-3.5 py-2.5 text-xs text-white">
+          <div className="font-semibold uppercase tracking-[0.12em] text-white/60">
+            {FULL_DAYS[selected]}
+          </div>
+          <ul className="mt-1 space-y-0.5">
+            {selectedDetails.map((s, i) => (
+              <li key={i}>
+                <span className="font-semibold">{s.trainingDayName}</span>
+                {s.bodyParts.length > 0 && (
+                  <span className="text-white/70"> — {s.bodyParts.join(', ')}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

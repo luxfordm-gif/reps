@@ -479,11 +479,19 @@ export async function deleteSession(sessionId: string): Promise<void> {
 // Delete every open (not-yet-completed) session belonging to the current user.
 // Used when the user discards a workout — we want a truly clean slate, even if
 // abandoned sessions from older app versions are lurking in the DB.
+export interface WeekSessionBreakdown {
+  trainingDayName: string;
+  bodyParts: string[];
+}
+
 export interface WeekSummary {
   workoutsDone: number;
   // Mon..Sun. Each day is a list of session efforts (0-1), so a day with two
   // workouts has two entries that render as stacked segments with a gap.
   bars: number[][];
+  // Mon..Sun. Same shape and order as `bars` — one entry per session that day
+  // with the training day name and the unique body parts trained.
+  dayDetails: WeekSessionBreakdown[][];
 }
 
 function startOfThisWeek(): Date {
@@ -534,8 +542,9 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const empty: number[][] = [[], [], [], [], [], [], []];
-  if (!user) return { workoutsDone: 0, bars: empty };
+  const emptyBars: number[][] = [[], [], [], [], [], [], []];
+  const emptyDetails: WeekSessionBreakdown[][] = [[], [], [], [], [], [], []];
+  if (!user) return { workoutsDone: 0, bars: emptyBars, dayDetails: emptyDetails };
 
   const monday = mondayOfWeek(0);
   const nextMonday = new Date(monday);
@@ -543,32 +552,71 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
 
   const { data: sessions } = await supabase
     .from('sessions')
-    .select('id, completed_at')
+    .select('id, completed_at, training_days(name)')
     .eq('user_id', user.id)
     .not('completed_at', 'is', null)
     .gte('completed_at', monday.toISOString())
     .lt('completed_at', nextMonday.toISOString());
-  const sessionList = (sessions as { id: string; completed_at: string }[]) ?? [];
-  if (sessionList.length === 0) return { workoutsDone: 0, bars: empty };
+  type SRow = {
+    id: string;
+    completed_at: string;
+    training_days: { name: string } | { name: string }[] | null;
+  };
+  const sessionList = (sessions as SRow[]) ?? [];
+  if (sessionList.length === 0)
+    return { workoutsDone: 0, bars: emptyBars, dayDetails: emptyDetails };
 
   const { data: sets } = await supabase
     .from('logged_sets')
-    .select('session_id, weight, reps')
+    .select('session_id, weight, reps, plan_exercises(body_part)')
     .in(
       'session_id',
       sessionList.map((s) => s.id)
     );
+  type LRow = {
+    session_id: string;
+    weight: number | null;
+    reps: number | null;
+    plan_exercises:
+      | { body_part: string | null }
+      | { body_part: string | null }[]
+      | null;
+  };
   const volumeBySession = new Map<string, number>();
-  for (const r of ((sets as { session_id: string; weight: number | null; reps: number | null }[]) ?? [])) {
-    if (r.weight == null || r.reps == null) continue;
-    volumeBySession.set(r.session_id, (volumeBySession.get(r.session_id) ?? 0) + r.weight * r.reps);
+  const bodyPartsBySession = new Map<string, Set<string>>();
+  for (const r of ((sets as LRow[]) ?? [])) {
+    if (r.weight != null && r.reps != null) {
+      volumeBySession.set(
+        r.session_id,
+        (volumeBySession.get(r.session_id) ?? 0) + r.weight * r.reps
+      );
+    }
+    const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
+    const bp = pe?.body_part?.trim();
+    if (bp) {
+      let set = bodyPartsBySession.get(r.session_id);
+      if (!set) {
+        set = new Set();
+        bodyPartsBySession.set(r.session_id, set);
+      }
+      set.add(bp);
+    }
   }
 
   const dayBuckets: number[][] = [[], [], [], [], [], [], []];
-  for (const s of sessionList) {
+  const dayDetails: WeekSessionBreakdown[][] = [[], [], [], [], [], [], []];
+  const sortedByDay = [...sessionList].sort(
+    (a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime()
+  );
+  for (const s of sortedByDay) {
     const d = new Date(s.completed_at);
     const idx = (d.getDay() + 6) % 7;
     dayBuckets[idx].push(volumeBySession.get(s.id) ?? 0);
+    const td = Array.isArray(s.training_days) ? s.training_days[0] : s.training_days;
+    dayDetails[idx].push({
+      trainingDayName: td?.name ?? 'Workout',
+      bodyParts: [...(bodyPartsBySession.get(s.id) ?? [])],
+    });
   }
   // Normalize: bar height for any single session is its volume relative to
   // the heaviest day's TOTAL volume in the week (so the column tops match
@@ -580,7 +628,7 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
   const bars: number[][] = dayBuckets.map((arr) =>
     arr.map((v) => (max > 0 ? v / max : 0))
   );
-  return { workoutsDone: sessionList.length, bars };
+  return { workoutsDone: sessionList.length, bars, dayDetails };
 }
 
 export interface BodyPartStats {

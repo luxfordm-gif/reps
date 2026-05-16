@@ -93,6 +93,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
   const [weekSummary, setWeekSummary] = useState<WeekSummary>({
     workoutsDone: 0,
     bars: [[], [], [], [], [], [], []],
+    dayDetails: [[], [], [], [], [], [], []],
   });
   const [completedThisWeek, setCompletedThisWeek] = useState<string[]>([]);
 
@@ -232,6 +233,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
             workoutsDone={weekSummary.workoutsDone}
             workoutsTarget={5}
             bars={weekSummary.bars}
+            dayDetails={weekSummary.dayDetails}
             planWeek={plan ? weeksOnPlan(plan.activated_at) : null}
           />
         </div>
