@@ -23,6 +23,7 @@ import {
 } from './lib/sessionsApi';
 import { BottomNav, type Tab } from './components/BottomNav';
 import { Splash } from './components/Splash';
+import { clearHomeCache, loadHomeData } from './lib/homeCache';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 
 type Modal = null | 'upload' | 'bodyWeight' | 'history' | 'plans';
@@ -35,6 +36,16 @@ function Root() {
     return () => window.clearTimeout(t);
   }, []);
   const splashVisible = loading || !splashMinElapsed;
+  // Warm the Home cache as soon as the user is signed in, so the data is
+  // (likely) ready by the time the splash fades. Wipe it on sign-out so a
+  // different user can't see the previous account's content.
+  useEffect(() => {
+    if (session) {
+      loadHomeData().catch(() => {});
+    } else {
+      clearHomeCache();
+    }
+  }, [session]);
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -119,6 +130,7 @@ function Root() {
       <UploadPlan
         onCancel={() => setModal(null)}
         onSaved={() => {
+          clearHomeCache();
           setRefreshKey((k) => k + 1);
           setModal(null);
           setTab('home');
@@ -134,7 +146,10 @@ function Root() {
       <Plans
         onBack={() => setModal(null)}
         onUpload={() => setModal('upload')}
-        onAfterActivate={() => setRefreshKey((k) => k + 1)}
+        onAfterActivate={() => {
+          clearHomeCache();
+          setRefreshKey((k) => k + 1);
+        }}
       />
     );
   } else if (completedSession) {
@@ -182,6 +197,7 @@ function Root() {
             setActiveDay(null);
             if (sid) {
               setCompletedSession({ id: sid, dayName: finishedDay });
+              clearHomeCache();
               setRefreshKey((k) => k + 1);
             }
           }}
@@ -297,6 +313,7 @@ function Root() {
     setActiveDay(null);
     if (sid) {
       setCompletedSession({ id: sid, dayName: finishedDay });
+      clearHomeCache();
       setRefreshKey((k) => k + 1);
     }
   }
@@ -315,6 +332,7 @@ function Root() {
     setSessionId(null);
     setSessionStartedAt(null);
     setActiveDay(null);
+    clearHomeCache();
     setRefreshKey((k) => k + 1);
   }
 }
