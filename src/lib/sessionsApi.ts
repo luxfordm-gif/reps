@@ -223,21 +223,36 @@ export async function getSessionStats(
   };
 }
 
+export type RecapMedal = 'gold' | 'silver' | 'bronze';
+
+export interface RecapBestSet {
+  exercise: string;
+  weight: number;
+  reps: number;
+  /** Medal when today's top set ranks 1st/2nd/3rd amongst the user's all-time distinct top weights for the exercise. */
+  medal: RecapMedal | null;
+}
+
 export interface SessionRecap {
   setsLogged: number;
   totalWeight: number;
   durationMinutes: number | null;
-  bestSets: { exercise: string; weight: number; reps: number }[];
+  bestSets: RecapBestSet[];
   /** Total weight from the last completed session for the same training day, if any. */
   previousTotalWeight: number | null;
+  /** Unique body parts trained, in order of first appearance in the session. */
+  bodyParts: string[];
 }
 
 export async function getSessionRecap(sessionId: string): Promise<SessionRecap> {
   const [{ data: sets, error: setsErr }, { data: sess, error: sessErr }] = await Promise.all([
     supabase
       .from('logged_sets')
-      .select('exercise_display_name, weight, reps, completed_at')
-      .eq('session_id', sessionId),
+      .select(
+        'exercise_display_name, exercise_normalized_name, weight, reps, completed_at, plan_exercises(body_part)'
+      )
+      .eq('session_id', sessionId)
+      .order('completed_at', { ascending: true }),
     supabase
       .from('sessions')
       .select('started_at, completed_at')
@@ -246,20 +261,41 @@ export async function getSessionRecap(sessionId: string): Promise<SessionRecap> 
   ]);
   if (setsErr) throw setsErr;
   if (sessErr) throw sessErr;
-  type Row = { exercise_display_name: string; weight: number | null; reps: number | null };
+  type Row = {
+    exercise_display_name: string;
+    exercise_normalized_name: string;
+    weight: number | null;
+    reps: number | null;
+    plan_exercises?: { body_part: string | null } | { body_part: string | null }[] | null;
+  };
   const rows: Row[] = (sets as Row[]) ?? [];
   let totalWeight = 0;
-  const bestPerExercise = new Map<string, { weight: number; reps: number }>();
+  const bestPerExercise = new Map<
+    string,
+    { normalizedName: string; weight: number; reps: number }
+  >();
+  const bodyParts: string[] = [];
+  const seenBodyParts = new Set<string>();
   for (const r of rows) {
     if (r.weight != null && r.reps != null) {
       totalWeight += r.weight * r.reps;
       const prev = bestPerExercise.get(r.exercise_display_name);
       if (!prev || r.weight > prev.weight) {
-        bestPerExercise.set(r.exercise_display_name, { weight: r.weight, reps: r.reps });
+        bestPerExercise.set(r.exercise_display_name, {
+          normalizedName: r.exercise_normalized_name,
+          weight: r.weight,
+          reps: r.reps,
+        });
       }
     }
+    const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
+    const bp = pe?.body_part?.trim();
+    if (bp && !seenBodyParts.has(bp)) {
+      seenBodyParts.add(bp);
+      bodyParts.push(bp);
+    }
   }
-  const bestSets = [...bestPerExercise.entries()]
+  const bestEntries = [...bestPerExercise.entries()]
     .map(([exercise, v]) => ({ exercise, ...v }))
     .sort((a, b) => b.weight - a.weight)
     .slice(0, 5);
@@ -293,14 +329,69 @@ export async function getSessionRecap(sessionId: string): Promise<SessionRecap> 
         .select('weight, reps')
         .eq('session_id', prior.id);
       let sum = 0;
-      for (const r of (priorSets as Row[]) ?? []) {
+      for (const r of (priorSets as { weight: number | null; reps: number | null }[]) ?? []) {
         if (r.weight != null && r.reps != null) sum += r.weight * r.reps;
       }
       previousTotalWeight = sum;
     }
   }
 
-  return { setsLogged: rows.length, totalWeight, durationMinutes, bestSets, previousTotalWeight };
+  // Rank each top set by weight against the user's all-time distinct top
+  // weights for that exercise. Today's logged sets are already in the DB so
+  // a new PR naturally ranks first.
+  const medalByExercise = new Map<string, RecapMedal | null>();
+  const normalizedNames = bestEntries
+    .filter((e) => e.weight > 0)
+    .map((e) => e.normalizedName);
+  if (thisSess?.user_id && normalizedNames.length > 0) {
+    const { data: hist } = await supabase
+      .from('logged_sets')
+      .select('exercise_normalized_name, weight')
+      .eq('user_id', thisSess.user_id)
+      .in('exercise_normalized_name', normalizedNames)
+      .not('weight', 'is', null);
+    const distinctByName = new Map<string, Set<number>>();
+    for (const r of (hist as { exercise_normalized_name: string; weight: number }[]) ?? []) {
+      if (r.weight == null) continue;
+      const key = Math.round(r.weight * 10) / 10;
+      let set = distinctByName.get(r.exercise_normalized_name);
+      if (!set) {
+        set = new Set();
+        distinctByName.set(r.exercise_normalized_name, set);
+      }
+      set.add(key);
+    }
+    for (const e of bestEntries) {
+      if (e.weight <= 0) {
+        medalByExercise.set(e.exercise, null);
+        continue;
+      }
+      const distinct = [...(distinctByName.get(e.normalizedName) ?? [])].sort(
+        (a, b) => b - a
+      );
+      const todays = Math.round(e.weight * 10) / 10;
+      const rank = distinct.indexOf(todays);
+      const medal: RecapMedal | null =
+        rank === 0 ? 'gold' : rank === 1 ? 'silver' : rank === 2 ? 'bronze' : null;
+      medalByExercise.set(e.exercise, medal);
+    }
+  }
+
+  const bestSets: RecapBestSet[] = bestEntries.map((e) => ({
+    exercise: e.exercise,
+    weight: e.weight,
+    reps: e.reps,
+    medal: medalByExercise.get(e.exercise) ?? null,
+  }));
+
+  return {
+    setsLogged: rows.length,
+    totalWeight,
+    durationMinutes,
+    bestSets,
+    previousTotalWeight,
+    bodyParts,
+  };
 }
 
 export interface LastDayRecap {
