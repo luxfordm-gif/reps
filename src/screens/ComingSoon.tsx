@@ -10,7 +10,7 @@ export function ComingSoon({ title, subtitle }: Props) {
     <div className="min-h-screen bg-paper pb-28">
       <div
         className="mx-auto max-w-md px-5"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 28px)' }}
       >
         <PageHeader title={title} />
         <div className="mt-12 rounded-card bg-paper-card p-8 text-center shadow-card">
