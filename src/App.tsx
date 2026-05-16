@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { EndWorkoutDialog } from './components/EndWorkoutDialog';
-import { APP_VERSION, getEntryForVersion } from './lib/changelog';
+import { LATEST_CHANGELOG_ENTRY } from './lib/changelog';
 import { AuthProvider, useAuth } from './lib/auth';
 import { isSupabaseConfigured } from './lib/supabase';
 import { Home } from './screens/Home';
@@ -22,12 +22,19 @@ import {
   deleteAllOpenSessions,
 } from './lib/sessionsApi';
 import { BottomNav, type Tab } from './components/BottomNav';
+import { Splash } from './components/Splash';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 
 type Modal = null | 'upload' | 'bodyWeight' | 'history' | 'plans';
 
 function Root() {
   const { session, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
+  const [splashMinElapsed, setSplashMinElapsed] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setSplashMinElapsed(true), 700);
+    return () => window.clearTimeout(t);
+  }, []);
+  const splashVisible = loading || !splashMinElapsed;
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -45,9 +52,17 @@ function Root() {
     if (!session) return;
     if (typeof window === 'undefined') return;
     const seen = window.localStorage.getItem('reps.lastSeenVersion');
-    if (seen !== APP_VERSION && getEntryForVersion(APP_VERSION)) {
-      setShowWhatsNew(true);
+    if (seen === LATEST_CHANGELOG_ENTRY.version) return;
+    if (seen === null) {
+      // First load on this device — baseline silently so we only pop the
+      // modal for *real* updates, not the initial install.
+      window.localStorage.setItem(
+        'reps.lastSeenVersion',
+        LATEST_CHANGELOG_ENTRY.version
+      );
+      return;
     }
+    setShowWhatsNew(true);
   }, [session]);
 
   const screenKey = loading
@@ -73,7 +88,7 @@ function Root() {
 
   function dismissWhatsNew() {
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem('reps.lastSeenVersion', APP_VERSION);
+      window.localStorage.setItem('reps.lastSeenVersion', LATEST_CHANGELOG_ENTRY.version);
     }
     setShowWhatsNew(false);
   }
@@ -229,12 +244,11 @@ function Root() {
         );
         break;
     }
-    const entry = getEntryForVersion(APP_VERSION);
     body = (
       <>
         <TabSwipeContainer tab={tab} onTabChange={setTab}>{screen}</TabSwipeContainer>
-        {showWhatsNew && entry && (
-          <WhatsNewModal entry={entry} onDismiss={dismissWhatsNew} />
+        {showWhatsNew && (
+          <WhatsNewModal entry={LATEST_CHANGELOG_ENTRY} onDismiss={dismissWhatsNew} />
         )}
       </>
     );
@@ -244,6 +258,7 @@ function Root() {
     <>
       {body}
       <BottomNav active={tab} onChange={setTab} visible={navVisible} />
+      <Splash visible={splashVisible} />
     </>
   );
 

@@ -28,16 +28,23 @@ export function PageHeader({ title, onBack, rightAction, large = true }: Props) 
 
   return (
     <>
+      {large && (
+        <h1
+          ref={largeTitleRef}
+          className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink"
+        >
+          {title}
+        </h1>
+      )}
       <div
-        className={`sticky top-0 z-20 -mx-5 bg-paper transition-shadow ${
+        className={`sticky top-0 z-20 -mx-5 -mt-11 bg-paper transition-shadow ${
           collapsed
             ? 'shadow-[0_1px_2px_rgba(0,0,0,0.06)] after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-line/60'
-            : ''
+            : 'pointer-events-none'
         }`}
-        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="relative flex h-11 items-center justify-center px-5">
-          {onBack && (
+          {onBack && collapsed && (
             <button
               onClick={onBack}
               className="absolute left-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-line/60"
@@ -53,17 +60,9 @@ export function PageHeader({ title, onBack, rightAction, large = true }: Props) 
           >
             {title}
           </div>
-          {rightAction && <div className="absolute right-2">{rightAction}</div>}
+          {rightAction && collapsed && <div className="absolute right-2">{rightAction}</div>}
         </div>
       </div>
-      {large && (
-        <h1
-          ref={largeTitleRef}
-          className="mt-3 text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink"
-        >
-          {title}
-        </h1>
-      )}
     </>
   );
 }
