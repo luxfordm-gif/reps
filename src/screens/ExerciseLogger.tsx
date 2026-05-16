@@ -9,6 +9,7 @@ import {
   type LoggedSet,
 } from '../lib/sessionsApi';
 import { parseSetMods } from '../lib/parseSetMods';
+import { buildKudos } from '../lib/kudos';
 import {
   updatePlanExerciseName,
   updatePlanExerciseRest,
@@ -471,16 +472,6 @@ export function ExerciseLogger({
     return [...lastSets].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))[0];
   }, [lastSets]);
 
-  const totalVolume = useMemo(
-    () => sets.reduce((sum, s) => sum + (parseFloat(s.weight) || 0) * (parseInt(s.reps, 10) || 0), 0),
-    [sets]
-  );
-
-  const lastVolume = useMemo(
-    () => lastSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0),
-    [lastSets]
-  );
-
   const restRemainingMs = restEndsAt ? Math.max(0, restEndsAt - Date.now()) : 0;
   const restActive = restEndsAt != null && restRemainingMs > 0;
 
@@ -632,10 +623,10 @@ export function ExerciseLogger({
 
         {allDone && (
           <Improvements
-            totalVolume={totalVolume}
-            lastVolume={lastVolume}
             sets={sets}
             lastSets={lastSets}
+            repRange={exercise.rep_range}
+            seed={`${sessionId}:${exercise.id}`}
           />
         )}
       </div>
@@ -1386,79 +1377,26 @@ function RestPicker({
 }
 
 function Improvements({
-  totalVolume,
-  lastVolume,
   sets,
   lastSets,
+  repRange,
+  seed,
 }: {
-  totalVolume: number;
-  lastVolume: number;
   sets: SetState[];
   lastSets: LoggedSet[];
+  repRange: string;
+  seed: string;
 }) {
-  // First time logging this exercise — no comparison possible.
-  if (lastSets.length === 0) {
-    return (
-      <div className="mt-7 rounded-card bg-paper-card p-5 shadow-card">
-        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-          Nice work
-        </div>
-        <div className="mt-1 text-lg font-bold tracking-tight text-ink">
-          Baseline set — beat it next time.
-        </div>
-      </div>
-    );
-  }
-
-  // Per-set rep improvements
-  const repPRs: { setIndex: number; delta: number }[] = [];
-  for (const s of sets) {
-    const last = lastSets.find((l) => l.set_index === s.setIndex && l.drop_index === s.dropIndex);
-    const reps = parseInt(s.reps, 10) || 0;
-    if (last && last.reps != null && reps > last.reps) {
-      repPRs.push({ setIndex: s.setIndex, delta: reps - last.reps });
-    }
-  }
-  const totalExtraReps = repPRs.reduce((sum, r) => sum + r.delta, 0);
-
-  // Top set weight comparison
-  const lastTop = Math.max(...lastSets.map((l) => l.weight ?? 0), 0);
-  const thisTop = Math.max(...sets.map((s) => parseFloat(s.weight) || 0), 0);
-  const topDelta = thisTop - lastTop;
-
-  // Volume
-  const volumeDelta = totalVolume - lastVolume;
-  const volumePct = lastVolume > 0 ? Math.round((volumeDelta / lastVolume) * 100) : null;
-
-  // Pick the headline — prioritise the most encouraging signal.
-  let headline: string;
-  let detail: string | null = null;
-
-  if (totalExtraReps > 0) {
-    const setsWord = repPRs.length === 1 ? `set ${repPRs[0].setIndex}` : `${repPRs.length} sets`;
-    headline = `+${totalExtraReps} rep${totalExtraReps === 1 ? '' : 's'} vs last time. Keep it up!`;
-    detail = `Extra reps on ${setsWord}.`;
-  } else if (topDelta > 0) {
-    headline = `+${topDelta} kg on your top set. Strong work!`;
-  } else if (lastTop > 0 && thisTop === lastTop) {
-    headline = 'Matched your top set — momentum building.';
-  } else if (volumePct != null && volumePct > 0) {
-    headline = `Volume up ${volumePct}% — solid session.`;
-  } else if (volumePct != null && volumePct === 0) {
-    headline = 'Held the line — same as last time.';
-  } else {
-    headline = 'Logged. Next time, aim for one more rep.';
-  }
-
+  const kudos = buildKudos({ thisSets: sets, lastSets, repRange, seed });
   return (
     <div className="mt-7 rounded-card bg-paper-card p-5 shadow-card">
       <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-        Great work
+        {kudos.label}
       </div>
       <div className="mt-1 text-lg font-bold leading-snug tracking-tight text-ink">
-        {headline}
+        {kudos.headline}
       </div>
-      {detail && <div className="mt-1 text-sm text-muted">{detail}</div>}
+      {kudos.detail && <div className="mt-1 text-sm text-muted">{kudos.detail}</div>}
     </div>
   );
 }
