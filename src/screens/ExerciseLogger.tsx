@@ -541,16 +541,7 @@ export function ExerciseLogger({
         </div>
 
         {lastSets.length > 0 && lastTopSet && (
-          <div className="mt-4 flex items-center justify-between rounded-xl bg-paper-card px-3.5 py-2.5 shadow-card">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-              Last time
-            </span>
-            <span className="text-xs font-medium text-ink">
-              {lastSets.length} sets · top{' '}
-              {lastTopSet.weight != null ? `${lastTopSet.weight} kg` : '–'} ×{' '}
-              {lastTopSet.reps ?? '–'}
-            </span>
-          </div>
+          <LastTimeRow lastSets={lastSets} lastTopSet={lastTopSet} />
         )}
 
         <div className="mt-6 space-y-3">
@@ -866,6 +857,72 @@ function RenameExerciseModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function LastTimeRow({
+  lastSets,
+  lastTopSet,
+}: {
+  lastSets: LoggedSet[];
+  lastTopSet: LoggedSet;
+}) {
+  const [open, setOpen] = useState(false);
+  const groups: { setIndex: number; rows: LoggedSet[] }[] = [];
+  for (const s of [...lastSets].sort(
+    (a, b) => a.set_index - b.set_index || a.drop_index - b.drop_index
+  )) {
+    const tail = groups[groups.length - 1];
+    if (tail && tail.setIndex === s.set_index) tail.rows.push(s);
+    else groups.push({ setIndex: s.set_index, rows: [s] });
+  }
+  const fmt = (s: LoggedSet) =>
+    `${s.weight != null ? `${s.weight} kg` : '–'} × ${s.reps ?? '–'}`;
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-xl bg-paper-card shadow-card">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-3.5 py-2.5 text-left active:bg-line/40"
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+          Last time
+        </span>
+        <span className="flex items-center gap-2 text-xs font-medium text-ink">
+          <span>
+            {lastSets.length} sets · top{' '}
+            {lastTopSet.weight != null ? `${lastTopSet.weight} kg` : '–'} ×{' '}
+            {lastTopSet.reps ?? '–'}
+          </span>
+          <Chevron rotate={open ? 90 : 0} />
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-line px-3.5 py-2.5">
+          <ul className="space-y-1">
+            {groups.map((g) => (
+              <li key={g.setIndex} className="text-xs text-ink">
+                {g.rows.map((r, i) =>
+                  i === 0 ? (
+                    <div key={r.id} className="flex justify-between">
+                      <span className="font-semibold text-muted">Set {g.setIndex}</span>
+                      <span>{fmt(r)}</span>
+                    </div>
+                  ) : (
+                    <div key={r.id} className="flex justify-between pl-3 text-muted">
+                      <span>↳ drop</span>
+                      <span>{fmt(r)}</span>
+                    </div>
+                  )
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
