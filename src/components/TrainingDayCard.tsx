@@ -4,6 +4,7 @@ interface Props {
   exerciseCount: number;
   accent: string;
   isNext?: boolean;
+  done?: boolean;
   onClick?: () => void;
 }
 
@@ -13,6 +14,7 @@ export function TrainingDayCard({
   exerciseCount,
   accent,
   isNext,
+  done,
   onClick,
 }: Props) {
   return (
@@ -22,7 +24,7 @@ export function TrainingDayCard({
         isNext
           ? 'bg-ink text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]'
           : 'bg-paper-card text-ink shadow-card'
-      }`}
+      } ${done && !isNext ? 'opacity-70' : ''}`}
     >
       {isNext && (
         <span className="absolute -top-2 left-5 rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink shadow-card">
@@ -34,9 +36,13 @@ export function TrainingDayCard({
           isNext ? 'bg-white/15' : accent
         }`}
       >
-        <span className={`text-xl font-bold ${isNext ? 'text-white' : 'text-ink'}`}>
-          {name[0]}
-        </span>
+        {done ? (
+          <DoneCheck inverted={!!isNext} />
+        ) : (
+          <span className={`text-xl font-bold ${isNext ? 'text-white' : 'text-ink'}`}>
+            {name[0]}
+          </span>
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-xl font-bold tracking-tight">{name}</div>
@@ -65,5 +71,26 @@ export function TrainingDayCard({
         </svg>
       </div>
     </button>
+  );
+}
+
+function DoneCheck({ inverted }: { inverted: boolean }) {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 22 22"
+      fill="none"
+      aria-label="Completed this week"
+      className={inverted ? 'text-white' : 'text-ink'}
+    >
+      <path
+        d="M5 11.5l4 4 8-9"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

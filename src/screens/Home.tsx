@@ -314,6 +314,7 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
                 bodyParts={bodyPartsForDay(day.plan_exercises ?? [])}
                 exerciseCount={(day.plan_exercises ?? []).length}
                 accent={ACCENTS[day.name] ?? FALLBACK_ACCENT}
+                done={completedThisWeek.includes(day.name)}
                 onClick={() => onTapDay(day)}
               />
             ))}
