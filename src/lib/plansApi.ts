@@ -45,6 +45,26 @@ export async function updatePlanExerciseRest(
   if (error) throw error;
 }
 
+export async function mergeExerciseIntoIdentity(
+  exerciseId: string,
+  targetName: string,
+  targetNormalizedName: string
+): Promise<void> {
+  const { error: peError } = await supabase
+    .from('plan_exercises')
+    .update({ name: targetName, normalized_name: targetNormalizedName })
+    .eq('id', exerciseId);
+  if (peError) throw peError;
+  const { error: lsError } = await supabase
+    .from('logged_sets')
+    .update({
+      exercise_display_name: targetName,
+      exercise_normalized_name: targetNormalizedName,
+    })
+    .eq('plan_exercise_id', exerciseId);
+  if (lsError) throw lsError;
+}
+
 export async function updatePlanExerciseName(
   exerciseId: string,
   name: string,

@@ -1,4 +1,5 @@
 import { toSentenceCase } from './textCase';
+import { normalizeExerciseName as normalizeName } from './normalizeExerciseName';
 
 // Parses the raw text of a trainer's training plan PDF (The Condition Coaches format)
 // into a structured plan with days, exercises, prescribed sets/reps/tempo and notes.
@@ -82,10 +83,6 @@ const HEADER_BOILERPLATE_PREFIXES = [
   'TAKE REST DAYS',
   'REST PERIODS',
 ];
-
-function normalizeName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
-}
 
 function detectSetScheme(notes: string, repRange: string): SetScheme {
   const upper = notes.toUpperCase();

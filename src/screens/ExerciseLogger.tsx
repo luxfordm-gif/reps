@@ -11,11 +11,15 @@ import {
 import { parseSetMods } from '../lib/parseSetMods';
 import { buildKudos } from '../lib/kudos';
 import {
+  getActivePlan,
+  mergeExerciseIntoIdentity,
   updatePlanExerciseName,
   updatePlanExerciseRest,
   type PlanExerciseRow,
 } from '../lib/plansApi';
 import BarbellCalculator from '../components/BarbellCalculator';
+import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
+import { normalizeExerciseName } from '../lib/normalizeExerciseName';
 
 // Flip to false to revert to the inline rest timer (the original design).
 const USE_REST_OVERLAY = true;
@@ -246,6 +250,11 @@ export function ExerciseLogger({
   const [, setNow] = useState(Date.now());
   const [displayName, setDisplayName] = useState(exercise.name);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [renameCandidates, setRenameCandidates] = useState<SimilarityCandidate[]>([]);
+  const [suggestion, setSuggestion] = useState<
+    | { candidate: SimilarityCandidate; typedName: string; resetBaseline: boolean }
+    | null
+  >(null);
 
   // When the user switches to a different exercise mid-session, re-pick the
   // initial rest from that exercise's stored value (falling back to local
@@ -331,6 +340,29 @@ export function ExerciseLogger({
       window.clearTimeout(buzz);
     };
   }, [restEndsAt]);
+
+  useEffect(() => {
+    if (!renameOpen) return;
+    let mounted = true;
+    getActivePlan()
+      .then((plan) => {
+        if (!mounted || !plan) return;
+        const list: SimilarityCandidate[] = [];
+        for (const day of plan.training_days ?? []) {
+          for (const ex of day.plan_exercises ?? []) {
+            list.push({ name: ex.name, normalizedName: ex.normalized_name });
+          }
+        }
+        setRenameCandidates(list);
+      })
+      .catch(() => {
+        // Suggestion is best-effort — if the plan fails to load, fall back
+        // to the existing rename flow without a suggestion.
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [renameOpen]);
 
   // Load existing sets for this exercise + last session's sets
   useEffect(() => {
@@ -687,6 +719,15 @@ export function ExerciseLogger({
           initialName={displayName}
           onCancel={() => setRenameOpen(false)}
           onConfirm={async (newName, resetBaseline) => {
+            const match = findCloseMatch(
+              newName,
+              renameCandidates,
+              exercise.normalized_name
+            );
+            if (match) {
+              setSuggestion({ candidate: match, typedName: newName, resetBaseline });
+              return;
+            }
             try {
               await updatePlanExerciseName(exercise.id, newName, { resetBaseline });
             } catch (e) {
@@ -696,6 +737,55 @@ export function ExerciseLogger({
             }
             setDisplayName(newName);
             if (resetBaseline) setLastSets([]);
+            setRenameOpen(false);
+          }}
+        />
+      )}
+      {suggestion && (
+        <DidYouMeanModal
+          typedName={suggestion.typedName}
+          candidateName={suggestion.candidate.name}
+          onCancel={() => setSuggestion(null)}
+          onKeepTyped={async () => {
+            const { typedName, resetBaseline } = suggestion;
+            try {
+              await updatePlanExerciseName(exercise.id, typedName, { resetBaseline });
+            } catch (e) {
+              console.error(e);
+              setError('Could not save the new name. Try again.');
+              return;
+            }
+            setDisplayName(typedName);
+            if (resetBaseline) setLastSets([]);
+            setSuggestion(null);
+            setRenameOpen(false);
+          }}
+          onMerge={async () => {
+            const target = suggestion.candidate;
+            const targetNormalized = normalizeExerciseName(target.name);
+            try {
+              await mergeExerciseIntoIdentity(
+                exercise.id,
+                target.name,
+                targetNormalized
+              );
+            } catch (e) {
+              console.error(e);
+              setError('Could not merge with the suggested exercise. Try again.');
+              return;
+            }
+            setDisplayName(target.name);
+            try {
+              const merged = await getLastSessionSetsForExercise(
+                targetNormalized,
+                sessionId,
+                exercise.baseline_reset_at
+              );
+              setLastSets(merged);
+            } catch {
+              setLastSets([]);
+            }
+            setSuggestion(null);
             setRenameOpen(false);
           }}
         />
@@ -848,6 +938,75 @@ function RenameExerciseModal({
             className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink disabled:opacity-40 active:bg-line/40"
           >
             Different machine — reset to baseline
+          </button>
+          <button
+            onClick={onCancel}
+            className="w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DidYouMeanModal({
+  typedName,
+  candidateName,
+  onCancel,
+  onKeepTyped,
+  onMerge,
+}: {
+  typedName: string;
+  candidateName: string;
+  onCancel: () => void;
+  onKeepTyped: () => void;
+  onMerge: () => void;
+}) {
+  const [confirmed, setConfirmed] = useState(false);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-base font-semibold text-ink">Did you mean…?</h2>
+        <p className="mt-1 text-xs text-muted">
+          Looks like you already have an exercise with a similar name.
+        </p>
+
+        <label className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-paper-card px-3 py-3">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-ink"
+          />
+          <span className="text-sm text-ink">
+            Yes, this is the same as{' '}
+            <span className="font-semibold">{candidateName}</span>.
+          </span>
+        </label>
+
+        <div className="mt-5 grid gap-2">
+          <button
+            onClick={onMerge}
+            disabled={!confirmed}
+            className="w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+          >
+            Use “{candidateName}” and merge history
+          </button>
+          <button
+            onClick={onKeepTyped}
+            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+          >
+            No — keep “{typedName}”
           </button>
           <button
             onClick={onCancel}
