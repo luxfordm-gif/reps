@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { WeekSessionBreakdown } from '../lib/sessionsApi';
 
 interface Props {
@@ -31,27 +31,24 @@ export function WeeklyProgress({
   workoutsTarget,
   planWeek,
 }: Props) {
-  const [selected, setSelected] = useState<number | null>(null);
-  const cardRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (selected == null) return;
-    function onDoc(e: PointerEvent) {
-      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
-        setSelected(null);
-      }
+  // Default to the most recent completed day this week so the popover
+  // always has something to show and the card has a stable height.
+  const latestIdx = useMemo(() => {
+    for (let i = bars.length - 1; i >= 0; i--) {
+      if (bars[i].length > 0) return i;
     }
-    document.addEventListener('pointerdown', onDoc);
-    return () => document.removeEventListener('pointerdown', onDoc);
-  }, [selected]);
+    return null;
+  }, [bars]);
 
-  const selectedDetails = selected != null ? dayDetails[selected] ?? [] : [];
+  // Track only the user's explicit pick; fall back to the latest completed
+  // day so newly-finished workouts auto-anchor the popover.
+  const [userPicked, setUserPicked] = useState<number | null>(null);
+  const selected = userPicked ?? latestIdx;
+  const selectedDetails =
+    selected != null ? dayDetails[selected] ?? [] : [];
 
   return (
-    <div
-      ref={cardRef}
-      className="rounded-card bg-ink p-5 text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
-    >
+    <div className="rounded-card bg-ink p-5 text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
           Weekly Progress
@@ -73,7 +70,8 @@ export function WeeklyProgress({
           const isSelected = selected === i;
           const onClick = () => {
             if (!hasAny) return;
-            setSelected((cur) => (cur === i ? null : i));
+            // Persistent popover: tapping the active bar keeps it selected.
+            setUserPicked(i);
           };
           return (
             <button
@@ -127,23 +125,27 @@ export function WeeklyProgress({
         })}
       </div>
 
-      {selected != null && selectedDetails.length > 0 && (
-        <div className="mt-4 rounded-xl bg-white/10 px-3.5 py-2.5 text-xs text-white">
-          <div className="font-semibold uppercase tracking-[0.12em] text-white/60">
-            {FULL_DAYS[selected]}
-          </div>
-          <ul className="mt-1 space-y-0.5">
-            {selectedDetails.map((s, i) => (
-              <li key={i}>
-                <span className="font-semibold">{s.trainingDayName}</span>
-                {s.bodyParts.length > 0 && (
-                  <span className="text-white/70"> — {s.bodyParts.join(', ')}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div className="mt-4 min-h-[3.25rem] rounded-xl bg-white/10 px-3.5 py-2.5 text-xs text-white">
+        {selected != null && selectedDetails.length > 0 ? (
+          <>
+            <div className="font-semibold uppercase tracking-[0.12em] text-white/60">
+              {FULL_DAYS[selected]}
+            </div>
+            <ul className="mt-1 space-y-0.5">
+              {selectedDetails.map((s, i) => (
+                <li key={i}>
+                  <span className="font-semibold">{s.trainingDayName}</span>
+                  {s.bodyParts.length > 0 && (
+                    <span className="text-white/70"> — {s.bodyParts.join(', ')}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <div className="text-white/55">No workouts logged yet this week.</div>
+        )}
+      </div>
     </div>
   );
 }
