@@ -16,6 +16,7 @@ import { ExerciseLogger } from './screens/ExerciseLogger';
 import { SetNewPassword } from './screens/SetNewPassword';
 import { WorkoutHistory } from './screens/WorkoutHistory';
 import { WorkoutComplete } from './screens/WorkoutComplete';
+import { Onboarding } from './screens/Onboarding';
 import {
   createSession,
   completeSession,
@@ -25,8 +26,9 @@ import { BottomNav, type Tab } from './components/BottomNav';
 import { Splash } from './components/Splash';
 import { clearHomeCache, loadHomeData } from './lib/homeCache';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
+import { getMyProfile, type Profile as ProfileData } from './lib/profileApi';
 
-type Modal = null | 'upload' | 'bodyWeight' | 'history' | 'plans';
+type Modal = null | 'upload' | 'bodyWeight' | 'history' | 'plans' | 'onboarding';
 
 function Root() {
   const { session, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
@@ -58,6 +60,38 @@ function Root() {
   );
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [endWorkoutOpen, setEndWorkoutOpen] = useState(false);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
+
+  // Fetch profile when the user signs in. If they have no profile row yet, or
+  // they started onboarding but didn't finish, auto-open the flow — unless
+  // they've already dismissed it once in this session. A failed fetch must
+  // not block sign-in, so we swallow errors and just leave profile=null.
+  useEffect(() => {
+    if (!session) {
+      setProfile(null);
+      setOnboardingDismissedThisSession(false);
+      return;
+    }
+    let cancelled = false;
+    getMyProfile()
+      .then((p) => {
+        if (cancelled) return;
+        setProfile(p);
+        if (!onboardingDismissedThisSession && (!p || !p.onboarding_completed)) {
+          setModal('onboarding');
+        }
+      })
+      .catch(() => {
+        // Ignore — Home stays accessible even if profile fetch fails.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // We intentionally don't depend on onboardingDismissedThisSession; this
+    // effect should only re-run on session change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -139,6 +173,22 @@ function Root() {
     );
   } else if (modal === 'bodyWeight') {
     body = <BodyWeight onBack={() => setModal(null)} />;
+  } else if (modal === 'onboarding') {
+    body = (
+      <Onboarding
+        initial={profile}
+        onClose={(completed) => {
+          setModal(null);
+          setOnboardingDismissedThisSession(true);
+          // Refresh the profile so banners/dots update.
+          getMyProfile().then(setProfile).catch(() => {});
+          if (completed) {
+            clearHomeCache();
+            setRefreshKey((k) => k + 1);
+          }
+        }}
+      />
+    );
   } else if (modal === 'history') {
     body = <WorkoutHistory onBack={() => setModal(null)} />;
   } else if (modal === 'plans') {
@@ -233,6 +283,8 @@ function Root() {
             onUploadPlan={() => setModal('upload')}
             onLogBodyWeight={() => setModal('bodyWeight')}
             onTapDay={setActiveDay}
+            profile={profile}
+            onResumeOnboarding={() => setModal('onboarding')}
             onResumeWorkout={({ day, exerciseIdx, sessionId: sid, startedAt }) => {
               setActiveDay(day);
               setSessionId(sid);
@@ -256,6 +308,9 @@ function Root() {
             onUploadPlan={() => setModal('upload')}
             onOpenHistory={() => setModal('history')}
             onOpenPlans={() => setModal('plans')}
+            profile={profile}
+            onProfileChange={setProfile}
+            onResumeOnboarding={() => setModal('onboarding')}
           />
         );
         break;

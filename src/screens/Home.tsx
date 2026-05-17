@@ -8,6 +8,7 @@ import {
 } from '../lib/sessionsApi';
 import { adjustWater, getWaterGoal, getWaterUnit } from '../lib/waterApi';
 import { getCachedHomeData, loadHomeData, patchHomeCache } from '../lib/homeCache';
+import type { Profile } from '../lib/profileApi';
 
 type Day = FullPlan['training_days'][number];
 
@@ -15,6 +16,8 @@ interface Props {
   onUploadPlan: () => void;
   onLogBodyWeight: () => void;
   onTapDay: (day: Day) => void;
+  profile?: Profile | null;
+  onResumeOnboarding?: () => void;
   onResumeWorkout?: (params: {
     day: Day;
     exerciseIdx: number;
@@ -22,6 +25,8 @@ interface Props {
     startedAt: string;
   }) => void;
 }
+
+const ONBOARDING_BANNER_DISMISSED_KEY = 'reps.onboardingBannerDismissed';
 
 const ACCENTS: Record<string, string> = {
   Push: 'bg-[#FFE9D6]',
@@ -88,7 +93,28 @@ function greeting() {
   return 'Hey';
 }
 
-export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout }: Props) {
+export function Home({
+  onUploadPlan,
+  onLogBodyWeight,
+  onTapDay,
+  onResumeWorkout,
+  profile,
+  onResumeOnboarding,
+}: Props) {
+  const [bannerDismissed, setBannerDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(ONBOARDING_BANNER_DISMISSED_KEY) === '1';
+  });
+
+  function dismissBanner() {
+    setBannerDismissed(true);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ONBOARDING_BANNER_DISMISSED_KEY, '1');
+    }
+  }
+
+  const showOnboardingBanner =
+    !!profile && !profile.onboarding_completed && !bannerDismissed && !!onResumeOnboarding;
   // Hydrate synchronously from the module-level cache so tab switches don't
   // flash the skeleton. A background refresh always runs on mount to pick up
   // any drift.
@@ -186,7 +212,13 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
           className="mx-auto max-w-md px-5"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
         >
-          <div className="mt-12 rounded-card bg-paper-card p-8 text-center shadow-card">
+          {showOnboardingBanner && (
+            <OnboardingBanner
+              onResume={() => onResumeOnboarding?.()}
+              onDismiss={dismissBanner}
+            />
+          )}
+          <div className={`${showOnboardingBanner ? 'mt-5' : 'mt-12'} rounded-card bg-paper-card p-8 text-center shadow-card`}>
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFE9D6]">
               <UploadCloudIcon />
             </div>
@@ -230,6 +262,13 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
         className="mx-auto max-w-md px-5"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
       >
+        {showOnboardingBanner && (
+          <OnboardingBanner
+            onResume={() => onResumeOnboarding?.()}
+            onDismiss={dismissBanner}
+          />
+        )}
+
         {active && (
           <ActiveWorkoutBanner
             context={active}
@@ -329,6 +368,55 @@ export function Home({ onUploadPlan, onLogBodyWeight, onTapDay, onResumeWorkout 
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function OnboardingBanner({
+  onResume,
+  onDismiss,
+}: {
+  onResume: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="mt-4 flex items-center gap-3 rounded-card bg-[#FFF6D6] px-5 py-4 shadow-card">
+      <button
+        onClick={onResume}
+        className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left active:opacity-80"
+      >
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7A5A00]">
+            Get set up
+          </div>
+          <div className="mt-0.5 text-base font-bold tracking-tight text-ink">
+            Finish setting up your profile
+          </div>
+        </div>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0 text-ink">
+          <path
+            d="M7 4l5 5-5 5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#7A5A00] active:bg-black/10"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path
+            d="M4 4l8 8M12 4l-8 8"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
     </div>
   );
 }

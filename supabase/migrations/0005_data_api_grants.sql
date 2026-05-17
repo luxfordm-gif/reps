@@ -9,6 +9,7 @@ grant select, insert, update, delete on public.body_weights   to authenticated, 
 grant select, insert, update, delete on public.logged_sets    to authenticated, service_role;
 grant select, insert, update, delete on public.plan_exercises to authenticated, service_role;
 grant select, insert, update, delete on public.plans          to authenticated, service_role;
+grant select, insert, update, delete on public.profiles       to authenticated, service_role;
 grant select, insert, update, delete on public.sessions       to authenticated, service_role;
 grant select, insert, update, delete on public.training_days  to authenticated, service_role;
 grant select, insert, update, delete on public.water_logs     to authenticated, service_role;
