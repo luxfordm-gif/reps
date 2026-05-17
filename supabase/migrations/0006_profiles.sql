@@ -3,6 +3,10 @@
 -- the onboarding flow upserts explicitly, which avoids RLS races on first
 -- sign-up and leaves the table empty for users who never complete onboarding.
 -- Run this in the Supabase SQL Editor.
+--
+-- Note: this migration was updated pre-merge to make top_goals multi-select.
+-- If you already applied an earlier version of this file, drop the table
+-- (drop table public.profiles cascade) and re-run — the table has no data yet.
 
 create table if not exists public.profiles (
   user_id              uuid primary key references auth.users(id) on delete cascade,
@@ -10,7 +14,10 @@ create table if not exists public.profiles (
   date_of_birth        date,
   starting_weight_kg   numeric(6,2) check (starting_weight_kg is null or (starting_weight_kg > 0 and starting_weight_kg < 700)),
   height_cm            numeric(5,1) check (height_cm is null or (height_cm > 0 and height_cm < 300)),
-  top_goal             text check (top_goal in ('build_muscle','gain_strength','fat_loss')),
+  top_goals            text[] check (
+    top_goals is null
+    or top_goals <@ array['build_muscle','gain_strength','fat_loss']::text[]
+  ),
   experience_level     text check (experience_level in ('beginner','intermediate','advanced')),
   onboarding_completed boolean not null default false,
   created_at           timestamptz not null default now(),

@@ -3,37 +3,53 @@ import { supabase } from '../lib/supabase';
 import { Logo } from '../components/Logo';
 
 type Mode = 'signin' | 'signup' | 'forgot';
+type Step = 'choose' | 'email' | 'password';
 
 export function Login() {
   const [mode, setMode] = useState<Mode>('signin');
+  const [step, setStep] = useState<Step>('choose');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
-
-  async function handleOAuth(provider: 'google' | 'apple') {
-    setError(null);
-    setInfo(null);
-    setOauthBusy(provider);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: { redirectTo: `${window.location.origin}/` },
-      });
-      if (error) throw error;
-      // On success the browser is redirecting; no state change needed.
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start sign-in');
-      setOauthBusy(null);
-    }
-  }
 
   function changeMode(m: Mode) {
     setMode(m);
+    setStep(m === 'forgot' ? 'email' : 'choose');
     setError(null);
     setInfo(null);
+    setPassword('');
+  }
+
+  function handleBack() {
+    setError(null);
+    setInfo(null);
+    if (step === 'password') {
+      setPassword('');
+      setStep('email');
+      return;
+    }
+    if (step === 'email') {
+      if (mode === 'forgot') changeMode('signin');
+      else setStep('choose');
+    }
+  }
+
+  function emailLooksValid() {
+    return /\S+@\S+\.\S+/.test(email.trim());
+  }
+
+  function handleEmailNext(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setInfo(null);
+    if (!emailLooksValid()) {
+      setError('Please enter a valid email.');
+      return;
+    }
+    setStep('password');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -63,114 +79,159 @@ export function Login() {
     }
   }
 
-  const titles: Record<Mode, { heading: string; subtitle: string; cta: string }> = {
-    signin: {
-      heading: 'Welcome back.',
-      subtitle: 'Sign in to continue your training.',
-      cta: 'Sign in',
-    },
-    signup: {
-      heading: 'Create your account.',
-      subtitle: "Let's get you set up.",
-      cta: 'Create account',
-    },
-    forgot: {
-      heading: 'Reset password.',
-      subtitle: 'Enter your email and we’ll send you a link.',
-      cta: 'Send reset link',
-    },
-  };
-  const t = titles[mode];
+  async function handleOAuth(provider: 'google' | 'apple') {
+    setError(null);
+    setInfo(null);
+    setOauthBusy(provider);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: `${window.location.origin}/` },
+      });
+      if (error) throw error;
+      // On success the browser is redirecting; no state change needed.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start sign-in');
+      setOauthBusy(null);
+    }
+  }
+
+  const { heading, subtitle, primaryLabel } = computeHeadings(mode, step, email);
+  const showBack = step !== 'choose' || mode === 'forgot';
 
   return (
-    <div className="min-h-screen bg-paper">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col px-5">
-        <div className="flex flex-1 flex-col justify-center">
-          <Logo className="h-16 w-auto self-start" />
+    <div className="bg-paper" style={{ minHeight: '100dvh' }}>
+      <div
+        className="mx-auto flex max-w-md flex-col px-5"
+        style={{ minHeight: '100dvh' }}
+      >
+        <div
+          className="flex h-11 items-center"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
+          {showBack && (
+            <button
+              onClick={handleBack}
+              className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-line/60"
+              aria-label="Back"
+            >
+              <BackIcon />
+            </button>
+          )}
+        </div>
 
-          <h1 className="mt-10 text-[32px] font-bold leading-tight tracking-tight text-ink">
-            {t.heading}
+        <div
+          className="flex flex-1 flex-col items-center justify-center"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)' }}
+        >
+          <Logo className="h-8 w-auto" />
+
+          <h1 className="mt-8 text-center text-[32px] font-bold leading-tight tracking-tight text-ink">
+            {heading}
           </h1>
-          <p className="mt-1.5 text-base text-muted">{t.subtitle}</p>
+          <p className="mt-1.5 text-center text-base text-muted">{subtitle}</p>
 
-          {mode !== 'forgot' && (
-            <>
-              <div className="mt-8 space-y-2">
-                <OAuthButton
-                  provider="google"
+          <div className="mt-8 w-full">
+            {step === 'choose' && (
+              <div className="space-y-2">
+                <ProviderButton
+                  icon={<GoogleIcon />}
                   label="Continue with Google"
+                  loadingLabel="Redirecting…"
                   busy={oauthBusy === 'google'}
-                  disabled={!!oauthBusy || busy}
+                  disabled={!!oauthBusy}
                   onClick={() => handleOAuth('google')}
                 />
-                <OAuthButton
-                  provider="apple"
+                <ProviderButton
+                  icon={<AppleIcon />}
                   label="Continue with Apple"
+                  loadingLabel="Redirecting…"
                   busy={oauthBusy === 'apple'}
-                  disabled={!!oauthBusy || busy}
+                  disabled={!!oauthBusy}
                   onClick={() => handleOAuth('apple')}
                 />
-              </div>
-              <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-[0.12em] text-muted">
-                <div className="h-px flex-1 bg-line" /> or <div className="h-px flex-1 bg-line" />
-              </div>
-            </>
-          )}
-
-          <form onSubmit={handleSubmit} className={mode === 'forgot' ? 'mt-8 space-y-3' : 'space-y-3'}>
-            <Field
-              label="Email"
-              type="email"
-              value={email}
-              onChange={setEmail}
-              placeholder="you@example.com"
-              autoComplete="email"
-            />
-            {mode !== 'forgot' && (
-              <Field
-                label="Password"
-                type="password"
-                value={password}
-                onChange={setPassword}
-                placeholder="••••••••"
-                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              />
-            )}
-
-            {error && (
-              <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-            {info && (
-              <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm text-green-800">
-                {info}
+                <ProviderButton
+                  icon={<MailIcon />}
+                  label="Continue with email"
+                  busy={false}
+                  disabled={!!oauthBusy}
+                  onClick={() => {
+                    setError(null);
+                    setInfo(null);
+                    setStep('email');
+                  }}
+                />
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={busy}
-              className="mt-2 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
-            >
-              {busy ? 'Please wait…' : t.cta}
-            </button>
-          </form>
+            {step === 'email' && (
+              <form
+                onSubmit={mode === 'forgot' ? handleSubmit : handleEmailNext}
+                className="space-y-3"
+              >
+                <Field
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={setEmail}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  autoFocus
+                />
+                <Messages error={error} info={info} />
+                <PrimaryButton
+                  type="submit"
+                  busy={busy}
+                  disabled={!emailLooksValid() || busy}
+                >
+                  {primaryLabel}
+                </PrimaryButton>
+              </form>
+            )}
+
+            {step === 'password' && (
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <Field
+                  label="Password"
+                  type="password"
+                  value={password}
+                  onChange={setPassword}
+                  placeholder="••••••••"
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                  autoFocus
+                />
+                <Messages error={error} info={info} />
+                <PrimaryButton
+                  type="submit"
+                  busy={busy}
+                  disabled={!password || busy}
+                >
+                  {primaryLabel}
+                </PrimaryButton>
+                {mode === 'signin' && (
+                  <button
+                    type="button"
+                    onClick={() => changeMode('forgot')}
+                    className="block w-full pt-3 text-center text-sm text-muted active:text-ink"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </form>
+            )}
+          </div>
 
           <div className="mt-6 space-y-2 text-center text-sm text-muted">
-            {mode === 'signin' && (
-              <>
-                <button onClick={() => changeMode('forgot')} className="block w-full">
-                  Forgot password?
-                </button>
-                <button onClick={() => changeMode('signup')} className="block w-full">
-                  New here? <span className="font-semibold text-ink">Create an account</span>
-                </button>
-              </>
+            {mode === 'signin' && step !== 'password' && (
+              <button onClick={() => changeMode('signup')} className="block w-full">
+                New here?{' '}
+                <span className="font-semibold text-ink">Create an account</span>
+              </button>
             )}
-            {mode === 'signup' && (
+            {mode === 'signup' && step !== 'password' && (
               <button onClick={() => changeMode('signin')} className="block w-full">
-                Already have an account? <span className="font-semibold text-ink">Sign in</span>
+                Already have an account?{' '}
+                <span className="font-semibold text-ink">Sign in</span>
               </button>
             )}
             {mode === 'forgot' && (
@@ -182,6 +243,99 @@ export function Login() {
         </div>
       </div>
     </div>
+  );
+}
+
+function computeHeadings(
+  mode: Mode,
+  step: Step,
+  email: string
+): { heading: string; subtitle: string; primaryLabel: string } {
+  if (mode === 'forgot') {
+    return {
+      heading: 'Reset password.',
+      subtitle: "Enter your email and we'll send you a link.",
+      primaryLabel: 'Send reset link',
+    };
+  }
+  if (mode === 'signup') {
+    if (step === 'choose') {
+      return {
+        heading: 'Create your account.',
+        subtitle: "Let's get you set up.",
+        primaryLabel: 'Next',
+      };
+    }
+    if (step === 'email') {
+      return {
+        heading: 'Create your account.',
+        subtitle: 'Enter your email to get started.',
+        primaryLabel: 'Next',
+      };
+    }
+    return {
+      heading: 'Pick a password.',
+      subtitle: email || "We'll keep it secure.",
+      primaryLabel: 'Create account',
+    };
+  }
+  // signin
+  if (step === 'choose') {
+    return {
+      heading: 'Welcome back.',
+      subtitle: 'Sign in to continue your training.',
+      primaryLabel: 'Next',
+    };
+  }
+  if (step === 'email') {
+    return {
+      heading: 'Welcome back.',
+      subtitle: 'Enter your email to continue.',
+      primaryLabel: 'Next',
+    };
+  }
+  return {
+    heading: 'Welcome back.',
+    subtitle: email || 'Enter your password.',
+    primaryLabel: 'Sign in',
+  };
+}
+
+function Messages({ error, info }: { error: string | null; info: string | null }) {
+  return (
+    <>
+      {error && (
+        <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+      {info && (
+        <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm text-green-800">{info}</div>
+      )}
+    </>
+  );
+}
+
+function PrimaryButton({
+  type = 'button',
+  busy,
+  disabled,
+  onClick,
+  children,
+}: {
+  type?: 'button' | 'submit';
+  busy: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className="mt-2 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+    >
+      {busy ? 'Please wait…' : children}
+    </button>
   );
 }
 
@@ -210,15 +364,17 @@ export function Login() {
 //   ----
 //   In Supabase → Authentication → URL Configuration, allow-list the
 //   production domain and http://localhost:5173/.
-function OAuthButton({
-  provider,
+function ProviderButton({
+  icon,
   label,
+  loadingLabel,
   busy,
   disabled,
   onClick,
 }: {
-  provider: 'google' | 'apple';
+  icon: React.ReactNode;
   label: string;
+  loadingLabel?: string;
   busy: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -230,9 +386,23 @@ function OAuthButton({
       disabled={disabled}
       className="flex w-full items-center justify-center gap-3 rounded-pill border border-line bg-paper-card py-3.5 text-base font-semibold text-ink transition-opacity active:opacity-80 disabled:opacity-50"
     >
-      {provider === 'google' ? <GoogleIcon /> : <AppleIcon />}
-      <span>{busy ? 'Redirecting…' : label}</span>
+      {icon}
+      <span>{busy && loadingLabel ? loadingLabel : label}</span>
     </button>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M15 5l-7 7 7 7"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -267,6 +437,29 @@ function AppleIcon() {
   );
 }
 
+function MailIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="14"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M4 7l8 6 8-6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function Field({
   label,
   type,
@@ -274,6 +467,7 @@ function Field({
   onChange,
   placeholder,
   autoComplete,
+  autoFocus,
 }: {
   label: string;
   type: string;
@@ -281,6 +475,7 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
   autoComplete?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <label className="block">
@@ -293,6 +488,7 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        autoFocus={autoFocus}
         required
         className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-base text-ink placeholder:text-muted focus:border-ink focus:outline-none"
       />

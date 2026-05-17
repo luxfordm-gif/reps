@@ -30,6 +30,15 @@ interface Props {
 type Step = 'gender' | 'birthday' | 'weight' | 'height' | 'goal' | 'experience' | 'ready';
 const ORDER: Step[] = ['gender', 'birthday', 'weight', 'height', 'goal', 'experience', 'ready'];
 
+const MOTIVATIONAL_LINES = [
+  "Go get your dreams.",
+  "Go smash it.",
+  "We're all prepped — let's hit the gym.",
+  "Time to put in the work.",
+  "Let's get after it.",
+  "Show up. Lift heavy. Repeat.",
+];
+
 function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -57,8 +66,13 @@ export function Onboarding({ initial, onClose }: Props) {
   const [dob, setDob] = useState<string>(initial?.date_of_birth ?? '');
   const [weightKg, setWeightKg] = useState<number | null>(initial?.starting_weight_kg ?? null);
   const [heightCm, setHeightCm] = useState<number | null>(initial?.height_cm ?? null);
-  const [goal, setGoal] = useState<TopGoal | null>(initial?.top_goal ?? null);
+  const [goals, setGoals] = useState<TopGoal[]>(initial?.top_goals ?? []);
   const [experience, setExperience] = useState<Experience | null>(initial?.experience_level ?? null);
+  // Pick a motivational line once per Onboarding mount so it doesn't churn on
+  // every re-render.
+  const [motivationalLine] = useState(
+    () => MOTIVATIONAL_LINES[Math.floor(Math.random() * MOTIVATIONAL_LINES.length)]
+  );
 
   const stepIdx = ORDER.indexOf(step);
   const isLast = step === 'ready';
@@ -74,7 +88,7 @@ export function Onboarding({ initial, onClose }: Props) {
       case 'height':
         return { height_cm: heightCm };
       case 'goal':
-        return { top_goal: goal };
+        return { top_goals: goals.length > 0 ? goals : null };
       case 'experience':
         return { experience_level: experience };
       case 'ready':
@@ -88,7 +102,7 @@ export function Onboarding({ initial, onClose }: Props) {
       date_of_birth: dob || null,
       starting_weight_kg: weightKg,
       height_cm: heightCm,
-      top_goal: goal,
+      top_goals: goals.length > 0 ? goals : null,
       experience_level: experience,
     };
   }
@@ -154,8 +168,20 @@ export function Onboarding({ initial, onClose }: Props) {
     if (prev) setStep(prev);
   }
 
+  if (step === 'ready') {
+    return (
+      <ReadyScreen
+        busy={busy}
+        error={error}
+        motivationalLine={motivationalLine}
+        onFinish={handleFinish}
+        onSkip={handleSkip}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="bg-paper" style={{ minHeight: '100dvh' }}>
       <StepShell
         onBack={stepIdx > 0 ? handleBack : undefined}
         onSkip={!isLast ? handleSkip : undefined}
@@ -201,10 +227,9 @@ export function Onboarding({ initial, onClose }: Props) {
         )}
         {step === 'goal' && (
           <StepGoal
-            value={goal}
-            onChange={setGoal}
+            value={goals}
+            onChange={setGoals}
             onContinue={handleContinue}
-            canContinue={goal != null}
             busy={busy}
             error={error}
           />
@@ -218,9 +243,6 @@ export function Onboarding({ initial, onClose }: Props) {
             busy={busy}
             error={error}
           />
-        )}
-        {step === 'ready' && (
-          <StepReady busy={busy} error={error} onFinish={handleFinish} onSkip={handleSkip} />
         )}
       </StepShell>
     </div>
@@ -241,7 +263,13 @@ function StepShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col px-5">
+    <div
+      className="mx-auto flex max-w-md flex-col px-5"
+      style={{
+        minHeight: '100dvh',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
+      }}
+    >
       <div
         className="flex h-11 items-center justify-between"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
@@ -274,7 +302,7 @@ function StepShell({
           style={{ width: `${Math.round(progress * 100)}%` }}
         />
       </div>
-      <div className="flex flex-1 flex-col pb-8 pt-6">{children}</div>
+      <div className="flex flex-1 flex-col pt-6">{children}</div>
     </div>
   );
 }
@@ -294,19 +322,23 @@ function ContinueFooter({
   busy,
   error,
   label = 'Continue',
+  helperText,
 }: {
   onContinue: () => void;
   canContinue: boolean;
   busy: boolean;
   error: string | null;
   label?: string;
+  helperText?: string;
 }) {
   return (
     <div className="mt-auto pt-6">
       {error && (
         <div className="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-      <p className="mb-3 text-center text-xs text-muted">Your data is private and secure.</p>
+      <p className="mb-3 text-center text-xs text-muted">
+        {helperText ?? 'Your data is private and secure.'}
+      </p>
       <button
         onClick={onContinue}
         disabled={!canContinue || busy}
@@ -628,14 +660,12 @@ function StepGoal({
   value,
   onChange,
   onContinue,
-  canContinue,
   busy,
   error,
 }: {
-  value: TopGoal | null;
-  onChange: (g: TopGoal) => void;
+  value: TopGoal[];
+  onChange: (g: TopGoal[]) => void;
   onContinue: () => void;
-  canContinue: boolean;
   busy: boolean;
   error: string | null;
 }) {
@@ -644,25 +674,30 @@ function StepGoal({
     { value: 'gain_strength', label: 'Gain Strength', icon: <StrengthIcon /> },
     { value: 'fat_loss', label: 'Fat Loss', icon: <ScaleIcon /> },
   ];
+  function toggle(g: TopGoal) {
+    onChange(value.includes(g) ? value.filter((v) => v !== g) : [...value, g]);
+  }
   return (
     <>
-      <StepHeading title="What is your top goal?" />
+      <StepHeading title="What are your goals?" subtitle="Pick one or more." />
       <div className="mt-8 space-y-3">
         {options.map((opt) => (
           <TileOption
             key={opt.value}
-            selected={value === opt.value}
-            onClick={() => onChange(opt.value)}
+            selected={value.includes(opt.value)}
+            onClick={() => toggle(opt.value)}
             icon={opt.icon}
             label={opt.label}
+            selectionStyle="check"
           />
         ))}
       </div>
       <ContinueFooter
         onContinue={onContinue}
-        canContinue={canContinue}
+        canContinue={value.length > 0}
         busy={busy}
         error={error}
+        helperText="You can update this in Settings at any time."
       />
     </>
   );
@@ -724,48 +759,59 @@ function StepExperience({
 
 // ---------- Step: Ready ----------
 
-function StepReady({
+function ReadyScreen({
   busy,
   error,
+  motivationalLine,
   onFinish,
   onSkip,
 }: {
   busy: boolean;
   error: string | null;
+  motivationalLine: string;
   onFinish: () => void;
   onSkip: () => void;
 }) {
   return (
-    <>
-      <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#E8F5E9]">
-          <CheckIcon />
+    <div className="bg-paper" style={{ minHeight: '100dvh' }}>
+      <div
+        className="mx-auto flex max-w-md flex-col px-5"
+        style={{
+          minHeight: '100dvh',
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
+        }}
+      >
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#E8F5E9]">
+            <CheckIcon />
+          </div>
+          <h1 className="mt-6 text-[32px] font-bold leading-tight tracking-tight text-ink">
+            You're ready.
+          </h1>
+          <p className="mt-2 text-base text-muted">{motivationalLine}</p>
         </div>
-        <h1 className="mt-6 text-[32px] font-bold leading-tight tracking-tight text-ink">
-          You're ready.
-        </h1>
-        <p className="mt-2 text-base text-muted">You're all set — let's start training.</p>
+        <div className="pt-6">
+          {error && (
+            <div className="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+          )}
+          <button
+            onClick={onFinish}
+            disabled={busy}
+            className="w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+          >
+            {busy ? 'Please wait…' : 'Get started'}
+          </button>
+          <button
+            onClick={onSkip}
+            disabled={busy}
+            className="mt-2 w-full py-2 text-sm font-semibold text-muted active:text-ink disabled:opacity-50"
+          >
+            Skip for now
+          </button>
+        </div>
       </div>
-      <div className="pt-6">
-        {error && (
-          <div className="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-        )}
-        <button
-          onClick={onFinish}
-          disabled={busy}
-          className="w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
-        >
-          {busy ? 'Please wait…' : 'Get started'}
-        </button>
-        <button
-          onClick={onSkip}
-          disabled={busy}
-          className="mt-2 w-full py-2 text-sm font-semibold text-muted active:text-ink disabled:opacity-50"
-        >
-          Skip for now
-        </button>
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -776,11 +822,13 @@ function TileOption({
   onClick,
   icon,
   label,
+  selectionStyle = 'radio',
 }: {
   selected: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  selectionStyle?: 'radio' | 'check';
 }) {
   return (
     <button
@@ -795,7 +843,11 @@ function TileOption({
         <div className="flex h-8 w-8 items-center justify-center text-ink">{icon}</div>
         <div className="text-base font-semibold text-ink">{label}</div>
       </div>
-      <RadioDot selected={selected} />
+      {selectionStyle === 'check' ? (
+        <CheckBox selected={selected} />
+      ) : (
+        <RadioDot selected={selected} />
+      )}
     </button>
   );
 }
@@ -809,6 +861,25 @@ function RadioDot({ selected }: { selected: boolean }) {
     );
   }
   return <div className="h-5 w-5 rounded-full border border-line" />;
+}
+
+function CheckBox({ selected }: { selected: boolean }) {
+  if (selected) {
+    return (
+      <div className="flex h-5 w-5 items-center justify-center rounded-md bg-ink">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path
+            d="M3 8.5l3 3 6.5-6.5"
+            stroke="white"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+  return <div className="h-5 w-5 rounded-md border border-line" />;
 }
 
 function NumberCell({

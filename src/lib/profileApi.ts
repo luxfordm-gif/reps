@@ -10,7 +10,7 @@ export interface Profile {
   date_of_birth: string | null; // YYYY-MM-DD
   starting_weight_kg: number | null;
   height_cm: number | null;
-  top_goal: TopGoal | null;
+  top_goals: TopGoal[] | null;
   experience_level: Experience | null;
   onboarding_completed: boolean;
   created_at: string;

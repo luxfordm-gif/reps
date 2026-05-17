@@ -380,10 +380,10 @@ function OnboardingBanner({
   onDismiss: () => void;
 }) {
   return (
-    <div className="mt-4 flex items-center gap-3 rounded-card bg-[#FFF6D6] px-5 py-4 shadow-card">
+    <div className="mt-4 flex items-center gap-5 rounded-card bg-[#FFF6D6] py-4 pl-5 pr-4 shadow-card">
       <button
         onClick={onResume}
-        className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left active:opacity-80"
+        className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left active:opacity-80"
       >
         <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7A5A00]">
@@ -406,7 +406,7 @@ function OnboardingBanner({
       <button
         onClick={onDismiss}
         aria-label="Dismiss"
-        className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#7A5A00] active:bg-black/10"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#7A5A00] active:bg-black/10"
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path

@@ -191,7 +191,7 @@ export function Profile({
           <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
             <button
               onClick={onOpenHistory}
-              className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-line/40"
+              className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"
             >
               <div className="text-sm font-semibold text-ink">Workout history</div>
               <ChevronRight />
@@ -507,7 +507,7 @@ function PersonalDetailsSection({
       <Section title="Personal details">
         <button
           onClick={onResumeOnboarding}
-          className="flex w-full items-center justify-between rounded-card bg-paper-card px-5 py-4 text-left shadow-card active:opacity-80"
+          className="flex w-full items-center justify-between rounded-card bg-paper-card py-4 pl-5 pr-6 text-left shadow-card active:opacity-80"
         >
           <div>
             <div className="text-sm font-semibold text-ink">Set up your profile</div>
@@ -612,21 +612,21 @@ function PersonalDetailsSection({
         <Divider />
 
         <DetailRow
-          label="Top goal"
-          incomplete={showDots && !profile.top_goal}
+          label="Top goals"
+          incomplete={showDots && (!profile.top_goals || profile.top_goals.length === 0)}
           editing={editing === 'goal'}
           onEdit={() => setEditing('goal')}
           onCancel={() => setEditing(null)}
-          value={formatGoal(profile.top_goal)}
+          value={formatGoals(profile.top_goals)}
         >
-          <EnumEditor<TopGoal>
-            value={profile.top_goal}
+          <MultiEnumEditor<TopGoal>
+            value={profile.top_goals ?? []}
             options={[
               { value: 'build_muscle', label: 'Build muscle' },
               { value: 'gain_strength', label: 'Gain strength' },
               { value: 'fat_loss', label: 'Fat loss' },
             ]}
-            onSave={(v) => save({ top_goal: v })}
+            onSave={(v) => save({ top_goals: v.length > 0 ? v : null })}
             busy={busy}
           />
         </DetailRow>
@@ -657,7 +657,7 @@ function PersonalDetailsSection({
       {!profile.onboarding_completed && onResumeOnboarding && (
         <button
           onClick={onResumeOnboarding}
-          className="mt-3 flex w-full items-center justify-between rounded-card bg-paper-card px-5 py-4 text-left shadow-card active:opacity-80"
+          className="mt-3 flex w-full items-center justify-between rounded-card bg-paper-card py-4 pl-5 pr-6 text-left shadow-card active:opacity-80"
         >
           <div className="text-sm font-semibold text-ink">Resume setup</div>
           <ChevronRight />
@@ -710,7 +710,7 @@ function DetailRow({
   return (
     <button
       onClick={onEdit}
-      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-line/40"
+      className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"
     >
       <div className="min-w-0">
         <div className="flex items-center">
@@ -721,7 +721,7 @@ function DetailRow({
         </div>
         {hint && <div className="mt-0.5 text-xs text-muted">{hint}</div>}
       </div>
-      <div className="ml-3 flex items-center gap-2">
+      <div className="ml-3 flex items-center gap-3">
         <div className="truncate text-sm text-muted">{value}</div>
         <ChevronRight />
       </div>
@@ -762,6 +762,69 @@ function EnumEditor<T extends string>({
       <button
         onClick={() => draft && onSave(draft)}
         disabled={busy || !draft || draft === value}
+        className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+      >
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+    </>
+  );
+}
+
+function MultiEnumEditor<T extends string>({
+  value,
+  options,
+  onSave,
+  busy,
+}: {
+  value: T[];
+  options: { value: T; label: string }[];
+  onSave: (v: T[]) => void;
+  busy: boolean;
+}) {
+  const [draft, setDraft] = useState<T[]>(value);
+  function toggle(v: T) {
+    setDraft((cur) => (cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]));
+  }
+  const sameAsValue =
+    draft.length === value.length && draft.every((v) => value.includes(v));
+  return (
+    <>
+      <div className="space-y-2">
+        {options.map((opt) => {
+          const selected = draft.includes(opt.value);
+          return (
+            <button
+              key={opt.value}
+              onClick={() => toggle(opt.value)}
+              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-semibold transition-colors ${
+                selected
+                  ? 'border-2 border-ink bg-paper-card text-ink'
+                  : 'border border-line bg-paper-card text-ink'
+              }`}
+            >
+              {opt.label}
+              {selected ? (
+                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-ink">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M3 8.5l3 3 6.5-6.5"
+                      stroke="white"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              ) : (
+                <span className="h-5 w-5 rounded-md border border-line" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <button
+        onClick={() => onSave(draft)}
+        disabled={busy || sameAsValue}
         className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
       >
         {busy ? 'Saving…' : 'Save'}
@@ -1023,8 +1086,12 @@ function formatGender(g: Gender | null): string {
   return 'Other';
 }
 
-function formatGoal(g: TopGoal | null): string {
-  if (!g) return 'Not set';
+function formatGoals(gs: TopGoal[] | null): string {
+  if (!gs || gs.length === 0) return 'Not set';
+  return gs.map(goalLabel).join(', ');
+}
+
+function goalLabel(g: TopGoal): string {
   if (g === 'build_muscle') return 'Build muscle';
   if (g === 'gain_strength') return 'Gain strength';
   return 'Fat loss';
