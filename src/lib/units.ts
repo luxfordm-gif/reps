@@ -67,3 +67,43 @@ export function setLiftWeightUnit(unit: LiftWeightUnit) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(LW_PREF, unit);
 }
+
+// Height handling. Storage is always centimetres.
+
+export type HeightUnit = 'cm' | 'ftin';
+
+const CM_PER_INCH = 2.54;
+
+export function cmToFtIn(cm: number): { feet: number; inches: number } {
+  const totalIn = cm / CM_PER_INCH;
+  const feet = Math.floor(totalIn / 12);
+  const inches = totalIn - feet * 12;
+  return { feet, inches };
+}
+
+export function ftInToCm(feet: number, inches: number): number {
+  return (feet * 12 + inches) * CM_PER_INCH;
+}
+
+export function formatFtIn(cm: number): string {
+  const { feet, inches } = cmToFtIn(cm);
+  let f = feet;
+  let i = Math.round(inches);
+  if (i === 12) {
+    f += 1;
+    i = 0;
+  }
+  return `${f}′ ${i}″`;
+}
+
+const H_PREF = 'reps.heightUnit';
+
+export function getHeightUnit(): HeightUnit {
+  if (typeof window === 'undefined') return 'cm';
+  return window.localStorage.getItem(H_PREF) === 'ftin' ? 'ftin' : 'cm';
+}
+
+export function setHeightUnit(unit: HeightUnit) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(H_PREF, unit);
+}
