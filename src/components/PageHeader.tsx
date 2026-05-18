@@ -5,9 +5,13 @@ interface Props {
   onBack?: () => void;
   rightAction?: React.ReactNode;
   large?: boolean;
+  // Optional element rendered flush below the header row, inside the sticky
+  // wrapper. When provided, the 1px under-header divider is suppressed
+  // because the slot is expected to provide its own visual seam.
+  bottomSlot?: React.ReactNode;
 }
 
-export function PageHeader({ title, onBack, rightAction, large = true }: Props) {
+export function PageHeader({ title, onBack, rightAction, large = true, bottomSlot }: Props) {
   const [collapsed, setCollapsed] = useState(!large);
   const largeTitleRef = useRef<HTMLHeadingElement | null>(null);
 
@@ -66,14 +70,15 @@ export function PageHeader({ title, onBack, rightAction, large = true }: Props) 
   // Detail screens (DayView, ExerciseLogger, Plans, …): the sticky bar is
   // always visible because it carries the back button + right action. The
   // big title sits below it.
+  const detailShadow = collapsed ? 'shadow-[0_1px_2px_rgba(0,0,0,0.06)]' : '';
+  const detailDivider =
+    collapsed && !bottomSlot
+      ? 'after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-line/60'
+      : '';
   return (
     <>
       <div
-        className={`sticky top-0 z-20 -mx-5 bg-paper transition-shadow ${
-          collapsed
-            ? 'shadow-[0_1px_2px_rgba(0,0,0,0.06)] after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-line/60'
-            : ''
-        }`}
+        className={`sticky top-0 z-20 -mx-5 bg-paper transition-shadow ${detailShadow} ${detailDivider}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="relative flex h-11 items-center justify-center px-5">
@@ -95,6 +100,7 @@ export function PageHeader({ title, onBack, rightAction, large = true }: Props) 
           </div>
           {rightAction && <div className="absolute right-2">{rightAction}</div>}
         </div>
+        {bottomSlot}
       </div>
       {large && (
         <h1
