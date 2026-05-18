@@ -1754,12 +1754,11 @@ function FastForward() {
 function WorkoutProgressBar({ value }: { value: number }) {
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
   return (
-    <div className="h-1 w-full overflow-hidden bg-line">
+    <div className="h-px w-full overflow-hidden bg-line/60">
       <div
-        className="h-full"
+        className="h-full bg-ink"
         style={{
           width: `${pct}%`,
-          background: 'linear-gradient(90deg, #0A0A0A 0%, #4A4A4A 100%)',
           transition: 'width 400ms ease',
         }}
       />
