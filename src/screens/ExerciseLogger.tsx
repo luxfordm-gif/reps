@@ -671,19 +671,22 @@ export function ExerciseLogger({
               onToggleUnit={handleToggleUnit}
             />
           }
-        />
-
-        <WorkoutProgressBar
-          value={
-            totalExercises > 0
-              ? (exerciseIndex +
-                  (sets.length > 0 ? sets.filter((s) => s.completed).length / sets.length : 0)) /
-                totalExercises
-              : 0
+          bottomSlot={
+            <WorkoutProgressBar
+              value={
+                totalExercises > 0
+                  ? (exerciseIndex +
+                      (sets.length > 0
+                        ? sets.filter((s) => s.completed).length / sets.length
+                        : 0)) /
+                    totalExercises
+                  : 0
+              }
+            />
           }
         />
 
-        <div className="mt-7">
+        <div className="mt-4">
           <a
             href={googleImagesUrl(displayName)}
             target="_blank"
@@ -1751,12 +1754,11 @@ function FastForward() {
 function WorkoutProgressBar({ value }: { value: number }) {
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
   return (
-    <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-line">
+    <div className="h-px w-full overflow-hidden bg-line/60">
       <div
-        className="h-full rounded-full"
+        className="h-full bg-ink"
         style={{
           width: `${pct}%`,
-          background: 'linear-gradient(90deg, #0A0A0A 0%, #4A4A4A 100%)',
           transition: 'width 400ms ease',
         }}
       />
