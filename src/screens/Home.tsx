@@ -194,7 +194,11 @@ export function Home({
         >
           <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink">
             {greeting()},
-            <span className="block">{FIRST_NAME}.</span>
+            {greeting().includes(' ') ? (
+              <span className="block">{FIRST_NAME}.</span>
+            ) : (
+              <> {FIRST_NAME}.</>
+            )}
           </h1>
           <p className="mt-1.5 text-base text-muted">Ready to crush your goals today?</p>
           <div className="mt-6 h-[180px] animate-pulse rounded-card bg-paper-card shadow-card" />
@@ -293,7 +297,11 @@ export function Home({
         <div className={active ? 'mt-5' : ''}>
           <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink">
             {greeting()},
-            <span className="block">{FIRST_NAME}.</span>
+            {greeting().includes(' ') ? (
+              <span className="block">{FIRST_NAME}.</span>
+            ) : (
+              <> {FIRST_NAME}.</>
+            )}
           </h1>
           <p className="mt-1.5 text-base text-muted">
             Ready to crush your goals today?
