@@ -14,12 +14,38 @@ import {
   getActivePlan,
   mergeExerciseIntoIdentity,
   updatePlanExerciseName,
+  updatePlanExercisePersonalNote,
   updatePlanExerciseRest,
   type PlanExerciseRow,
 } from '../lib/plansApi';
 import BarbellCalculator from '../components/BarbellCalculator';
 import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
+import { kgToLb, lbToKg, type LiftWeightUnit } from '../lib/units';
+import {
+  getCachedExerciseUnit,
+  getExerciseUnit,
+  setExerciseUnit,
+} from '../lib/exercisePrefsApi';
+
+// Display: kg as stored; lb rounded to nearest 0.5 to match the input's step.
+function fromKg(kg: number, unit: LiftWeightUnit): number {
+  if (unit === 'lb') return Math.round(kgToLb(kg) * 2) / 2;
+  return kg;
+}
+function toKg(n: number, unit: LiftWeightUnit): number {
+  return unit === 'lb' ? lbToKg(n) : n;
+}
+function convertWeightStr(
+  s: string,
+  prev: LiftWeightUnit,
+  next: LiftWeightUnit
+): string {
+  if (s === '' || prev === next) return s;
+  const n = parseFloat(s);
+  if (Number.isNaN(n)) return s;
+  return String(fromKg(toKg(n, prev), next));
+}
 
 // Flip to false to revert to the inline rest timer (the original design).
 const USE_REST_OVERLAY = true;
@@ -68,13 +94,17 @@ function buildInitialSets(
   totalSets: number,
   repRange: string,
   lastSets: LoggedSet[],
-  notes: string
+  notes: string,
+  unit: LiftWeightUnit
 ): SetState[] {
   const baseTarget = parseTargetReps(repRange);
   const baseTargetStr = baseTarget != null ? String(baseTarget) : '';
   const mods = parseSetMods(notes, Math.max(1, totalSets));
   const intensifier = parseIntensifier(notes);
   const rows: SetState[] = [];
+  // lastSets values are kg; seed inputs in the active display unit so the
+  // suggested number matches what the user expects to type.
+  const fmtW = (kg: number) => String(fromKg(kg, unit));
   for (let i = 0; i < Math.max(1, totalSets); i++) {
     const setIndex = i + 1;
     const mod = mods.bySetIndex.get(setIndex);
@@ -82,7 +112,7 @@ function buildInitialSets(
       mod?.repTarget != null ? String(mod.repTarget) : baseTargetStr;
     // Main set
     const mainLast = lastSets.find((s) => s.set_index === setIndex && s.drop_index === 0);
-    const mainWeightSugg = mainLast?.weight != null ? String(mainLast.weight) : '';
+    const mainWeightSugg = mainLast?.weight != null ? fmtW(mainLast.weight) : '';
     const mainRepsSugg =
       mainLast?.reps != null ? String(mainLast.reps) : targetStr;
     rows.push({
@@ -104,7 +134,7 @@ function buildInitialSets(
         const dropLast = lastSets.find(
           (s) => s.set_index === setIndex && s.drop_index === dropIndex
         );
-        const wSugg = dropLast?.weight != null ? String(dropLast.weight) : '';
+        const wSugg = dropLast?.weight != null ? fmtW(dropLast.weight) : '';
         const rSugg =
           dropLast?.reps != null
             ? String(dropLast.reps)
@@ -134,7 +164,7 @@ function buildInitialSets(
       const last = lastSets.find(
         (s) => s.set_index === lastSetIndex && s.drop_index === dropIndex
       );
-      const w = last?.weight != null ? String(last.weight) : String(p.weight);
+      const w = last?.weight != null ? fmtW(last.weight) : fmtW(p.weight);
       const r = last?.reps != null ? String(last.reps) : String(p.reps);
       without.push({
         setIndex: lastSetIndex,
@@ -247,8 +277,26 @@ export function ExerciseLogger({
   const [restSeconds, setRestSecondsState] = useState<number>(() =>
     initialRestSeconds(exercise.rest_seconds)
   );
+  const [unit, setUnit] = useState<LiftWeightUnit>(() =>
+    getCachedExerciseUnit(exercise.normalized_name)
+  );
+  // Mirrors `unit` for use inside the async load effect, which captures a
+  // stale closure value otherwise (cache-vs-DB reconcile may setUnit between
+  // the effect starting and resolving).
+  const unitRef = useRef<LiftWeightUnit>(unit);
+  useEffect(() => {
+    unitRef.current = unit;
+  }, [unit]);
   const [, setNow] = useState(Date.now());
   const [displayName, setDisplayName] = useState(exercise.name);
+  const [personalOpen, setPersonalOpen] = useState(false);
+  const [savedPersonal, setSavedPersonal] = useState<string>(
+    exercise.personal_notes ?? ''
+  );
+  const [personalDraft, setPersonalDraft] = useState<string>(
+    exercise.personal_notes ?? ''
+  );
+  const [personalSaving, setPersonalSaving] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameCandidates, setRenameCandidates] = useState<SimilarityCandidate[]>([]);
   const [suggestion, setSuggestion] = useState<
@@ -262,7 +310,53 @@ export function ExerciseLogger({
   useEffect(() => {
     setRestSecondsState(initialRestSeconds(exercise.rest_seconds));
     setDisplayName(exercise.name);
-  }, [exercise.id, exercise.rest_seconds, exercise.name]);
+    const note = exercise.personal_notes ?? '';
+    setSavedPersonal(note);
+    setPersonalDraft(note);
+    setPersonalOpen(false);
+  }, [exercise.id, exercise.rest_seconds, exercise.name, exercise.personal_notes]);
+
+  function changeUnit(next: LiftWeightUnit) {
+    setUnit((prev) => {
+      if (prev === next) return prev;
+      // Re-seed visible inputs so the digits match the new label. Round-trip
+      // through kg using the previous unit. Keep weight === weightSuggested
+      // after the swap so the muted-placeholder styling stays correct.
+      setSets((prevSets) =>
+        prevSets.map((r) => ({
+          ...r,
+          weight: convertWeightStr(r.weight, prev, next),
+          weightSuggested: convertWeightStr(r.weightSuggested, prev, next),
+        }))
+      );
+      return next;
+    });
+  }
+
+  // Per-machine weight unit: instant read from cache, then reconcile with DB
+  // (in case the user set the unit on another device).
+  useEffect(() => {
+    changeUnit(getCachedExerciseUnit(exercise.normalized_name));
+    let cancelled = false;
+    getExerciseUnit(exercise.normalized_name)
+      .then((u) => {
+        if (!cancelled) changeUnit(u);
+      })
+      .catch(() => {
+        // Best-effort — fall back to the cached value.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [exercise.normalized_name]);
+
+  function handleToggleUnit() {
+    const next: LiftWeightUnit = unit === 'kg' ? 'lb' : 'kg';
+    changeUnit(next);
+    setExerciseUnit(exercise.normalized_name, next).catch(() => {
+      // localStorage cache already updated by setExerciseUnit; ignore DB error.
+    });
+  }
 
   function setRestSeconds(s: number) {
     setRestSecondsState(s);
@@ -379,13 +473,18 @@ export function ExerciseLogger({
       .then(([existing, last]) => {
         if (!mounted) return;
         setLastSets(last);
+        // Read the latest unit (may have been reconciled to a different
+        // value by the DB after this effect kicked off).
+        const u = unitRef.current;
         const initial = buildInitialSets(
           exercise.total_sets ?? 1,
           exercise.rep_range,
           last,
-          exercise.notes ?? ''
+          exercise.notes ?? '',
+          u
         );
-        // Mark as completed any rows already logged in this session
+        // Mark as completed any rows already logged in this session. The DB
+        // stores kg, so convert to the active unit for display.
         for (const s of existing) {
           const idx = initial.findIndex(
             (x) => x.setIndex === s.set_index && x.dropIndex === s.drop_index
@@ -393,7 +492,8 @@ export function ExerciseLogger({
           if (idx >= 0) {
             initial[idx] = {
               ...initial[idx],
-              weight: s.weight != null ? String(s.weight) : initial[idx].weight,
+              weight:
+                s.weight != null ? String(fromKg(s.weight, u)) : initial[idx].weight,
               reps: s.reps != null ? String(s.reps) : initial[idx].reps,
               completed: true,
               loggedId: s.id,
@@ -443,6 +543,36 @@ export function ExerciseLogger({
     setActiveIndex(idx);
   }
 
+  async function handleSavePersonal() {
+    const trimmed = personalDraft.trim();
+    setPersonalSaving(true);
+    try {
+      await updatePlanExercisePersonalNote(
+        exercise.id,
+        trimmed === '' ? null : trimmed
+      );
+      setSavedPersonal(trimmed);
+      setPersonalDraft(trimmed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save notes');
+    } finally {
+      setPersonalSaving(false);
+    }
+  }
+
+  async function handleClearPersonal() {
+    setPersonalSaving(true);
+    try {
+      await updatePlanExercisePersonalNote(exercise.id, null);
+      setSavedPersonal('');
+      setPersonalDraft('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not clear notes');
+    } finally {
+      setPersonalSaving(false);
+    }
+  }
+
   async function handleComplete(idx: number) {
     const set = sets[idx];
     const weightStr = set.weight.trim();
@@ -450,7 +580,7 @@ export function ExerciseLogger({
     const weightNum = weightStr === '' ? NaN : parseFloat(weightStr);
     const repsNum = repsStr === '' ? NaN : parseInt(repsStr, 10);
     if (weightStr === '' || repsStr === '' || Number.isNaN(weightNum) || Number.isNaN(repsNum)) {
-      setError('Enter both weight and reps (use 0 kg for body weight)');
+      setError(`Enter both weight and reps (use 0 ${unit} for body weight)`);
       triggerShake(idx);
       return;
     }
@@ -459,12 +589,14 @@ export function ExerciseLogger({
       triggerShake(idx);
       return;
     }
+    // DB stores kg always; convert from the active display unit at the boundary.
+    const weightKg = toKg(weightNum, unit);
     setError(null);
     setSavingIdx(idx);
     const isEdit = !!set.loggedId;
     try {
       if (set.loggedId) {
-        await updateLoggedSet(set.loggedId, { weight: weightNum, reps: repsNum });
+        await updateLoggedSet(set.loggedId, { weight: weightKg, reps: repsNum });
         update(idx, { completed: true });
       } else {
         const logged = await logSet({
@@ -474,7 +606,7 @@ export function ExerciseLogger({
           exerciseNormalizedName: exercise.normalized_name,
           setIndex: set.setIndex,
           dropIndex: set.dropIndex,
-          weight: weightNum,
+          weight: weightKg,
           reps: repsNum,
         });
         update(idx, { completed: true, loggedId: logged.id });
@@ -535,6 +667,8 @@ export function ExerciseLogger({
               onHome={onHome}
               onEndWorkout={onEndWorkout}
               onEditName={() => setRenameOpen(true)}
+              weightUnit={unit}
+              onToggleUnit={handleToggleUnit}
             />
           }
         />
@@ -573,7 +707,7 @@ export function ExerciseLogger({
         </div>
 
         {lastSets.length > 0 && lastTopSet && (
-          <LastTimeRow lastSets={lastSets} lastTopSet={lastTopSet} />
+          <LastTimeRow lastSets={lastSets} lastTopSet={lastTopSet} unit={unit} />
         )}
 
         <div className="mt-6 space-y-3">
@@ -594,6 +728,7 @@ export function ExerciseLogger({
                 activeIndex={activeIndex}
                 savingIdx={savingIdx}
                 shakeIdx={shakeIdx}
+                unit={unit}
                 onChange={update}
                 onComplete={handleComplete}
                 onEdit={handleEdit}
@@ -643,6 +778,59 @@ export function ExerciseLogger({
             )}
           </div>
         )}
+
+        <div className={`${exercise.notes ? 'border-t' : 'mt-7 border-t'} border-line`}>
+          <button
+            onClick={() => setPersonalOpen((v) => !v)}
+            className="flex w-full items-center justify-between py-4 text-left active:opacity-60"
+          >
+            <span className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-ink">
+              <NotesIcon />
+              My notes
+              {savedPersonal && (
+                <span
+                  className="ml-1 h-1.5 w-1.5 rounded-full bg-ink"
+                  aria-hidden
+                />
+              )}
+            </span>
+            <Chevron rotate={personalOpen ? 90 : 0} />
+          </button>
+          {personalOpen && (
+            <div className="pb-4">
+              <textarea
+                value={personalDraft}
+                onChange={(e) => setPersonalDraft(e.target.value)}
+                maxLength={2000}
+                rows={4}
+                placeholder="Form cues, machine settings, weekly tweaks…"
+                className="w-full resize-y rounded-xl border border-line bg-paper-card px-3 py-2.5 text-sm leading-relaxed text-ink focus:border-ink focus:outline-none"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={handleSavePersonal}
+                  disabled={
+                    personalSaving ||
+                    personalDraft.trim() === savedPersonal.trim()
+                  }
+                  className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
+                >
+                  {personalSaving ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  onClick={handleClearPersonal}
+                  disabled={
+                    personalSaving ||
+                    (savedPersonal === '' && personalDraft === '')
+                  }
+                  className="rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {allDone && (
           <Improvements
@@ -701,6 +889,7 @@ export function ExerciseLogger({
           nextSetName={nextSet ? displayName : null}
           nextSetWeight={nextSet?.weight ?? ''}
           nextSetReps={nextSet?.reps ?? ''}
+          unit={unit}
           lastSetWeight={nextSetLastMatch?.weight ?? null}
           lastSetReps={nextSetLastMatch?.reps ?? null}
         />
@@ -801,6 +990,8 @@ function ExerciseMenu({
   onHome,
   onEndWorkout,
   onEditName,
+  weightUnit,
+  onToggleUnit,
 }: {
   hasNext: boolean;
   onSkip: () => void;
@@ -808,6 +999,8 @@ function ExerciseMenu({
   onHome: () => void;
   onEndWorkout: () => void;
   onEditName: () => void;
+  weightUnit: LiftWeightUnit;
+  onToggleUnit: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -848,6 +1041,13 @@ function ExerciseMenu({
       </button>
       {open && (
         <div className="absolute right-0 top-11 z-40 w-56 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
+          <button
+            onClick={() => pick(onToggleUnit)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+          >
+            Switch to {weightUnit === 'kg' ? 'lb' : 'kg'}
+          </button>
+          <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onEditName)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
@@ -1023,9 +1223,11 @@ function DidYouMeanModal({
 function LastTimeRow({
   lastSets,
   lastTopSet,
+  unit,
 }: {
   lastSets: LoggedSet[];
   lastTopSet: LoggedSet;
+  unit: LiftWeightUnit;
 }) {
   const [open, setOpen] = useState(false);
   const groups: { setIndex: number; rows: LoggedSet[] }[] = [];
@@ -1037,7 +1239,7 @@ function LastTimeRow({
     else groups.push({ setIndex: s.set_index, rows: [s] });
   }
   const fmt = (s: LoggedSet) =>
-    `${s.weight != null ? `${s.weight} kg` : '–'} × ${s.reps ?? '–'}`;
+    `${s.weight != null ? `${fromKg(s.weight, unit)} ${unit}` : '–'} × ${s.reps ?? '–'}`;
 
   return (
     <div className="mt-4 overflow-hidden rounded-xl bg-paper-card shadow-card">
@@ -1053,8 +1255,10 @@ function LastTimeRow({
         <span className="flex items-center gap-2 text-xs font-medium text-ink">
           <span>
             {lastSets.length} sets · top{' '}
-            {lastTopSet.weight != null ? `${lastTopSet.weight} kg` : '–'} ×{' '}
-            {lastTopSet.reps ?? '–'}
+            {lastTopSet.weight != null
+              ? `${fromKg(lastTopSet.weight, unit)} ${unit}`
+              : '–'}{' '}
+            × {lastTopSet.reps ?? '–'}
           </span>
           <Chevron rotate={open ? 90 : 0} />
         </span>
@@ -1118,6 +1322,7 @@ function SetGroup({
   activeIndex,
   savingIdx,
   shakeIdx,
+  unit,
   onChange,
   onComplete,
   onEdit,
@@ -1127,6 +1332,7 @@ function SetGroup({
   activeIndex: number;
   savingIdx: number | null;
   shakeIdx: number | null;
+  unit: LiftWeightUnit;
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
@@ -1188,7 +1394,7 @@ function SetGroup({
                 }
                 e.target.select();
               }}
-              placeholder="kg"
+              placeholder={unit}
               className={`w-20 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
                 row.weight === row.weightSuggested && row.weightSuggested !== ''
                   ? 'text-ink/40'
@@ -1346,6 +1552,7 @@ function RestOverlay({
   nextSetName,
   nextSetWeight,
   nextSetReps,
+  unit,
   lastSetWeight,
   lastSetReps,
 }: {
@@ -1361,6 +1568,7 @@ function RestOverlay({
   nextSetName: string | null;
   nextSetWeight: string;
   nextSetReps: string;
+  unit: LiftWeightUnit;
   lastSetWeight: number | null;
   lastSetReps: number | null;
 }) {
@@ -1456,7 +1664,7 @@ function RestOverlay({
               <div className="mt-1 text-lg font-bold tracking-tight">{nextSetName}</div>
               {(nextSetWeight || nextSetReps) && (
                 <div className="mt-0.5 text-sm text-white/70">
-                  {nextSetWeight || '–'}kg × {nextSetReps || '–'}
+                  {nextSetWeight || '–'} {unit} × {nextSetReps || '–'}
                 </div>
               )}
             </div>

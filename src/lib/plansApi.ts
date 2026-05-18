@@ -32,6 +32,7 @@ export interface PlanExerciseRow {
   position: number;
   rest_seconds: number | null;
   baseline_reset_at: string | null;
+  personal_notes: string | null;
 }
 
 export async function updatePlanExerciseRest(
@@ -41,6 +42,17 @@ export async function updatePlanExerciseRest(
   const { error } = await supabase
     .from('plan_exercises')
     .update({ rest_seconds: restSeconds })
+    .eq('id', exerciseId);
+  if (error) throw error;
+}
+
+export async function updatePlanExercisePersonalNote(
+  exerciseId: string,
+  note: string | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('plan_exercises')
+    .update({ personal_notes: note })
     .eq('id', exerciseId);
   if (error) throw error;
 }
