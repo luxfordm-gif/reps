@@ -311,7 +311,7 @@ export function Home({
         <div className="mt-6">
           <WeeklyProgress
             workoutsDone={weekSummary.workoutsDone}
-            workoutsTarget={5}
+            workoutsTarget={days.length}
             bars={weekSummary.bars}
             dayDetails={weekSummary.dayDetails}
             planWeek={plan ? weeksOnPlan(plan.activated_at) : null}
