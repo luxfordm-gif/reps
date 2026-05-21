@@ -21,7 +21,7 @@ import {
 import BarbellCalculator from '../components/BarbellCalculator';
 import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
-import { kgToLb, lbToKg, type LiftWeightUnit, type MachineUnit } from '../lib/units';
+import { kgToLb, lbToKg, type MachineUnit } from '../lib/units';
 import {
   getCachedExerciseUnit,
   getExerciseUnit,
@@ -352,12 +352,8 @@ export function ExerciseLogger({
     };
   }, [exercise.normalized_name]);
 
-  function handleToggleUnit() {
-    // Inline toggle only flips kg <-> lb. Pin machines change unit via the
-    // Machines settings panel so the user gets the "update history vs new
-    // machine" prompt.
-    if (unit === 'pin') return;
-    const next: LiftWeightUnit = unit === 'kg' ? 'lb' : 'kg';
+  function handleSelectUnit(next: MachineUnit) {
+    if (next === unit) return;
     changeUnit(next);
     setExerciseUnit(exercise.normalized_name, next).catch(() => {
       // localStorage cache already updated by setExerciseUnit; ignore DB error.
@@ -679,7 +675,7 @@ export function ExerciseLogger({
               onEndWorkout={onEndWorkout}
               onEditName={() => setRenameOpen(true)}
               weightUnit={unit}
-              onToggleUnit={handleToggleUnit}
+              onSelectUnit={handleSelectUnit}
             />
           }
           bottomSlot={
@@ -1014,7 +1010,7 @@ function ExerciseMenu({
   onEndWorkout,
   onEditName,
   weightUnit,
-  onToggleUnit,
+  onSelectUnit,
 }: {
   hasNext: boolean;
   onSkip: () => void;
@@ -1023,7 +1019,7 @@ function ExerciseMenu({
   onEndWorkout: () => void;
   onEditName: () => void;
   weightUnit: MachineUnit;
-  onToggleUnit: () => void;
+  onSelectUnit: (u: MachineUnit) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1064,17 +1060,25 @@ function ExerciseMenu({
       </button>
       {open && (
         <div className="absolute right-0 top-11 z-40 w-56 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
-          {weightUnit !== 'pin' && (
-            <>
-              <button
-                onClick={() => pick(onToggleUnit)}
-                className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
-              >
-                Switch to {weightUnit === 'kg' ? 'lb' : 'kg'}
-              </button>
-              <div className="border-t border-line/60" />
-            </>
-          )}
+          <div className="px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+              Weight unit
+            </div>
+            <div className="mt-2 flex rounded-pill bg-line p-0.5">
+              {(['kg', 'lb', 'pin'] as const).map((u) => (
+                <button
+                  key={u}
+                  onClick={() => pick(() => onSelectUnit(u))}
+                  className={`flex-1 rounded-pill px-2 py-1 text-xs font-semibold uppercase tracking-wider ${
+                    weightUnit === u ? 'bg-ink text-white' : 'text-muted'
+                  }`}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onEditName)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"

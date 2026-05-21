@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getLiftWeightUnit, type LiftWeightUnit, type MachineUnit } from './units';
+import { getLiftWeightUnit, type MachineUnit } from './units';
 
 const CACHE_PREFIX = 'reps.liftWeightUnit.';
 
@@ -37,7 +37,7 @@ export async function getExerciseUnit(
 
 export async function setExerciseUnit(
   normalizedName: string,
-  unit: LiftWeightUnit
+  unit: MachineUnit
 ): Promise<void> {
   // Write cache first so a navigate-away/return shows the new unit instantly,
   // even if the DB write is in flight or fails.
