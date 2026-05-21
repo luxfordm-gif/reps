@@ -275,6 +275,7 @@ export function ExerciseLogger({
   const [error, setError] = useState<string | null>(null);
   const [calcOpen, setCalcOpen] = useState<number | null>(null);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [restMinimised, setRestMinimised] = useState(false);
   const [restSeconds, setRestSecondsState] = useState<number>(() =>
     initialRestSeconds(exercise.rest_seconds)
   );
@@ -416,6 +417,11 @@ export function ExerciseLogger({
         sentinel = null;
       }
     };
+  }, [restEndsAt]);
+
+  // Start each new rest expanded, even if the previous one was minimised.
+  useEffect(() => {
+    if (restEndsAt != null) setRestMinimised(false);
   }, [restEndsAt]);
 
   // Tick for rest timer + buzz/beep at zero
@@ -872,7 +878,7 @@ export function ExerciseLogger({
         </div>
       </div>
 
-      {USE_REST_OVERLAY && restActive && (
+      {USE_REST_OVERLAY && restActive && !restMinimised && (
         <RestOverlay
           dayName={dayName ?? exercise.body_part ?? 'Rest'}
           sessionStartedAt={sessionStartedAt ?? null}
@@ -894,12 +900,21 @@ export function ExerciseLogger({
             })
           }
           onSkip={() => setRestEndsAt(null)}
+          onMinimise={() => setRestMinimised(true)}
           nextSetName={nextSet ? displayName : null}
           nextSetWeight={nextSet?.weight ?? ''}
           nextSetReps={nextSet?.reps ?? ''}
           unit={unit}
           lastSetWeight={nextSetLastMatch?.weight ?? null}
           lastSetReps={nextSetLastMatch?.reps ?? null}
+        />
+      )}
+
+      {USE_REST_OVERLAY && restActive && restMinimised && (
+        <MiniRestBar
+          remainingMs={restRemainingMs}
+          totalMs={restSeconds * 1000}
+          onExpand={() => setRestMinimised(false)}
         />
       )}
 
@@ -1561,6 +1576,7 @@ function RestOverlay({
   onAdd,
   onSubtract,
   onSkip,
+  onMinimise,
   nextSetName,
   nextSetWeight,
   nextSetReps,
@@ -1577,6 +1593,7 @@ function RestOverlay({
   onAdd: () => void;
   onSubtract: () => void;
   onSkip: () => void;
+  onMinimise: () => void;
   nextSetName: string | null;
   nextSetWeight: string;
   nextSetReps: string;
@@ -1615,9 +1632,27 @@ function RestOverlay({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0A0A0A] text-white">
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pt-3">
-        <div className="flex items-center justify-center py-2">
+      <div
+        className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pt-3"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+      >
+        <div className="relative flex items-center justify-center py-2">
           <div className="text-base font-semibold tracking-tight">Rest</div>
+          <button
+            onClick={onMinimise}
+            aria-label="Minimise rest timer"
+            className="absolute right-0 flex h-11 w-11 items-center justify-center rounded-full text-white/80 active:bg-white/10 active:text-white"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
         </div>
 
         {elapsedLabel && (
@@ -1721,6 +1756,56 @@ function RestOverlay({
           </RoundAction>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MiniRestBar({
+  remainingMs,
+  totalMs,
+  onExpand,
+}: {
+  remainingMs: number;
+  totalMs: number;
+  onExpand: () => void;
+}) {
+  const seconds = Math.ceil(remainingMs / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  const progress = Math.min(1, Math.max(0, remainingMs / totalMs));
+  return (
+    <div
+      className="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-4"
+      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+    >
+      <button
+        onClick={onExpand}
+        aria-label="Expand rest timer"
+        className="pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-pill bg-[#0A0A0A] py-2 pl-4 pr-3 text-white shadow-card active:opacity-80"
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+          Rest
+        </span>
+        <span className="font-mono text-base font-bold tabular-nums">
+          {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+        </span>
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M6 15l6-6 6 6"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+        <span
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 h-[2px] bg-white/70"
+          style={{ width: `${progress * 100}%`, transition: 'width 250ms linear' }}
+        />
+      </button>
     </div>
   );
 }
