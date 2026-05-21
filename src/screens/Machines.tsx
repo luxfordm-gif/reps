@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { BODY_PARTS } from '../lib/parseTrainingPlan';
+import { toSentenceCase } from '../lib/textCase';
+
+// Body parts are stored in sentence case in plan_exercises.body_part (the
+// parser passes them through toSentenceCase before insert). Pre-compute the
+// dropdown labels so the select can match a machine's existing value.
+const BODY_PART_OPTIONS = BODY_PARTS.map((bp) => toSentenceCase(bp));
 import {
   changeMachineUnitInPlace,
   deleteMachine,
@@ -558,7 +564,7 @@ function MachineEditModal({
               className="w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
             >
               <option value="">— Unset —</option>
-              {BODY_PARTS.map((bp) => (
+              {BODY_PART_OPTIONS.map((bp) => (
                 <option key={bp} value={bp}>
                   {bp}
                 </option>
