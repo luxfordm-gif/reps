@@ -46,6 +46,7 @@ interface Props {
   onUploadPlan: () => void;
   onOpenHistory?: () => void;
   onOpenPlans?: () => void;
+  onOpenMachines?: () => void;
   profile?: Profile | null;
   onProfileChange?: (p: Profile) => void;
   onResumeOnboarding?: () => void;
@@ -55,6 +56,7 @@ export function Profile({
   onUploadPlan,
   onOpenHistory,
   onOpenPlans,
+  onOpenMachines,
   profile,
   onProfileChange,
   onResumeOnboarding,
@@ -194,6 +196,19 @@ export function Profile({
               className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"
             >
               <div className="text-sm font-semibold text-ink">Workout history</div>
+              <ChevronRight />
+            </button>
+            <div className="border-t border-line" />
+            <button
+              onClick={onOpenMachines}
+              className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"
+            >
+              <div>
+                <div className="text-sm font-semibold text-ink">Manage machines</div>
+                <div className="mt-0.5 text-xs text-muted">
+                  Rename, delete, merge, change units
+                </div>
+              </div>
               <ChevronRight />
             </button>
             <div className="border-t border-line" />

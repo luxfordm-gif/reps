@@ -15,6 +15,7 @@ import { DayView } from './screens/DayView';
 import { ExerciseLogger } from './screens/ExerciseLogger';
 import { SetNewPassword } from './screens/SetNewPassword';
 import { WorkoutHistory } from './screens/WorkoutHistory';
+import { Machines } from './screens/Machines';
 import { WorkoutComplete } from './screens/WorkoutComplete';
 import { Onboarding } from './screens/Onboarding';
 import {
@@ -28,7 +29,14 @@ import { clearHomeCache, loadHomeData } from './lib/homeCache';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 import { getMyProfile, type Profile as ProfileData } from './lib/profileApi';
 
-type Modal = null | 'upload' | 'bodyWeight' | 'history' | 'plans' | 'onboarding';
+type Modal =
+  | null
+  | 'upload'
+  | 'bodyWeight'
+  | 'history'
+  | 'plans'
+  | 'onboarding'
+  | 'machines';
 
 function Root() {
   const { session, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
@@ -191,6 +199,16 @@ function Root() {
     );
   } else if (modal === 'history') {
     body = <WorkoutHistory onBack={() => setModal(null)} />;
+  } else if (modal === 'machines') {
+    body = (
+      <Machines
+        onBack={() => {
+          clearHomeCache();
+          setRefreshKey((k) => k + 1);
+          setModal(null);
+        }}
+      />
+    );
   } else if (modal === 'plans') {
     body = (
       <Plans
@@ -308,6 +326,7 @@ function Root() {
             onUploadPlan={() => setModal('upload')}
             onOpenHistory={() => setModal('history')}
             onOpenPlans={() => setModal('plans')}
+            onOpenMachines={() => setModal('machines')}
             profile={profile}
             onProfileChange={setProfile}
             onResumeOnboarding={() => setModal('onboarding')}
