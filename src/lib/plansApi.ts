@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { ParsedPlan } from './parseTrainingPlan';
+import type { SetScheme } from './parseTrainingPlan';
 
 export interface PlanRow {
   id: string;
@@ -42,6 +43,18 @@ export async function updatePlanExerciseRest(
   const { error } = await supabase
     .from('plan_exercises')
     .update({ rest_seconds: restSeconds })
+    .eq('id', exerciseId);
+  if (error) throw error;
+}
+
+export async function updatePlanExerciseNotes(
+  exerciseId: string,
+  notes: string | null,
+  setScheme: SetScheme
+): Promise<void> {
+  const { error } = await supabase
+    .from('plan_exercises')
+    .update({ notes, set_scheme: setScheme })
     .eq('id', exerciseId);
   if (error) throw error;
 }

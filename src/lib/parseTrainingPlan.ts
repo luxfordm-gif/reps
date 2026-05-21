@@ -84,7 +84,7 @@ const HEADER_BOILERPLATE_PREFIXES = [
   'REST PERIODS',
 ];
 
-function detectSetScheme(notes: string, repRange: string): SetScheme {
+export function detectSetScheme(notes: string, repRange: string): SetScheme {
   const upper = notes.toUpperCase();
   if (/MAX HOLD/i.test(repRange) || /HOLD/.test(upper)) {
     if (/HOLD/.test(upper) && !/MUSCLE ROUND|REST PAUSE|DROPSET|DROP SET|SUPERSET/.test(upper)) {
