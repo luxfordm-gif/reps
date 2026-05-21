@@ -14,10 +14,13 @@ import {
   getActivePlan,
   mergeExerciseIntoIdentity,
   updatePlanExerciseName,
+  updatePlanExerciseNotes,
   updatePlanExercisePersonalNote,
   updatePlanExerciseRest,
   type PlanExerciseRow,
 } from '../lib/plansApi';
+import { detectSetScheme } from '../lib/parseTrainingPlan';
+import { clearHomeCache } from '../lib/homeCache';
 import BarbellCalculator from '../components/BarbellCalculator';
 import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
@@ -299,6 +302,9 @@ export function ExerciseLogger({
     exercise.personal_notes ?? ''
   );
   const [personalSaving, setPersonalSaving] = useState(false);
+  const [savedCoach, setSavedCoach] = useState<string>(exercise.notes ?? '');
+  const [coachDraft, setCoachDraft] = useState<string>(exercise.notes ?? '');
+  const [coachSaving, setCoachSaving] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameCandidates, setRenameCandidates] = useState<SimilarityCandidate[]>([]);
   const [suggestion, setSuggestion] = useState<
@@ -316,7 +322,17 @@ export function ExerciseLogger({
     setSavedPersonal(note);
     setPersonalDraft(note);
     setPersonalOpen(false);
-  }, [exercise.id, exercise.rest_seconds, exercise.name, exercise.personal_notes]);
+    const coach = exercise.notes ?? '';
+    setSavedCoach(coach);
+    setCoachDraft(coach);
+    setNotesOpen(false);
+  }, [
+    exercise.id,
+    exercise.rest_seconds,
+    exercise.name,
+    exercise.personal_notes,
+    exercise.notes,
+  ]);
 
   function changeUnit(next: MachineUnit) {
     setUnit((prev) => {
@@ -580,6 +596,41 @@ export function ExerciseLogger({
     }
   }
 
+  async function handleSaveCoach() {
+    const trimmed = coachDraft.trim();
+    setCoachSaving(true);
+    try {
+      const scheme = detectSetScheme(trimmed, exercise.rep_range);
+      await updatePlanExerciseNotes(
+        exercise.id,
+        trimmed === '' ? null : trimmed,
+        scheme
+      );
+      setSavedCoach(trimmed);
+      setCoachDraft(trimmed);
+      clearHomeCache();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save coach notes');
+    } finally {
+      setCoachSaving(false);
+    }
+  }
+
+  async function handleClearCoach() {
+    setCoachSaving(true);
+    try {
+      const scheme = detectSetScheme('', exercise.rep_range);
+      await updatePlanExerciseNotes(exercise.id, null, scheme);
+      setSavedCoach('');
+      setCoachDraft('');
+      clearHomeCache();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not clear coach notes');
+    } finally {
+      setCoachSaving(false);
+    }
+  }
+
   async function handleComplete(idx: number) {
     const set = sets[idx];
     const weightStr = set.weight.trim();
@@ -769,27 +820,60 @@ export function ExerciseLogger({
           </div>
         )}
 
-        {exercise.notes && (
-          <div className="mt-7 border-t border-line">
-            <button
-              onClick={() => setNotesOpen((v) => !v)}
-              className="flex w-full items-center justify-between py-4 text-left active:opacity-60"
-            >
-              <span className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-ink">
-                <NotesIcon />
-                Coach notes
-              </span>
-              <Chevron rotate={notesOpen ? 90 : 0} />
-            </button>
-            {notesOpen && (
-              <div className="pb-4 text-sm leading-relaxed text-ink">
-                {exercise.notes}
+        <div className="mt-7 border-t border-line">
+          <button
+            onClick={() => setNotesOpen((v) => !v)}
+            className="flex w-full items-center justify-between py-4 text-left active:opacity-60"
+          >
+            <span className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-ink">
+              <NotesIcon />
+              Coach notes
+              {savedCoach && (
+                <span
+                  className="ml-1 h-1.5 w-1.5 rounded-full bg-ink"
+                  aria-hidden
+                />
+              )}
+            </span>
+            <Chevron rotate={notesOpen ? 90 : 0} />
+          </button>
+          {notesOpen && (
+            <div className="pb-4">
+              <textarea
+                value={coachDraft}
+                onChange={(e) => setCoachDraft(e.target.value)}
+                maxLength={2000}
+                rows={4}
+                placeholder="Trainer's instructions for this exercise…"
+                className="w-full resize-y rounded-xl border border-line bg-paper-card px-3 py-2.5 text-sm leading-relaxed text-ink focus:border-ink focus:outline-none"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={handleSaveCoach}
+                  disabled={
+                    coachSaving ||
+                    coachDraft.trim() === savedCoach.trim()
+                  }
+                  className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
+                >
+                  {coachSaving ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  onClick={handleClearCoach}
+                  disabled={
+                    coachSaving ||
+                    (savedCoach === '' && coachDraft === '')
+                  }
+                  className="rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
+                >
+                  Clear
+                </button>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
-        <div className={`${exercise.notes ? 'border-t' : 'mt-7 border-t'} border-line`}>
+        <div className="border-t border-line">
           <button
             onClick={() => setPersonalOpen((v) => !v)}
             className="flex w-full items-center justify-between py-4 text-left active:opacity-60"
