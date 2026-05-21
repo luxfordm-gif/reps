@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { BODY_PARTS } from '../lib/parseTrainingPlan';
+import { toSentenceCase } from '../lib/textCase';
+
+// Body parts are stored in sentence case in plan_exercises.body_part (the
+// parser passes them through toSentenceCase before insert). Pre-compute the
+// dropdown labels so the select can match a machine's existing value.
+const BODY_PART_OPTIONS = BODY_PARTS.map((bp) => toSentenceCase(bp));
 import {
   changeMachineUnitInPlace,
   deleteMachine,
@@ -253,7 +259,7 @@ export function Machines({ onBack }: Props) {
           <div className="mt-4 space-y-5">
             {grouped.map((g) => (
               <div key={g.bodyPart}>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                <div className="mb-2 text-xs font-semibold tracking-[0.04em] text-muted">
                   {g.bodyPart}
                 </div>
                 <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
@@ -438,7 +444,7 @@ function Row({
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
             {machine.bodyPart && (
-              <span className="rounded-pill bg-line/60 px-2 py-0.5 font-semibold uppercase tracking-wider">
+              <span className="rounded-pill bg-line/60 px-2 py-0.5 font-semibold tracking-wide">
                 {machine.bodyPart}
               </span>
             )}
@@ -558,7 +564,7 @@ function MachineEditModal({
               className="w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
             >
               <option value="">— Unset —</option>
-              {BODY_PARTS.map((bp) => (
+              {BODY_PART_OPTIONS.map((bp) => (
                 <option key={bp} value={bp}>
                   {bp}
                 </option>
