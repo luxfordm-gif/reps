@@ -48,7 +48,7 @@ export interface ParsedPlan {
 const DAY_HEADERS = ['PUSH', 'PULL', 'LEGS', 'UPPER', 'ARMS'];
 const ABDOMINALS_HEADER = 'Abdominals 2x Per Week';
 
-const BODY_PARTS = [
+export const BODY_PARTS = [
   'GLUTES/HAMS',
   'REAR DELTS',
   'ABDOMINALS',

@@ -6,6 +6,9 @@
 
 export type LiftWeightUnit = 'kg' | 'lb';
 export type BodyWeightUnit = 'kg' | 'st';
+// Per-machine unit. 'pin' is for stack machines where the user logs the pin
+// position rather than a calibrated weight — stored 1:1 in the kg column.
+export type MachineUnit = 'kg' | 'lb' | 'pin';
 
 const KG_PER_LB = 0.45359237;
 const LB_PER_STONE = 14;
@@ -66,6 +69,25 @@ export function getLiftWeightUnit(): LiftWeightUnit {
 export function setLiftWeightUnit(unit: LiftWeightUnit) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(LW_PREF, unit);
+}
+
+// Lift weight value <-> stored kg, generalised over MachineUnit. Pin units
+// store and display the same number (1:1) — there is no physical conversion.
+export function fromKgFor(kg: number, unit: MachineUnit): number {
+  if (unit === 'lb') return Math.round(kgToLb(kg) * 2) / 2;
+  return kg;
+}
+
+export function toKgFor(n: number, unit: MachineUnit): number {
+  if (unit === 'lb') return lbToKg(n);
+  return n;
+}
+
+export function formatWeight(kg: number | null | undefined, unit: MachineUnit): string {
+  if (kg == null) return '–';
+  const v = fromKgFor(kg, unit);
+  if (unit === 'pin') return `pin ${v}`;
+  return `${v} ${unit}`;
 }
 
 // Height handling. Storage is always centimetres.

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getLiftWeightUnit, type LiftWeightUnit } from './units';
+import { getLiftWeightUnit, type LiftWeightUnit, type MachineUnit } from './units';
 
 const CACHE_PREFIX = 'reps.liftWeightUnit.';
 
@@ -7,29 +7,28 @@ function cacheKey(normalizedName: string): string {
   return CACHE_PREFIX + normalizedName;
 }
 
+function parseUnit(v: string | null | undefined): MachineUnit | null {
+  return v === 'kg' || v === 'lb' || v === 'pin' ? v : null;
+}
+
 // Synchronous read — used at first paint so the screen doesn't flash kg → lb.
 // Falls through to the global lift weight preference when no per-machine value
 // has been cached yet.
-export function getCachedExerciseUnit(normalizedName: string): LiftWeightUnit {
+export function getCachedExerciseUnit(normalizedName: string): MachineUnit {
   if (typeof window === 'undefined') return getLiftWeightUnit();
-  const v = window.localStorage.getItem(cacheKey(normalizedName));
-  if (v === 'kg' || v === 'lb') return v;
-  return getLiftWeightUnit();
+  return parseUnit(window.localStorage.getItem(cacheKey(normalizedName))) ?? getLiftWeightUnit();
 }
 
 export async function getExerciseUnit(
   normalizedName: string
-): Promise<LiftWeightUnit> {
+): Promise<MachineUnit> {
   const { data, error } = await supabase
     .from('exercise_unit_prefs')
     .select('weight_unit')
     .eq('normalized_name', normalizedName)
     .maybeSingle();
   if (error) throw error;
-  const unit: LiftWeightUnit =
-    data?.weight_unit === 'lb' || data?.weight_unit === 'kg'
-      ? data.weight_unit
-      : getLiftWeightUnit();
+  const unit: MachineUnit = parseUnit(data?.weight_unit) ?? getLiftWeightUnit();
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(cacheKey(normalizedName), unit);
   }
@@ -59,4 +58,12 @@ export async function setExerciseUnit(
     { onConflict: 'user_id,normalized_name' }
   );
   if (error) throw error;
+}
+
+// Drops the localStorage cache entry so the next read goes back to the DB.
+// Call this after rename / merge / delete / unit changes so ExerciseLogger
+// doesn't repaint with a stale unit.
+export function clearCachedExerciseUnit(normalizedName: string): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(cacheKey(normalizedName));
 }

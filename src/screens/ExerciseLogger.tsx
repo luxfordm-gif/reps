@@ -21,7 +21,7 @@ import {
 import BarbellCalculator from '../components/BarbellCalculator';
 import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
-import { kgToLb, lbToKg, type LiftWeightUnit } from '../lib/units';
+import { kgToLb, lbToKg, type LiftWeightUnit, type MachineUnit } from '../lib/units';
 import {
   getCachedExerciseUnit,
   getExerciseUnit,
@@ -29,17 +29,18 @@ import {
 } from '../lib/exercisePrefsApi';
 
 // Display: kg as stored; lb rounded to nearest 0.5 to match the input's step.
-function fromKg(kg: number, unit: LiftWeightUnit): number {
+// Pin units store and display the same number (1:1 — no physical conversion).
+function fromKg(kg: number, unit: MachineUnit): number {
   if (unit === 'lb') return Math.round(kgToLb(kg) * 2) / 2;
   return kg;
 }
-function toKg(n: number, unit: LiftWeightUnit): number {
+function toKg(n: number, unit: MachineUnit): number {
   return unit === 'lb' ? lbToKg(n) : n;
 }
 function convertWeightStr(
   s: string,
-  prev: LiftWeightUnit,
-  next: LiftWeightUnit
+  prev: MachineUnit,
+  next: MachineUnit
 ): string {
   if (s === '' || prev === next) return s;
   const n = parseFloat(s);
@@ -95,7 +96,7 @@ function buildInitialSets(
   repRange: string,
   lastSets: LoggedSet[],
   notes: string,
-  unit: LiftWeightUnit
+  unit: MachineUnit
 ): SetState[] {
   const baseTarget = parseTargetReps(repRange);
   const baseTargetStr = baseTarget != null ? String(baseTarget) : '';
@@ -277,13 +278,13 @@ export function ExerciseLogger({
   const [restSeconds, setRestSecondsState] = useState<number>(() =>
     initialRestSeconds(exercise.rest_seconds)
   );
-  const [unit, setUnit] = useState<LiftWeightUnit>(() =>
+  const [unit, setUnit] = useState<MachineUnit>(() =>
     getCachedExerciseUnit(exercise.normalized_name)
   );
   // Mirrors `unit` for use inside the async load effect, which captures a
   // stale closure value otherwise (cache-vs-DB reconcile may setUnit between
   // the effect starting and resolving).
-  const unitRef = useRef<LiftWeightUnit>(unit);
+  const unitRef = useRef<MachineUnit>(unit);
   useEffect(() => {
     unitRef.current = unit;
   }, [unit]);
@@ -316,7 +317,7 @@ export function ExerciseLogger({
     setPersonalOpen(false);
   }, [exercise.id, exercise.rest_seconds, exercise.name, exercise.personal_notes]);
 
-  function changeUnit(next: LiftWeightUnit) {
+  function changeUnit(next: MachineUnit) {
     setUnit((prev) => {
       if (prev === next) return prev;
       // Re-seed visible inputs so the digits match the new label. Round-trip
@@ -351,6 +352,10 @@ export function ExerciseLogger({
   }, [exercise.normalized_name]);
 
   function handleToggleUnit() {
+    // Inline toggle only flips kg <-> lb. Pin machines change unit via the
+    // Machines settings panel so the user gets the "update history vs new
+    // machine" prompt.
+    if (unit === 'pin') return;
     const next: LiftWeightUnit = unit === 'kg' ? 'lb' : 'kg';
     changeUnit(next);
     setExerciseUnit(exercise.normalized_name, next).catch(() => {
@@ -1002,7 +1007,7 @@ function ExerciseMenu({
   onHome: () => void;
   onEndWorkout: () => void;
   onEditName: () => void;
-  weightUnit: LiftWeightUnit;
+  weightUnit: MachineUnit;
   onToggleUnit: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1044,13 +1049,17 @@ function ExerciseMenu({
       </button>
       {open && (
         <div className="absolute right-0 top-11 z-40 w-56 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
-          <button
-            onClick={() => pick(onToggleUnit)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
-          >
-            Switch to {weightUnit === 'kg' ? 'lb' : 'kg'}
-          </button>
-          <div className="border-t border-line/60" />
+          {weightUnit !== 'pin' && (
+            <>
+              <button
+                onClick={() => pick(onToggleUnit)}
+                className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+              >
+                Switch to {weightUnit === 'kg' ? 'lb' : 'kg'}
+              </button>
+              <div className="border-t border-line/60" />
+            </>
+          )}
           <button
             onClick={() => pick(onEditName)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
@@ -1230,7 +1239,7 @@ function LastTimeRow({
 }: {
   lastSets: LoggedSet[];
   lastTopSet: LoggedSet;
-  unit: LiftWeightUnit;
+  unit: MachineUnit;
 }) {
   const [open, setOpen] = useState(false);
   const groups: { setIndex: number; rows: LoggedSet[] }[] = [];
@@ -1335,7 +1344,7 @@ function SetGroup({
   activeIndex: number;
   savingIdx: number | null;
   shakeIdx: number | null;
-  unit: LiftWeightUnit;
+  unit: MachineUnit;
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
@@ -1571,7 +1580,7 @@ function RestOverlay({
   nextSetName: string | null;
   nextSetWeight: string;
   nextSetReps: string;
-  unit: LiftWeightUnit;
+  unit: MachineUnit;
   lastSetWeight: number | null;
   lastSetReps: number | null;
 }) {
