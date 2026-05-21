@@ -259,7 +259,7 @@ export function Machines({ onBack }: Props) {
           <div className="mt-4 space-y-5">
             {grouped.map((g) => (
               <div key={g.bodyPart}>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                <div className="mb-2 text-xs font-semibold tracking-[0.04em] text-muted">
                   {g.bodyPart}
                 </div>
                 <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
@@ -444,7 +444,7 @@ function Row({
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
             {machine.bodyPart && (
-              <span className="rounded-pill bg-line/60 px-2 py-0.5 font-semibold uppercase tracking-wider">
+              <span className="rounded-pill bg-line/60 px-2 py-0.5 font-semibold tracking-wide">
                 {machine.bodyPart}
               </span>
             )}
