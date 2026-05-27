@@ -10,7 +10,7 @@ import { UploadPlan } from './screens/UploadPlan';
 import { BodyWeight } from './screens/BodyWeight';
 import { Profile } from './screens/Profile';
 import { Plans } from './screens/Plans';
-import { ComingSoon } from './screens/ComingSoon';
+import { Performance } from './screens/Performance';
 import { DayView } from './screens/DayView';
 import { ExerciseLogger } from './screens/ExerciseLogger';
 import { SetNewPassword } from './screens/SetNewPassword';
@@ -313,12 +313,7 @@ function Root() {
         );
         break;
       case 'performance':
-        screen = (
-          <ComingSoon
-            title="Performance"
-            subtitle="PRs, est. 1RM, body weight trend, exercise history."
-          />
-        );
+        screen = <Performance />;
         break;
       case 'profile':
         screen = (
