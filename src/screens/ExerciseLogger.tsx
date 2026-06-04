@@ -1076,15 +1076,21 @@ export function ExerciseLogger({
               setSuggestion({ candidate: match, typedName: newName, resetBaseline });
               return;
             }
+            let newBaseline: string | null;
             try {
-              await updatePlanExerciseName(exercise.id, newName, { resetBaseline });
+              newBaseline = await updatePlanExerciseName(exercise.id, newName, {
+                resetBaseline,
+              });
             } catch (e) {
               console.error(e);
               setError('Could not save the new name. Try again.');
               return;
             }
             setDisplayName(newName);
-            if (resetBaseline) setLastSets([]);
+            // Re-baseline: drive the new timestamp into the effective identity so
+            // the load effect re-runs and rebuilds the set rows with a blank
+            // weight (new machine, no history) while keeping the rep-range reps.
+            if (resetBaseline) setEffectiveBaselineResetAt(newBaseline);
             setRenameOpen(false);
           }}
         />
@@ -1096,15 +1102,18 @@ export function ExerciseLogger({
           onCancel={() => setSuggestion(null)}
           onKeepTyped={async () => {
             const { typedName, resetBaseline } = suggestion;
+            let newBaseline: string | null;
             try {
-              await updatePlanExerciseName(exercise.id, typedName, { resetBaseline });
+              newBaseline = await updatePlanExerciseName(exercise.id, typedName, {
+                resetBaseline,
+              });
             } catch (e) {
               console.error(e);
               setError('Could not save the new name. Try again.');
               return;
             }
             setDisplayName(typedName);
-            if (resetBaseline) setLastSets([]);
+            if (resetBaseline) setEffectiveBaselineResetAt(newBaseline);
             setSuggestion(null);
             setRenameOpen(false);
           }}
