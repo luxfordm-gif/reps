@@ -90,6 +90,32 @@ export async function mergeExerciseIntoIdentity(
   if (lsError) throw lsError;
 }
 
+// Swap this one plan_exercise slot to a different machine identity (name +
+// normalized_name) without moving the old machine's logged_sets — those stay
+// attached to their original normalized_name in history. baseline_reset_at is
+// set explicitly: a brand-new exercise resets to now (fresh start); swapping to
+// an existing machine clears it so that machine's full history shows in prefill.
+export async function swapPlanExerciseIdentity(
+  exerciseId: string,
+  name: string,
+  normalizedName: string,
+  options: { resetBaseline: boolean }
+): Promise<string | null> {
+  const update = {
+    name,
+    normalized_name: normalizedName,
+    baseline_reset_at: options.resetBaseline ? new Date().toISOString() : null,
+  };
+  const { data, error } = await supabase
+    .from('plan_exercises')
+    .update(update)
+    .eq('id', exerciseId)
+    .select('baseline_reset_at')
+    .single();
+  if (error) throw error;
+  return (data?.baseline_reset_at as string | null) ?? null;
+}
+
 export async function updatePlanExerciseName(
   exerciseId: string,
   name: string,

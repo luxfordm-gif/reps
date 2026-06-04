@@ -13,12 +13,14 @@ import { buildKudos } from '../lib/kudos';
 import {
   getActivePlan,
   mergeExerciseIntoIdentity,
+  swapPlanExerciseIdentity,
   updatePlanExerciseName,
   updatePlanExerciseNotes,
   updatePlanExercisePersonalNote,
   updatePlanExerciseRest,
   type PlanExerciseRow,
 } from '../lib/plansApi';
+import { listMachines, type MachineRow } from '../lib/machinesApi';
 import { detectSetScheme } from '../lib/parseTrainingPlan';
 import { clearHomeCache } from '../lib/homeCache';
 import BarbellCalculator from '../components/BarbellCalculator';
@@ -294,6 +296,16 @@ export function ExerciseLogger({
   }, [unit]);
   const [, setNow] = useState(Date.now());
   const [displayName, setDisplayName] = useState(exercise.name);
+  // Effective machine identity for logging + prefill. Starts as the plan
+  // exercise's own identity, but a swap (one-off or persisted) re-points it so
+  // sets log against — and "last time" prefills from — the swapped machine.
+  const [effectiveNormalized, setEffectiveNormalized] = useState(
+    exercise.normalized_name
+  );
+  const [effectiveBaselineResetAt, setEffectiveBaselineResetAt] = useState<
+    string | null
+  >(exercise.baseline_reset_at);
+  const [swapOpen, setSwapOpen] = useState(false);
   const [personalOpen, setPersonalOpen] = useState(false);
   const [savedPersonal, setSavedPersonal] = useState<string>(
     exercise.personal_notes ?? ''
@@ -318,6 +330,8 @@ export function ExerciseLogger({
   useEffect(() => {
     setRestSecondsState(initialRestSeconds(exercise.rest_seconds));
     setDisplayName(exercise.name);
+    setEffectiveNormalized(exercise.normalized_name);
+    setEffectiveBaselineResetAt(exercise.baseline_reset_at);
     const note = exercise.personal_notes ?? '';
     setSavedPersonal(note);
     setPersonalDraft(note);
@@ -330,6 +344,8 @@ export function ExerciseLogger({
     exercise.id,
     exercise.rest_seconds,
     exercise.name,
+    exercise.normalized_name,
+    exercise.baseline_reset_at,
     exercise.personal_notes,
     exercise.notes,
   ]);
@@ -354,9 +370,9 @@ export function ExerciseLogger({
   // Per-machine weight unit: instant read from cache, then reconcile with DB
   // (in case the user set the unit on another device).
   useEffect(() => {
-    changeUnit(getCachedExerciseUnit(exercise.normalized_name));
+    changeUnit(getCachedExerciseUnit(effectiveNormalized));
     let cancelled = false;
-    getExerciseUnit(exercise.normalized_name)
+    getExerciseUnit(effectiveNormalized)
       .then((u) => {
         if (!cancelled) changeUnit(u);
       })
@@ -366,12 +382,12 @@ export function ExerciseLogger({
     return () => {
       cancelled = true;
     };
-  }, [exercise.normalized_name]);
+  }, [effectiveNormalized]);
 
   function handleSelectUnit(next: MachineUnit) {
     if (next === unit) return;
     changeUnit(next);
-    setExerciseUnit(exercise.normalized_name, next).catch(() => {
+    setExerciseUnit(effectiveNormalized, next).catch(() => {
       // localStorage cache already updated by setExerciseUnit; ignore DB error.
     });
   }
@@ -488,9 +504,9 @@ export function ExerciseLogger({
     Promise.all([
       getSessionSets(sessionId, exercise.id),
       getLastSessionSetsForExercise(
-        exercise.normalized_name,
+        effectiveNormalized,
         sessionId,
-        exercise.baseline_reset_at
+        effectiveBaselineResetAt
       ),
     ])
       .then(([existing, last]) => {
@@ -534,7 +550,8 @@ export function ExerciseLogger({
   }, [
     sessionId,
     exercise.id,
-    exercise.normalized_name,
+    effectiveNormalized,
+    effectiveBaselineResetAt,
     exercise.total_sets,
     exercise.rep_range,
     exercise.notes,
@@ -631,6 +648,36 @@ export function ExerciseLogger({
     }
   }
 
+  async function handleSwap(result: SwapResult) {
+    const { name, normalizedName, isNew, scope } = result;
+    if (scope === 'plan') {
+      try {
+        // New exercise → baseline fresh; existing machine → keep its history.
+        const baseline = await swapPlanExerciseIdentity(
+          exercise.id,
+          name,
+          normalizedName,
+          { resetBaseline: isNew }
+        );
+        setEffectiveBaselineResetAt(baseline);
+      } catch (e) {
+        console.error(e);
+        setError('Could not swap the machine. Try again.');
+        return;
+      }
+    } else {
+      // One-off: nothing persisted to the plan. A brand-new machine has no
+      // history, so baseline at now; an existing machine shows its full history.
+      setEffectiveBaselineResetAt(isNew ? new Date().toISOString() : null);
+    }
+    setError(null);
+    setDisplayName(name);
+    // Changing the effective identity re-runs the load effect, re-prefilling
+    // "last time" from the swapped machine (or empty for a new one).
+    setEffectiveNormalized(normalizedName);
+    setSwapOpen(false);
+  }
+
   async function handleComplete(idx: number) {
     const set = sets[idx];
     const weightStr = set.weight.trim();
@@ -660,8 +707,8 @@ export function ExerciseLogger({
         const logged = await logSet({
           sessionId,
           planExerciseId: exercise.id,
-          exerciseDisplayName: exercise.name,
-          exerciseNormalizedName: exercise.normalized_name,
+          exerciseDisplayName: displayName,
+          exerciseNormalizedName: effectiveNormalized,
           setIndex: set.setIndex,
           dropIndex: set.dropIndex,
           weight: weightKg,
@@ -724,6 +771,7 @@ export function ExerciseLogger({
               onOverview={onOverview}
               onHome={onHome}
               onEndWorkout={onEndWorkout}
+              onSwap={() => setSwapOpen(true)}
               onEditName={() => setRenameOpen(true)}
               weightUnit={unit}
               onSelectUnit={handleSelectUnit}
@@ -1006,6 +1054,14 @@ export function ExerciseLogger({
           if (calcOpen !== null) update(calcOpen, { weight: String(kg) });
         }}
       />
+      {swapOpen && (
+        <SwapMachineModal
+          bodyPart={exercise.body_part}
+          currentNormalized={effectiveNormalized}
+          onCancel={() => setSwapOpen(false)}
+          onConfirm={handleSwap}
+        />
+      )}
       {renameOpen && (
         <RenameExerciseModal
           initialName={displayName}
@@ -1067,11 +1123,12 @@ export function ExerciseLogger({
               return;
             }
             setDisplayName(target.name);
+            setEffectiveNormalized(targetNormalized);
             try {
               const merged = await getLastSessionSetsForExercise(
                 targetNormalized,
                 sessionId,
-                exercise.baseline_reset_at
+                effectiveBaselineResetAt
               );
               setLastSets(merged);
             } catch {
@@ -1092,6 +1149,7 @@ function ExerciseMenu({
   onOverview,
   onHome,
   onEndWorkout,
+  onSwap,
   onEditName,
   weightUnit,
   onSelectUnit,
@@ -1101,6 +1159,7 @@ function ExerciseMenu({
   onOverview: () => void;
   onHome: () => void;
   onEndWorkout: () => void;
+  onSwap: () => void;
   onEditName: () => void;
   weightUnit: MachineUnit;
   onSelectUnit: (u: MachineUnit) => void;
@@ -1164,6 +1223,13 @@ function ExerciseMenu({
           </div>
           <div className="border-t border-line/60" />
           <button
+            onClick={() => pick(onSwap)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+          >
+            Swap machine
+          </button>
+          <div className="border-t border-line/60" />
+          <button
             onClick={() => pick(onEditName)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
           >
@@ -1199,6 +1265,201 @@ function ExerciseMenu({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+interface SwapResult {
+  name: string;
+  normalizedName: string;
+  isNew: boolean;
+  scope: 'plan' | 'oneoff';
+}
+
+function SwapMachineModal({
+  bodyPart,
+  currentNormalized,
+  onCancel,
+  onConfirm,
+}: {
+  bodyPart: string | null;
+  currentNormalized: string;
+  onCancel: () => void;
+  onConfirm: (result: SwapResult) => void;
+}) {
+  const [stage, setStage] = useState<'choose' | 'scope'>('choose');
+  const [machines, setMachines] = useState<MachineRow[] | null>(null);
+  const [newName, setNewName] = useState('');
+  const [pending, setPending] = useState<{
+    name: string;
+    normalizedName: string;
+    isNew: boolean;
+  } | null>(null);
+
+  // Load the user's machines for this body part (case-insensitive), excluding
+  // the one currently in the slot. Best-effort — on failure show an empty list
+  // and let the user add a new exercise instead.
+  useEffect(() => {
+    let mounted = true;
+    listMachines()
+      .then((all) => {
+        if (!mounted) return;
+        const bp = (bodyPart ?? '').trim().toLowerCase();
+        const filtered = all
+          .filter((m) => m.normalizedName !== currentNormalized)
+          .filter((m) =>
+            bp ? (m.bodyPart ?? '').trim().toLowerCase() === bp : true
+          )
+          .sort((a, b) => a.displayName.localeCompare(b.displayName));
+        setMachines(filtered);
+      })
+      .catch(() => {
+        if (mounted) setMachines([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [bodyPart, currentNormalized]);
+
+  const trimmedNew = newName.trim();
+
+  function chooseExisting(m: MachineRow) {
+    setPending({
+      name: m.displayName,
+      normalizedName: m.normalizedName,
+      isNew: false,
+    });
+    setStage('scope');
+  }
+
+  function chooseNew() {
+    if (!trimmedNew) return;
+    setPending({
+      name: trimmedNew,
+      normalizedName: normalizeExerciseName(trimmedNew),
+      isNew: true,
+    });
+    setStage('scope');
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      onClick={onCancel}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {stage === 'choose' ? (
+          <>
+            <h2 className="text-base font-semibold text-ink">Swap machine</h2>
+            <p className="mt-1 text-xs text-muted">
+              Pick another {bodyPart ? `${bodyPart.toLowerCase()} ` : ''}machine,
+              or add a brand-new exercise.
+            </p>
+
+            <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+              {machines === null ? (
+                <div className="py-6 text-center text-sm text-muted">Loading…</div>
+              ) : machines.length === 0 ? (
+                <div className="py-2 text-center text-xs text-muted">
+                  No other machines for this body part yet — add a new exercise
+                  below.
+                </div>
+              ) : (
+                <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper-card">
+                  {machines.map((m) => (
+                    <li key={m.normalizedName}>
+                      <button
+                        onClick={() => chooseExisting(m)}
+                        className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-line/40"
+                      >
+                        <span className="text-sm font-semibold text-ink">
+                          {m.displayName}
+                        </span>
+                        {m.setCount > 0 && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                            history
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <p className="mt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Add a new exercise
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="New exercise name"
+                className="min-w-0 flex-1 rounded-xl border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+              />
+              <button
+                onClick={chooseNew}
+                disabled={!trimmedNew}
+                className="shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+              >
+                Add
+              </button>
+            </div>
+
+            <button
+              onClick={onCancel}
+              className="mt-4 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <h2 className="text-base font-semibold text-ink">
+              Swap to “{pending?.name}”
+            </h2>
+            <p className="mt-1 text-xs text-muted">
+              {pending?.isNew
+                ? 'New exercise — it starts fresh and baselines from this workout.'
+                : "Pulls up that machine's own history so you can pick up where you left off."}
+            </p>
+            <p className="mt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Is this a one-off?
+            </p>
+            <div className="mt-2 grid gap-2">
+              <button
+                onClick={() =>
+                  pending && onConfirm({ ...pending, scope: 'plan' })
+                }
+                className="w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+              >
+                Update the workout plan
+              </button>
+              <button
+                onClick={() =>
+                  pending && onConfirm({ ...pending, scope: 'oneoff' })
+                }
+                className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+              >
+                Just this workout
+              </button>
+              <button
+                onClick={() => {
+                  setPending(null);
+                  setStage('choose');
+                }}
+                className="w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+              >
+                Back
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
