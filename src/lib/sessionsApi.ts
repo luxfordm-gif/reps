@@ -765,6 +765,18 @@ export interface WeeklySessionRef {
   completedAt: string;
 }
 
+/** The single best set (by estimated 1RM) logged for one exercise in a week. */
+export interface ExerciseWeekBest {
+  normalizedName: string;
+  displayName: string;
+  bodyPart: string | null;
+  /** Weight (kg) and reps of the set that produced the best estimated 1RM. */
+  topWeightKg: number;
+  topReps: number;
+  /** Epley estimated 1RM (kg) of that set — used to rank week-over-week gains. */
+  bestE1RMkg: number;
+}
+
 export interface WeeklyWorkoutSummary {
   weekStart: Date;
   weekEnd: Date;
@@ -773,6 +785,14 @@ export interface WeeklyWorkoutSummary {
   totalSets: number;
   sessions: WeeklySessionRef[];
   byBodyPart: BodyPartStats[];
+  /** Best set per exercise this week, for per-exercise progress comparisons. */
+  exerciseBests: ExerciseWeekBest[];
+}
+
+/** Epley estimated one-rep max. Single reps return the lifted weight unchanged. */
+function epley1RM(weight: number, reps: number): number {
+  if (reps <= 1) return weight;
+  return weight * (1 + reps / 30);
 }
 
 export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWorkoutSummary> {
@@ -786,6 +806,7 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
     totalSets: 0,
     sessions: [],
     byBodyPart: [],
+    exerciseBests: [],
   };
 
   const {
@@ -819,13 +840,14 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
   const { data: setsRows, error: setsErr } = await supabase
     .from('logged_sets')
     .select(
-      'session_id, exercise_display_name, weight, reps, plan_exercises(body_part)'
+      'session_id, exercise_display_name, exercise_normalized_name, weight, reps, plan_exercises(body_part)'
     )
     .in('session_id', sessionIds);
   if (setsErr) throw setsErr;
   type LRow = {
     session_id: string;
     exercise_display_name: string;
+    exercise_normalized_name: string;
     weight: number | null;
     reps: number | null;
     plan_exercises: { body_part: string | null } | { body_part: string | null }[] | null;
@@ -841,6 +863,8 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
       topSet: { exercise: string; weight: number; reps: number } | null;
     }
   >();
+  // Best set per exercise (by estimated 1RM), keyed by normalized name.
+  const exGroups = new Map<string, ExerciseWeekBest>();
   let totalVolume = 0;
   let totalSets = 0;
   for (const r of setRows) {
@@ -865,6 +889,18 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
           reps: r.reps,
         };
       }
+      const e = epley1RM(r.weight, r.reps);
+      const ex = exGroups.get(r.exercise_normalized_name);
+      if (!ex || e > ex.bestE1RMkg) {
+        exGroups.set(r.exercise_normalized_name, {
+          normalizedName: r.exercise_normalized_name,
+          displayName: r.exercise_display_name,
+          bodyPart: pe?.body_part?.trim() ? pe.body_part.trim() : null,
+          topWeightKg: r.weight,
+          topReps: r.reps,
+          bestE1RMkg: e,
+        });
+      }
     }
   }
 
@@ -878,6 +914,8 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
     }))
     .sort((a, b) => b.volume - a.volume || b.setCount - a.setCount);
 
+  const exerciseBests = [...exGroups.values()].sort((a, b) => b.bestE1RMkg - a.bestE1RMkg);
+
   return {
     weekStart,
     weekEnd,
@@ -886,6 +924,7 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
     totalSets,
     sessions: sessionRefs,
     byBodyPart,
+    exerciseBests,
   };
 }
 
