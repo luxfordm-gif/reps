@@ -155,6 +155,71 @@ export function buildWeeklySeries(
     .sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1));
 }
 
+export interface SessionSet {
+  weightKg: number | null;
+  reps: number | null;
+}
+
+export interface ExerciseHistoryPoint {
+  /** Local yyyy-mm-dd of the workout day. */
+  date: string;
+  /** ISO timestamp of the first set that day (tooltip label + stable sort). */
+  at: string;
+  /** Heaviest weight lifted that day (kg). null if no weighted sets. */
+  topWeightKg: number | null;
+  /** Reps achieved on the heaviest set that day. */
+  repsAtTopWeight: number | null;
+  /** Best Epley estimated 1RM across the day's sets (kg). */
+  bestEst1RMkg: number | null;
+  /** Every set that day, in logged order. */
+  sets: SessionSet[];
+}
+
+/** Local yyyy-mm-dd day key (history is grouped by calendar day). */
+function dayISO(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * Per-session history for one exercise, ascending by date. Each point captures
+ * the day's heaviest set (weight + the reps hit on it) and best estimated 1RM,
+ * plus every set for the history list. `sets` arrives ascending by completion,
+ * so logged order within a day is preserved.
+ */
+export function buildExerciseHistory(
+  sets: PerfSet[],
+  normalizedName: string
+): ExerciseHistoryPoint[] {
+  const byDay = new Map<string, ExerciseHistoryPoint>();
+  for (const s of sets) {
+    if (s.normalizedName !== normalizedName) continue;
+    const key = dayISO(new Date(s.completedAt));
+    let p = byDay.get(key);
+    if (!p) {
+      p = {
+        date: key,
+        at: s.completedAt,
+        topWeightKg: null,
+        repsAtTopWeight: null,
+        bestEst1RMkg: null,
+        sets: [],
+      };
+      byDay.set(key, p);
+    }
+    p.sets.push({ weightKg: s.weight, reps: s.reps });
+    if (s.weight == null) continue;
+    if (p.topWeightKg == null || s.weight > p.topWeightKg) {
+      p.topWeightKg = s.weight;
+      p.repsAtTopWeight = s.reps; // raw rep count — never unit-converted
+    }
+    if (s.reps != null) {
+      const e = estimate1RM(s.weight, s.reps);
+      if (p.bestEst1RMkg == null || e > p.bestEst1RMkg) p.bestEst1RMkg = e;
+    }
+  }
+  return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
 /** Biggest est-1RM gain comparing the last 30 days to the prior 30 days. */
 export function computeMostImproved(sets: PerfSet[], now: Date = new Date()): MostImproved | null {
   const start30 = now.getTime() - 30 * 86400000;
