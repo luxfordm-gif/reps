@@ -38,7 +38,7 @@ import {
   hasAnySessionsBefore,
   mondayOfWeek,
   type WeeklyWorkoutSummary,
-  type BodyPartStats,
+  type ExerciseWeekBest,
 } from '../lib/sessionsApi';
 import { kgToLb } from '../lib/units';
 
@@ -388,10 +388,15 @@ function buildCoachWeeklySummary(
   previous: WeeklyWorkoutSummary | null
 ): string {
   const unit = getLiftWeightUnit();
-  const fmtWeight = (kg: number) => {
+  // Keeps a single decimal so micro-loading (e.g. +2.5 kg on bench) isn't
+  // rounded away — important for hard-to-progress lifts.
+  const fmtW = (kg: number) => {
     const v = unit === 'lb' ? kgToLb(kg) : kg;
-    return `${Math.round(v).toLocaleString('en-GB')} ${unit}`;
+    const r = Math.round(v * 10) / 10;
+    return `${Number.isInteger(r) ? String(r) : r.toFixed(1)} ${unit}`;
   };
+  const setStr = (e: { topWeightKg: number; topReps: number }) =>
+    `${fmtW(e.topWeightKg)} × ${e.topReps}`;
   const dateLong = (d: Date) =>
     d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const dayAndDate = (iso: string) =>
@@ -406,70 +411,68 @@ function buildCoachWeeklySummary(
   lastDay.setDate(lastDay.getDate() - 1);
 
   const out: string[] = [];
-  out.push(`# Weekly workout summary`);
+  out.push(`# Weekly progress`);
   out.push(`Week of ${dateLong(current.weekStart)} – ${dateLong(lastDay)}`);
-  if (!previous) out.push(`First week of data — no comparison available.`);
   out.push('');
 
-  const headline = `${current.workoutsDone} workout${current.workoutsDone === 1 ? '' : 's'} · ${fmtWeight(current.totalVolume)} total volume`;
-  out.push(previous ? `${headline} ${deltaSuffix(current.totalVolume, previous.totalVolume)}` : headline);
   if (current.sessions.length > 0) {
     const list = current.sessions
       .map((s) => `${s.trainingDayName} (${dayAndDate(s.completedAt)})`)
       .join(', ');
-    out.push(`Sessions: ${list}`);
-  }
-  out.push('');
-
-  // Merge body parts from this week and (if comparing) last week so dropped
-  // areas still show up at the bottom.
-  const prevByName = new Map<string, BodyPartStats>();
-  if (previous) {
-    for (const p of previous.byBodyPart) prevByName.set(p.bodyPart, p);
-  }
-  const seen = new Set<string>();
-  const ordered: { current: BodyPartStats | null; previous: BodyPartStats | null }[] = [];
-  for (const cur of current.byBodyPart) {
-    seen.add(cur.bodyPart);
-    ordered.push({ current: cur, previous: prevByName.get(cur.bodyPart) ?? null });
-  }
-  if (previous) {
-    const dropped = previous.byBodyPart
-      .filter((p) => !seen.has(p.bodyPart))
-      .sort((a, b) => b.volume - a.volume);
-    for (const p of dropped) ordered.push({ current: null, previous: p });
-  }
-
-  for (const row of ordered) {
-    const name = (row.current ?? row.previous)!.bodyPart;
-    if (row.current) {
-      const c = row.current;
-      const volPart = c.volume > 0 ? fmtWeight(c.volume) : `${c.setCount} set${c.setCount === 1 ? '' : 's'}`;
-      const delta = previous ? ` ${deltaSuffix(c.volume, row.previous?.volume ?? 0)}` : '';
-      const sessions = c.sessionCount > 1 ? ` · ×${c.sessionCount} sessions` : '';
-      out.push(`## ${name} — ${volPart}${delta}${sessions}`);
-      if (c.topSet) {
-        out.push(
-          `Top set: ${c.topSet.exercise} — ${fmtWeight(c.topSet.weight)} × ${c.topSet.reps}`
-        );
-      }
-    } else if (row.previous) {
-      out.push(`## ${name} — ${fmtWeight(0)} (−100% vs last week)`);
-      out.push(`Not trained this week.`);
-    }
+    out.push(
+      `${current.workoutsDone} workout${current.workoutsDone === 1 ? '' : 's'}: ${list}`
+    );
     out.push('');
+  }
+
+  // First week: no comparison yet — give the coach a baseline of best sets.
+  if (!previous) {
+    out.push(`First week of data — no comparison yet. Best set per exercise:`);
+    out.push('');
+    for (const e of current.exerciseBests.slice(0, 8)) {
+      out.push(`- **${e.displayName}** — ${setStr(e)}`);
+    }
+    return out.join('\n').trimEnd() + '\n';
+  }
+
+  // Rank repeated lifts by % gain in estimated 1RM so a small, hard-won PR on a
+  // heavy/stubborn lift (e.g. bench) can outrank a big jump on an easier one.
+  const prevByName = new Map(previous.exerciseBests.map((e) => [e.normalizedName, e]));
+  const wins: { cur: ExerciseWeekBest; prev: ExerciseWeekBest; pct: number }[] = [];
+  for (const cur of current.exerciseBests) {
+    const prev = prevByName.get(cur.normalizedName);
+    if (!prev || cur.bestE1RMkg <= prev.bestE1RMkg) continue;
+    wins.push({ cur, prev, pct: ((cur.bestE1RMkg - prev.bestE1RMkg) / prev.bestE1RMkg) * 100 });
+  }
+  wins.sort((a, b) => b.pct - a.pct);
+
+  out.push(`## Biggest improvements vs last week`);
+  if (wins.length === 0) {
+    out.push(`No measured gains on repeated lifts this week — held steady or building back.`);
+  } else {
+    for (const w of wins.slice(0, 5)) {
+      out.push(formatWin(w.cur, w.prev, w.pct, fmtW, setStr));
+    }
   }
   return out.join('\n').trimEnd() + '\n';
 }
 
-function deltaSuffix(current: number, previous: number): string {
-  if (previous === 0) {
-    return current === 0 ? '(no change vs last week)' : '(new this week)';
-  }
-  const pct = ((current - previous) / previous) * 100;
-  const rounded = Math.round(pct);
-  const sign = rounded > 0 ? '+' : rounded < 0 ? '−' : '';
-  return `(${sign}${Math.abs(rounded)}% vs last week)`;
+/** One bullet describing an exercise's week-over-week win, e.g.
+ *  "- **Deadlift** — 100 kg × 5 → 105 kg × 5  (+5 kg · est. 1RM +3%)". */
+function formatWin(
+  cur: ExerciseWeekBest,
+  prev: ExerciseWeekBest,
+  pct: number,
+  fmtW: (kg: number) => string,
+  setStr: (e: { topWeightKg: number; topReps: number }) => string
+): string {
+  const parts: string[] = [];
+  const dW = cur.topWeightKg - prev.topWeightKg;
+  const dR = cur.topReps - prev.topReps;
+  if (Math.abs(dW) >= 0.05) parts.push(`${dW > 0 ? '+' : '−'}${fmtW(Math.abs(dW))}`);
+  if (dR !== 0) parts.push(`${dR > 0 ? '+' : '−'}${Math.abs(dR)} rep${Math.abs(dR) === 1 ? '' : 's'}`);
+  parts.push(`est. 1RM +${pct < 0.5 ? '<1' : Math.round(pct)}%`);
+  return `- **${cur.displayName}** — ${setStr(prev)} → ${setStr(cur)}  (${parts.join(' · ')})`;
 }
 
 function todayIso(): string {
