@@ -21,6 +21,12 @@ import {
   type PlanExerciseRow,
 } from '../lib/plansApi';
 import { listMachines, type MachineRow } from '../lib/machinesApi';
+import {
+  listAlternativesForExercise,
+  addAlternative,
+  removeAlternative,
+  type ExerciseAlternativeRow,
+} from '../lib/alternativesApi';
 import { detectSetScheme } from '../lib/parseTrainingPlan';
 import { clearHomeCache } from '../lib/homeCache';
 import BarbellCalculator from '../components/BarbellCalculator';
@@ -306,6 +312,14 @@ export function ExerciseLogger({
     string | null
   >(exercise.baseline_reset_at);
   const [swapOpen, setSwapOpen] = useState(false);
+  // Alternatives attached to this plan-exercise slot. `activeAltId === null`
+  // means the primary plan exercise is selected; otherwise it's the id of the
+  // active alternative. The active identity (name/normalized/baseline) is
+  // re-pointed via `selectIdentity` so set rows + "last time" prefill reload
+  // for the chosen movement while tempo/reps/sets stay from the plan.
+  const [alternatives, setAlternatives] = useState<ExerciseAlternativeRow[]>([]);
+  const [activeAltId, setActiveAltId] = useState<string | null>(null);
+  const [addAltOpen, setAddAltOpen] = useState(false);
   const [personalOpen, setPersonalOpen] = useState(false);
   const [savedPersonal, setSavedPersonal] = useState<string>(
     exercise.personal_notes ?? ''
@@ -332,6 +346,8 @@ export function ExerciseLogger({
     setDisplayName(exercise.name);
     setEffectiveNormalized(exercise.normalized_name);
     setEffectiveBaselineResetAt(exercise.baseline_reset_at);
+    // Always reopen on the primary so the plan keeps its priority.
+    setActiveAltId(null);
     const note = exercise.personal_notes ?? '';
     setSavedPersonal(note);
     setPersonalDraft(note);
@@ -349,6 +365,71 @@ export function ExerciseLogger({
     exercise.personal_notes,
     exercise.notes,
   ]);
+
+  // Load this slot's alternatives. Best-effort — on failure the pill switcher
+  // simply doesn't render and the exercise behaves exactly as before.
+  useEffect(() => {
+    let mounted = true;
+    listAlternativesForExercise(exercise.id)
+      .then((alts) => {
+        if (mounted) setAlternatives(alts);
+      })
+      .catch(() => {
+        if (mounted) setAlternatives([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [exercise.id]);
+
+  // Switch the active identity between the primary plan exercise (null) and one
+  // of its alternatives. Re-points the same effective-state values the one-off
+  // swap uses, so the load effect rebuilds set rows + "last time" prefill for
+  // the chosen movement. Tempo / rep range / target sets stay from the plan.
+  function selectIdentity(alt: ExerciseAlternativeRow | null) {
+    setError(null);
+    setRestEndsAt(null);
+    if (alt === null) {
+      setActiveAltId(null);
+      setDisplayName(exercise.name);
+      setEffectiveBaselineResetAt(exercise.baseline_reset_at);
+      setEffectiveNormalized(exercise.normalized_name);
+    } else {
+      setActiveAltId(alt.id);
+      setDisplayName(alt.name);
+      // Existing machine → show its history; a brand-new movement simply has no
+      // logged sets under its normalized_name, so prefill comes back empty
+      // (blank weights, reps from the plan's rep range).
+      setEffectiveBaselineResetAt(null);
+      setEffectiveNormalized(alt.normalized_name);
+    }
+  }
+
+  async function handleAddAlternative(name: string, normalizedName: string) {
+    try {
+      const added = await addAlternative(exercise.id, name, normalizedName);
+      setAlternatives((prev) => [...prev, added]);
+      setAddAltOpen(false);
+      // Jump straight to the new alternative so the user can start logging it.
+      selectIdentity(added);
+    } catch (e) {
+      console.error(e);
+      setError('Could not add the alternative. Try again.');
+    }
+  }
+
+  async function handleRemoveAlternative(id: string) {
+    try {
+      await removeAlternative(id);
+    } catch (e) {
+      console.error(e);
+      setError('Could not remove the alternative. Try again.');
+      return;
+    }
+    setAlternatives((prev) => prev.filter((a) => a.id !== id));
+    // If the removed alternative was active, fall back to the primary.
+    if (activeAltId === id) selectIdentity(null);
+  }
 
   function changeUnit(next: MachineUnit) {
     setUnit((prev) => {
@@ -502,7 +583,7 @@ export function ExerciseLogger({
     let mounted = true;
     setLoading(true);
     Promise.all([
-      getSessionSets(sessionId, exercise.id),
+      getSessionSets(sessionId, exercise.id, effectiveNormalized),
       getLastSessionSetsForExercise(
         effectiveNormalized,
         sessionId,
@@ -773,6 +854,7 @@ export function ExerciseLogger({
               onEndWorkout={onEndWorkout}
               onSwap={() => setSwapOpen(true)}
               onEditName={() => setRenameOpen(true)}
+              onAddAlternative={() => setAddAltOpen(true)}
               weightUnit={unit}
               onSelectUnit={handleSelectUnit}
             />
@@ -804,6 +886,17 @@ export function ExerciseLogger({
           </a>
           <div className="mt-1 text-sm text-muted">{exercise.body_part}</div>
         </div>
+
+        {alternatives.length > 0 && (
+          <AlternativeSwitcher
+            primaryName={exercise.name}
+            alternatives={alternatives}
+            activeAltId={activeAltId}
+            onSelect={selectIdentity}
+            onAdd={() => setAddAltOpen(true)}
+            onRemove={handleRemoveAlternative}
+          />
+        )}
 
         <div className="mt-5 grid grid-cols-3 gap-3">
           <Stat label="Target sets" value={String(targetSets)} />
@@ -1062,6 +1155,17 @@ export function ExerciseLogger({
           onConfirm={handleSwap}
         />
       )}
+      {addAltOpen && (
+        <AddAlternativeModal
+          bodyPart={exercise.body_part}
+          excludeNormalized={[
+            exercise.normalized_name,
+            ...alternatives.map((a) => a.normalized_name),
+          ]}
+          onCancel={() => setAddAltOpen(false)}
+          onConfirm={handleAddAlternative}
+        />
+      )}
       {renameOpen && (
         <RenameExerciseModal
           initialName={displayName}
@@ -1160,6 +1264,7 @@ function ExerciseMenu({
   onEndWorkout,
   onSwap,
   onEditName,
+  onAddAlternative,
   weightUnit,
   onSelectUnit,
 }: {
@@ -1170,6 +1275,7 @@ function ExerciseMenu({
   onEndWorkout: () => void;
   onSwap: () => void;
   onEditName: () => void;
+  onAddAlternative: () => void;
   weightUnit: MachineUnit;
   onSelectUnit: (u: MachineUnit) => void;
 }) {
@@ -1239,6 +1345,13 @@ function ExerciseMenu({
           </button>
           <div className="border-t border-line/60" />
           <button
+            onClick={() => pick(onAddAlternative)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+          >
+            Add alternative
+          </button>
+          <div className="border-t border-line/60" />
+          <button
             onClick={() => pick(onEditName)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
           >
@@ -1274,6 +1387,202 @@ function ExerciseMenu({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Horizontally-scrollable row of pills letting the user flip between the plan's
+// primary exercise and any alternatives they've attached to this slot. The
+// primary is always first so it reads as the plan default.
+function AlternativeSwitcher({
+  primaryName,
+  alternatives,
+  activeAltId,
+  onSelect,
+  onAdd,
+  onRemove,
+}: {
+  primaryName: string;
+  alternatives: ExerciseAlternativeRow[];
+  activeAltId: string | null;
+  onSelect: (alt: ExerciseAlternativeRow | null) => void;
+  onAdd: () => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="mt-3 -mx-5 overflow-x-auto px-5">
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={() => onSelect(null)}
+          className={`shrink-0 rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors ${
+            activeAltId === null ? 'bg-ink text-white' : 'bg-line text-muted active:text-ink'
+          }`}
+        >
+          {primaryName}
+        </button>
+        {alternatives.map((alt) => {
+          const active = activeAltId === alt.id;
+          return (
+            <span
+              key={alt.id}
+              className={`group flex shrink-0 items-center rounded-pill transition-colors ${
+                active ? 'bg-ink text-white' : 'bg-line text-muted'
+              }`}
+            >
+              <button
+                onClick={() => onSelect(alt)}
+                className="py-1.5 pl-3 pr-1.5 text-xs font-semibold active:opacity-80"
+              >
+                {alt.name}
+              </button>
+              <button
+                onClick={() => onRemove(alt.id)}
+                aria-label={`Remove ${alt.name}`}
+                className={`mr-1 flex h-5 w-5 items-center justify-center rounded-full text-sm leading-none active:opacity-60 ${
+                  active ? 'text-white/70' : 'text-muted'
+                }`}
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
+        <button
+          onClick={onAdd}
+          aria-label="Add alternative"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line text-ink active:bg-line/40"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Adds a new alternative to the slot. Reuses the SwapMachineModal "choose"
+// stage — pick an existing tracked machine (pulls its history) or type a new
+// movement (starts at zero) — but adding is always a persisted plan-slot
+// addition, so there is no one-off/replace scope step.
+function AddAlternativeModal({
+  bodyPart,
+  excludeNormalized,
+  onCancel,
+  onConfirm,
+}: {
+  bodyPart: string | null;
+  excludeNormalized: string[];
+  onCancel: () => void;
+  onConfirm: (name: string, normalizedName: string) => void;
+}) {
+  const [machines, setMachines] = useState<MachineRow[] | null>(null);
+  const [newName, setNewName] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    listMachines()
+      .then((all) => {
+        if (!mounted) return;
+        const bp = (bodyPart ?? '').trim().toLowerCase();
+        const exclude = new Set(excludeNormalized);
+        const filtered = all
+          .filter((m) => !exclude.has(m.normalizedName))
+          .filter((m) =>
+            bp ? (m.bodyPart ?? '').trim().toLowerCase() === bp : true
+          )
+          .sort((a, b) => a.displayName.localeCompare(b.displayName));
+        setMachines(filtered);
+      })
+      .catch(() => {
+        if (mounted) setMachines([]);
+      });
+    return () => {
+      mounted = false;
+    };
+    // excludeNormalized is rebuilt each render; key off its contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bodyPart, excludeNormalized.join('|')]);
+
+  const trimmedNew = newName.trim();
+
+  function chooseNew() {
+    if (!trimmedNew) return;
+    onConfirm(trimmedNew, normalizeExerciseName(trimmedNew));
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      onClick={onCancel}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-base font-semibold text-ink">Add alternative</h2>
+        <p className="mt-1 text-xs text-muted">
+          A backup movement for when the planned machine is taken. It keeps the
+          same tempo and rep range, and you can switch to it any time. The plan
+          always defaults back to the original.
+        </p>
+
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+          {machines === null ? (
+            <div className="py-6 text-center text-sm text-muted">Loading…</div>
+          ) : machines.length === 0 ? (
+            <div className="py-2 text-center text-xs text-muted">
+              No other machines for this body part yet — add a new exercise
+              below.
+            </div>
+          ) : (
+            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper-card">
+              {machines.map((m) => (
+                <li key={m.normalizedName}>
+                  <button
+                    onClick={() => onConfirm(m.displayName, m.normalizedName)}
+                    className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-line/40"
+                  >
+                    <span className="text-sm font-semibold text-ink">
+                      {m.displayName}
+                    </span>
+                    {m.setCount > 0 && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                        history
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <p className="mt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Add a new exercise
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="New exercise name"
+            className="min-w-0 flex-1 rounded-xl border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+          />
+          <button
+            onClick={chooseNew}
+            disabled={!trimmedNew}
+            className="shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+          >
+            Add
+          </button>
+        </div>
+
+        <button
+          onClick={onCancel}
+          className="mt-4 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

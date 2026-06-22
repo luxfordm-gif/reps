@@ -1041,13 +1041,23 @@ export async function updateLoggedSet(
   return data as LoggedSet;
 }
 
-export async function getSessionSets(sessionId: string, planExerciseId: string): Promise<LoggedSet[]> {
-  const { data, error } = await supabase
+export async function getSessionSets(
+  sessionId: string,
+  planExerciseId: string,
+  normalizedName?: string
+): Promise<LoggedSet[]> {
+  // When an exercise slot has alternatives, the primary and every alternative
+  // share the same plan_exercise_id but log under different normalized_names.
+  // Pass normalizedName so each active identity only sees the sets it logged
+  // this session (otherwise switching pills would mark an alternative's rows
+  // completed using the primary's weights).
+  let query = supabase
     .from('logged_sets')
     .select('*')
     .eq('session_id', sessionId)
-    .eq('plan_exercise_id', planExerciseId)
-    .order('set_index', { ascending: true });
+    .eq('plan_exercise_id', planExerciseId);
+  if (normalizedName) query = query.eq('exercise_normalized_name', normalizedName);
+  const { data, error } = await query.order('set_index', { ascending: true });
   if (error) throw error;
   return (data as LoggedSet[]) ?? [];
 }
