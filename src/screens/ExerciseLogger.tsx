@@ -320,6 +320,7 @@ export function ExerciseLogger({
   const [alternatives, setAlternatives] = useState<ExerciseAlternativeRow[]>([]);
   const [activeAltId, setActiveAltId] = useState<string | null>(null);
   const [addAltOpen, setAddAltOpen] = useState(false);
+  const [altSheetOpen, setAltSheetOpen] = useState(false);
   const [personalOpen, setPersonalOpen] = useState(false);
   const [savedPersonal, setSavedPersonal] = useState<string>(
     exercise.personal_notes ?? ''
@@ -406,16 +407,14 @@ export function ExerciseLogger({
   }
 
   async function handleAddAlternative(name: string, normalizedName: string) {
-    try {
-      const added = await addAlternative(exercise.id, name, normalizedName);
-      setAlternatives((prev) => [...prev, added]);
-      setAddAltOpen(false);
-      // Jump straight to the new alternative so the user can start logging it.
-      selectIdentity(added);
-    } catch (e) {
-      console.error(e);
-      setError('Could not add the alternative. Try again.');
-    }
+    // Let errors propagate so AddAlternativeModal can show them inline — a
+    // background banner would render behind the open modal and look like a
+    // no-op.
+    const added = await addAlternative(exercise.id, name, normalizedName);
+    setAlternatives((prev) => [...prev, added]);
+    setAddAltOpen(false);
+    // Jump straight to the new alternative so the user can start logging it.
+    selectIdentity(added);
   }
 
   async function handleRemoveAlternative(id: string) {
@@ -888,14 +887,25 @@ export function ExerciseLogger({
         </div>
 
         {alternatives.length > 0 && (
-          <AlternativeSwitcher
-            primaryName={exercise.name}
-            alternatives={alternatives}
-            activeAltId={activeAltId}
-            onSelect={selectIdentity}
-            onAdd={() => setAddAltOpen(true)}
-            onRemove={handleRemoveAlternative}
-          />
+          <button
+            onClick={() => setAltSheetOpen(true)}
+            className={`mt-3 inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors ${
+              activeAltId !== null
+                ? 'bg-ink text-white'
+                : 'bg-line text-muted active:text-ink'
+            }`}
+          >
+            <SwapGlyph />
+            {activeAltId !== null ? 'Alternative' : 'Alternatives'}
+            <span
+              className={`rounded-full px-1.5 text-[10px] leading-tight ${
+                activeAltId !== null ? 'bg-white/20' : 'bg-paper text-muted'
+              }`}
+            >
+              {alternatives.length}
+            </span>
+            <Chevron rotate={90} />
+          </button>
         )}
 
         <div className="mt-5 grid grid-cols-3 gap-3">
@@ -1155,6 +1165,23 @@ export function ExerciseLogger({
           onConfirm={handleSwap}
         />
       )}
+      {altSheetOpen && (
+        <AlternativeSheet
+          primaryName={exercise.name}
+          alternatives={alternatives}
+          activeAltId={activeAltId}
+          onSelect={(alt) => {
+            selectIdentity(alt);
+            setAltSheetOpen(false);
+          }}
+          onRemove={handleRemoveAlternative}
+          onAdd={() => {
+            setAltSheetOpen(false);
+            setAddAltOpen(true);
+          }}
+          onClose={() => setAltSheetOpen(false)}
+        />
+      )}
       {addAltOpen && (
         <AddAlternativeModal
           bodyPart={exercise.body_part}
@@ -1391,68 +1418,160 @@ function ExerciseMenu({
   );
 }
 
-// Horizontally-scrollable row of pills letting the user flip between the plan's
-// primary exercise and any alternatives they've attached to this slot. The
-// primary is always first so it reads as the plan default.
-function AlternativeSwitcher({
+// Two-arrows swap glyph for the alternatives trigger chip.
+function SwapGlyph() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M7 7h11l-3-3M17 17H6l3 3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CheckGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M5 12l5 5L20 6"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TrashGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 7h16M9 7V5h6v2m-8 0l1 13h8l1-13"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// iOS-style bottom action sheet for switching between the plan's primary
+// exercise and the alternatives attached to this slot. Replaces the old inline
+// pill row, which overflowed when exercise names were long. The primary is
+// always listed first and badged as the plan default.
+function AlternativeSheet({
   primaryName,
   alternatives,
   activeAltId,
   onSelect,
-  onAdd,
   onRemove,
+  onAdd,
+  onClose,
 }: {
   primaryName: string;
   alternatives: ExerciseAlternativeRow[];
   activeAltId: string | null;
   onSelect: (alt: ExerciseAlternativeRow | null) => void;
-  onAdd: () => void;
   onRemove: (id: string) => void;
+  onAdd: () => void;
+  onClose: () => void;
 }) {
+  // Slide the panel up on mount for a native sheet feel.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => setShown(true));
+    return () => window.cancelAnimationFrame(id);
+  }, []);
+
   return (
-    <div className="mt-3 -mx-5 overflow-x-auto px-5">
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={() => onSelect(null)}
-          className={`shrink-0 rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors ${
-            activeAltId === null ? 'bg-ink text-white' : 'bg-line text-muted active:text-ink'
-          }`}
-        >
-          {primaryName}
-        </button>
-        {alternatives.map((alt) => {
-          const active = activeAltId === alt.id;
-          return (
-            <span
-              key={alt.id}
-              className={`group flex shrink-0 items-center rounded-pill transition-colors ${
-                active ? 'bg-ink text-white' : 'bg-line text-muted'
-              }`}
-            >
+    <div
+      className={`fixed inset-0 z-50 flex items-end justify-center bg-ink/40 transition-opacity duration-200 sm:items-center ${
+        shown ? 'opacity-100' : 'opacity-0'
+      }`}
+      onClick={onClose}
+    >
+      <div
+        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-paper p-5 transition-transform duration-300 ease-out sm:rounded-3xl ${
+          shown ? 'translate-y-0' : 'translate-y-full'
+        }`}
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-line" aria-hidden />
+        <h2 className="text-base font-semibold text-ink">Switch exercise</h2>
+        <p className="mt-1 text-xs text-muted">
+          Same tempo and rep range. The plan always defaults back to the original.
+        </p>
+
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper-card">
+            <li>
               <button
-                onClick={() => onSelect(alt)}
-                className="py-1.5 pl-3 pr-1.5 text-xs font-semibold active:opacity-80"
+                onClick={() => onSelect(null)}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-line/40"
               >
-                {alt.name}
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words text-sm font-semibold text-ink">
+                    {primaryName}
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    Plan default
+                  </span>
+                </span>
+                {activeAltId === null && (
+                  <span className="shrink-0 text-ink">
+                    <CheckGlyph />
+                  </span>
+                )}
               </button>
-              <button
-                onClick={() => onRemove(alt.id)}
-                aria-label={`Remove ${alt.name}`}
-                className={`mr-1 flex h-5 w-5 items-center justify-center rounded-full text-sm leading-none active:opacity-60 ${
-                  active ? 'text-white/70' : 'text-muted'
-                }`}
-              >
-                ×
-              </button>
-            </span>
-          );
-        })}
+            </li>
+            {alternatives.map((alt) => {
+              const active = activeAltId === alt.id;
+              return (
+                <li key={alt.id} className="flex items-center">
+                  <button
+                    onClick={() => onSelect(alt)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left active:bg-line/40"
+                  >
+                    <span className="block min-w-0 flex-1 break-words text-sm font-semibold text-ink">
+                      {alt.name}
+                    </span>
+                    {active && (
+                      <span className="shrink-0 text-ink">
+                        <CheckGlyph />
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => onRemove(alt.id)}
+                    aria-label={`Remove ${alt.name}`}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center text-muted active:text-red-600"
+                  >
+                    <TrashGlyph />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
         <button
           onClick={onAdd}
-          aria-label="Add alternative"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line text-ink active:bg-line/40"
+          className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
         >
-          +
+          <span className="text-base leading-none">+</span> Add alternative
+        </button>
+        <button
+          onClick={onClose}
+          className="mt-2 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+        >
+          Done
         </button>
       </div>
     </div>
@@ -1472,10 +1591,26 @@ function AddAlternativeModal({
   bodyPart: string | null;
   excludeNormalized: string[];
   onCancel: () => void;
-  onConfirm: (name: string, normalizedName: string) => void;
+  onConfirm: (name: string, normalizedName: string) => Promise<void>;
 }) {
   const [machines, setMachines] = useState<MachineRow[] | null>(null);
   const [newName, setNewName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  async function submit(name: string, normalizedName: string) {
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      await onConfirm(name, normalizedName);
+      // On success the parent unmounts this modal; no need to clear state.
+    } catch (e) {
+      console.error(e);
+      const msg = e instanceof Error ? e.message : String(e);
+      setSubmitError(msg || 'Could not add the alternative. Try again.');
+      setSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -1506,7 +1641,7 @@ function AddAlternativeModal({
 
   function chooseNew() {
     if (!trimmedNew) return;
-    onConfirm(trimmedNew, normalizeExerciseName(trimmedNew));
+    submit(trimmedNew, normalizeExerciseName(trimmedNew));
   }
 
   return (
@@ -1539,8 +1674,9 @@ function AddAlternativeModal({
               {machines.map((m) => (
                 <li key={m.normalizedName}>
                   <button
-                    onClick={() => onConfirm(m.displayName, m.normalizedName)}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-line/40"
+                    onClick={() => submit(m.displayName, m.normalizedName)}
+                    disabled={submitting}
+                    className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-line/40 disabled:opacity-50"
                   >
                     <span className="text-sm font-semibold text-ink">
                       {m.displayName}
@@ -1569,16 +1705,23 @@ function AddAlternativeModal({
           />
           <button
             onClick={chooseNew}
-            disabled={!trimmedNew}
+            disabled={!trimmedNew || submitting}
             className="shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
           >
-            Add
+            {submitting ? 'Adding…' : 'Add'}
           </button>
         </div>
 
+        {submitError && (
+          <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+            {submitError}
+          </div>
+        )}
+
         <button
           onClick={onCancel}
-          className="mt-4 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+          disabled={submitting}
+          className="mt-4 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink disabled:opacity-40"
         >
           Cancel
         </button>
