@@ -142,7 +142,13 @@ export interface FullPlan extends PlanRow {
 export async function savePlan(
   parsed: ParsedPlan,
   name: string,
-  rawText: string
+  rawText: string,
+  // Keys ("<dayPosition>:<exercisePosition>") of exercises whose logged history
+  // should be reset to zero on this upload. A new plan starts every carried-over
+  // machine fresh by default; only the ones the user chose to keep are omitted here.
+  // baseline_reset_at cuts the workout prefill off at upload time (see
+  // getLastSessionSetsForExercise) without deleting past logged_sets.
+  options?: { historyResetKeys?: ReadonlySet<string> }
 ): Promise<PlanRow> {
   const {
     data: { user },
@@ -192,6 +198,11 @@ export async function savePlan(
         notes: e.notes,
         set_scheme: e.setScheme,
         position: e.position,
+        baseline_reset_at: options?.historyResetKeys?.has(
+          `${day.position}:${e.position}`
+        )
+          ? nowIso
+          : null,
       }));
       const { error: exErr } = await supabase.from('plan_exercises').insert(rows);
       if (exErr) throw exErr;

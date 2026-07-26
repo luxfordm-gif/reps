@@ -63,6 +63,16 @@ function computeMatch(
   return { kind: 'none', decision: 'pending' };
 }
 
+// An exercise "carries history" when it's been tied to a machine from the previous
+// plan — either an exact name match, or a fuzzy match the user confirmed is the same
+// machine. Those are the only exercises where keep-vs-reset is a meaningful choice.
+function carriesHistory(match?: Match): boolean {
+  if (!match) return false;
+  return (
+    match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')
+  );
+}
+
 interface Props {
   onCancel: () => void;
   onSaved: () => void;
@@ -78,6 +88,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [previousExercises, setPreviousExercises] = useState<PreviousExercise[]>([]);
   const [matches, setMatches] = useState<Map<string, Match>>(new Map());
+  // Keys of carried-over machines the user chose to KEEP history for. Default is a
+  // fresh start (reset to zero) for every match, so anything not in here resets.
+  const [keepHistory, setKeepHistory] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -112,6 +125,8 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       });
     });
     setMatches(next);
+    // New parse → default every carried-over machine back to a fresh start.
+    setKeepHistory(new Set());
   }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
@@ -139,7 +154,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     setSaving(true);
     setError(null);
     try {
-      await savePlan(parsed, planName, rawText);
+      // Default is a fresh start: reset every carried-over machine except the ones
+      // the user explicitly chose to keep.
+      const historyResetKeys = new Set(
+        historyCarrierKeys.filter((k) => !keepHistory.has(k))
+      );
+      await savePlan(parsed, planName, rawText, { historyResetKeys });
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save plan');
@@ -204,7 +224,33 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       next.set(key, { ...current, decision: 'different' });
       return next;
     });
+    // A different machine has no history to keep — drop any stale keep flag.
+    setKeepHistory((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
   }
+
+  function toggleKeepHistory(dayIdx: number, exIdx: number) {
+    const key = `${dayIdx}:${exIdx}`;
+    setKeepHistory((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  // Keys of every exercise tied to a previous machine — the ones a keep/reset choice
+  // applies to.
+  const historyCarrierKeys: string[] = [];
+  for (const [key, m] of matches) {
+    if (carriesHistory(m)) historyCarrierKeys.push(key);
+  }
+  const keptCount = historyCarrierKeys.filter((k) => keepHistory.has(k)).length;
+  const resetCount = historyCarrierKeys.length - keptCount;
 
   const totalExercises =
     parsed?.days.reduce((sum, d) => sum + d.exercises.length, 0) ?? 0;
@@ -312,10 +358,43 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               {pendingMatchCount > 0 && (
                 <div className="mt-2 text-xs text-muted">
                   <span className="font-semibold text-ink">{pendingMatchCount}</span>{' '}
-                  {pendingMatchCount === 1 ? 'exercise looks' : 'exercises look'} similar to your previous plan — confirm whether to keep history.
+                  {pendingMatchCount === 1 ? 'exercise looks' : 'exercises look'} similar to your previous plan — confirm whether it's the same machine.
                 </div>
               )}
             </div>
+
+            {historyCarrierKeys.length > 0 && (
+              <div className="mt-4 rounded-card bg-paper-card p-5 shadow-card">
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                  Previous history
+                </div>
+                <div className="mt-1 text-sm text-ink">
+                  <span className="font-semibold">{historyCarrierKeys.length}</span>{' '}
+                  {historyCarrierKeys.length === 1 ? 'machine matches' : 'machines match'}{' '}
+                  your last plan. New plans <span className="font-semibold">start fresh at zero</span> by
+                  default — tick “Keep history” on any you want to carry over.
+                </div>
+                <div className="mt-2 text-xs text-muted">
+                  Keeping {keptCount} · resetting {resetCount}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => setKeepHistory(new Set(historyCarrierKeys))}
+                    disabled={keptCount === historyCarrierKeys.length}
+                    className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
+                  >
+                    Keep all history
+                  </button>
+                  <button
+                    onClick={() => setKeepHistory(new Set())}
+                    disabled={keptCount === 0}
+                    className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
+                  >
+                    Reset all to zero
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 space-y-4">
               {parsed.days.map((day, dayIdx) => (
@@ -334,9 +413,11 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                         <ExerciseReviewRow
                           exercise={ex}
                           match={matches.get(`${dayIdx}:${exIdx}`)}
+                          keepHistory={keepHistory.has(`${dayIdx}:${exIdx}`)}
                           onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
                           onSameMachine={() => answerSameMachine(dayIdx, exIdx)}
                           onDifferentMachine={() => answerDifferentMachine(dayIdx, exIdx)}
+                          onToggleKeepHistory={() => toggleKeepHistory(dayIdx, exIdx)}
                         />
                       </li>
                     ))}
@@ -401,15 +482,19 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
 function ExerciseReviewRow({
   exercise,
   match,
+  keepHistory,
   onNotesChange,
   onSameMachine,
   onDifferentMachine,
+  onToggleKeepHistory,
 }: {
   exercise: ParsedExercise;
   match?: Match;
+  keepHistory: boolean;
   onNotesChange: (notes: string) => void;
   onSameMachine: () => void;
   onDifferentMachine: () => void;
+  onToggleKeepHistory: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(exercise.notes ?? '');
@@ -460,15 +545,25 @@ function ExerciseReviewRow({
       {match && match.kind !== 'none' && (
         <div className="mt-3">
           {(match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')) && (
-            <div className="flex items-center gap-1.5 text-xs text-ink/70">
-              <span aria-hidden>✓</span>
-              <span>
-                Tracking history from{' '}
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-ink/5 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={keepHistory}
+                onChange={onToggleKeepHistory}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
+              />
+              <span className="text-xs text-ink/80">
+                <span className="font-semibold text-ink">Keep history</span> from{' '}
                 <span className="font-semibold text-ink">
-                  {match.candidate?.name ?? 'previous plan'}
+                  {match.candidate?.name ?? 'your previous plan'}
+                </span>
+                <span className="mt-0.5 block text-muted">
+                  {keepHistory
+                    ? 'Your logged sets carry over.'
+                    : 'Starting fresh — resets to zero.'}
                 </span>
               </span>
-            </div>
+            </label>
           )}
           {match.kind === 'fuzzy' && match.decision === 'pending' && (
             <div className="rounded-xl bg-ink/5 px-3 py-2.5">
