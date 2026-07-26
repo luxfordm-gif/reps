@@ -11,14 +11,20 @@ export interface ExerciseAlternativeRow {
   name: string;
   normalized_name: string;
   position: number;
+  // True when this alternative came from an "alternate weeks with X" coach note.
+  // The logger uses it to suggest rotating between the two movements each week.
+  is_weekly_rotation: boolean;
 }
+
+const ALT_COLUMNS =
+  'id, plan_exercise_id, name, normalized_name, position, is_weekly_rotation';
 
 export async function listAlternativesForExercise(
   planExerciseId: string
 ): Promise<ExerciseAlternativeRow[]> {
   const { data, error } = await supabase
     .from('plan_exercise_alternatives')
-    .select('id, plan_exercise_id, name, normalized_name, position')
+    .select(ALT_COLUMNS)
     .eq('plan_exercise_id', planExerciseId)
     .order('position', { ascending: true });
   if (error) throw error;
@@ -28,7 +34,8 @@ export async function listAlternativesForExercise(
 export async function addAlternative(
   planExerciseId: string,
   name: string,
-  normalizedName: string
+  normalizedName: string,
+  options?: { isWeeklyRotation?: boolean }
 ): Promise<ExerciseAlternativeRow> {
   const {
     data: { user },
@@ -48,8 +55,9 @@ export async function addAlternative(
       name,
       normalized_name: normalizedName,
       position: nextPosition,
+      is_weekly_rotation: options?.isWeeklyRotation ?? false,
     })
-    .select('id, plan_exercise_id, name, normalized_name, position')
+    .select(ALT_COLUMNS)
     .single();
   if (error) throw error;
   return data as ExerciseAlternativeRow;
