@@ -1,13 +1,13 @@
 // Extract text from a PDF File using pdfjs-dist. We use the page text-content
-// items' transform (x/y) coordinates to reconstruct the line ordering, since
-// trainer plans are tabular and naive text extraction can scramble columns.
+// items' transform (x/y) coordinates to reconstruct the table rows, since
+// trainer plans are tabular and naive text extraction scrambles columns and
+// splits wrapped cells (long exercise names / notes) away from their row.
 
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { reconstructRows, type PositionedText } from './reconstructPdfRows';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-
-const Y_TOLERANCE = 3; // pixels — items within this Y distance count as one line
 
 export async function extractPdfText(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -19,30 +19,15 @@ export async function extractPdfText(file: File): Promise<string> {
     const content = await page.getTextContent();
     const items = content.items as Array<{ str: string; transform: number[] }>;
 
-    const lines: { y: number; parts: { x: number; str: string }[] }[] = [];
-
+    const positioned: PositionedText[] = [];
     for (const item of items) {
       if (!item.str || !item.str.trim()) continue;
-      const x = item.transform[4];
-      const y = item.transform[5];
-      let line = lines.find((l) => Math.abs(l.y - y) <= Y_TOLERANCE);
-      if (!line) {
-        line = { y, parts: [] };
-        lines.push(line);
-      }
-      line.parts.push({ x, str: item.str });
+      positioned.push({ x: item.transform[4], y: item.transform[5], str: item.str });
     }
 
-    lines.sort((a, b) => b.y - a.y);
-    for (const line of lines) {
-      line.parts.sort((a, b) => a.x - b.x);
-      const text = line.parts
-        .map((p) => p.str)
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (text) allLines.push(text);
-    }
+    // Column geometry is per-page (headers repeat on each page), so reconstruct
+    // each page independently.
+    allLines.push(...reconstructRows(positioned));
   }
 
   return allLines.join('\n');
