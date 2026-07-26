@@ -1,7 +1,8 @@
-// Quick test harness — runs the parser against the trainer's PDF text content.
-// Usage: node scripts/test-parser.mjs
+// Quick test harness — runs the parser against sample trainer PDF text content.
+// Usage: node --experimental-strip-types scripts/test-parser.mjs
 import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
 
+// Format A — split-keyword day headers (PUSH / PULL / LEGS / UPPER / ARMS + Abdominals).
 const sampleText = String.raw`
 MATT LUXFORD
 ALL SETS LISTED ARE WORKING SETS - USE 1-2 FEEDER SETS WHEN REQUIRED
@@ -73,16 +74,66 @@ ABDOMINALS LYING LEG RAISE WITH CRUNCH 3 Max reps 1 0 1 0
 ABDOMINALS PLANK 1 Max Hold N/A 3 second hold each side
 `;
 
-const result = parseTrainingPlan(sampleText);
-console.log(JSON.stringify(result, null, 2));
-console.log('\n=== SUMMARY ===');
-console.log(`Days: ${result.days.length}`);
-for (const d of result.days) {
-  console.log(`  ${d.name}: ${d.exercises.length} exercises, ${d.inlineNotes.length} inline notes`);
+// Format B — day headers titled after the body part(s) each day trains
+// (CHEST / LEGS / BACK / REAR DELT / ARMS / DELTS). These titles aren't split
+// keywords, so they're recognised structurally: a short all-caps title line sitting
+// directly above the table's "BODY PART … TEMPO NOTES" column header. The column
+// header wraps ("REP" / "RANGE" on their own lines) exactly as pdf.js extracts it.
+const bodyPartHeaderText = String.raw`
+WEEKS VOLUME
+CHEST 8
+BACK 7
+MATT LUXFORD PHX
+ALL SETS LISTED ARE WORKING SETS - USE 1-2 FEEDER SETS WHEN REQUIRED
+TRAIN CALVES X 1 PER WEEK - 6-8 WORKING SETS
+CHEST
+REP
+BODY PART EXERCISE TOTAL SETS TEMPO NOTES
+RANGE
+CHEST BARBELL BENCH PRESS 3 8-10 1 0 1 0 ALTERNATE WEEKS WITH MAGNUM BENCH PRESS MACHINE
+CHEST PEC DECK 3 10-12 3 1 3 1 LAST SET DOUBLE DROP SET
+CHEST CLOSE GRIP SMITH PRESS 6 6 1 0 1 0 MUSCLE ROUND 6 SETS 6 REPS 6 SECOND REST
+LEGS
+REP
+BODY PART EXERCISE TOTAL SETS TEMPO NOTES
+RANGE
+GLUTES/HAMS SINGLE LEG HAMSTRING CURL 3 10-12 1 1 2 0 LAST SET DOUBLE DROP SET
+QUADS CYBEX HACK SQUAT 2 10-12 2 0 1 1
+BACK / REAR DELT
+REP
+BODY PART EXERCISE TOTAL SETS TEMPO NOTES
+RANGE
+BACK ARSENAL LOW ROW 3 8-10 1 0 1 0 UNDERHAND GRIP ELBOWS TUCKED
+BACK DEADLIFT 2 6-8 1 1 1 1
+ARMS
+REP
+BODY PART EXERCISE TOTAL SETS TEMPO NOTES
+RANGE
+TRICEPS SMITH MACHINE JM PRESS 3 15-20 1 0 1 0 LAST SET DOUBLE DROP SET
+BICEPS ROPE HAMMER CURL 3 10-12 1 1 1 0
+DELTS
+REP
+BODY PART EXERCISE TOTAL SETS TEMPO NOTES
+RANGE
+SHOULDERS TECA LATERAL RAISE 3 12-15 1 1 2 1
+SHOULDERS MFG HIGH WIDE ROW 3 8-10 1 0 1 0 REAR DELT FOCUS
+`;
+
+function report(label, text) {
+  const result = parseTrainingPlan(text);
+  console.log(`\n=== ${label} ===`);
+  console.log(`Days: ${result.days.length}`);
+  for (const d of result.days) {
+    console.log(
+      `  ${d.name}: ${d.exercises.length} exercises, ${d.inlineNotes.length} inline notes`
+    );
+  }
+  console.log(`Warnings: ${result.warnings.length}`);
+  console.log(`Unparsed lines: ${result.unparsedLines.length}`);
+  if (result.unparsedLines.length) {
+    for (const u of result.unparsedLines) console.log(' • ' + u);
+  }
 }
-console.log(`Warnings: ${result.warnings.length}`);
-console.log(`Unparsed lines: ${result.unparsedLines.length}`);
-if (result.unparsedLines.length) {
-  console.log('\n--- Unparsed lines ---');
-  for (const u of result.unparsedLines) console.log(' • ' + u);
-}
+
+report('Format A — split keywords', sampleText);
+report('Format B — body-part titles', bodyPartHeaderText);
