@@ -6,6 +6,7 @@ import {
   updateLoggedSet,
   getSessionSets,
   getLastSessionSetsForExercise,
+  getLastLoggedNormalizedForSlot,
   type LoggedSet,
 } from '../lib/sessionsApi';
 import { parseSetMods } from '../lib/parseSetMods';
@@ -319,6 +320,14 @@ export function ExerciseLogger({
   // for the chosen movement while tempo/reps/sets stay from the plan.
   const [alternatives, setAlternatives] = useState<ExerciseAlternativeRow[]>([]);
   const [activeAltId, setActiveAltId] = useState<string | null>(null);
+  // Weekly-rotation hint: when this slot has an "alternate weeks with X" partner
+  // and the user logged the *other* movement last time, we suggest (never force)
+  // switching to it this week. Null when there's nothing to suggest or it's been
+  // dismissed/actioned this visit.
+  const [rotationSuggestion, setRotationSuggestion] = useState<{
+    alt: ExerciseAlternativeRow;
+    lastName: string;
+  } | null>(null);
   const [addAltOpen, setAddAltOpen] = useState(false);
   const [altSheetOpen, setAltSheetOpen] = useState(false);
   const [personalOpen, setPersonalOpen] = useState(false);
@@ -382,6 +391,41 @@ export function ExerciseLogger({
       mounted = false;
     };
   }, [exercise.id]);
+
+  // Decide whether to suggest rotating to the weekly-alternation partner. We only
+  // prompt when the user logged the *primary* movement last time — then this week
+  // rotates to the alternative. If they did the alternative last time, the plan
+  // default (primary) is already the correct rotation, so we stay quiet.
+  // Best-effort: any failure just means no suggestion.
+  useEffect(() => {
+    let mounted = true;
+    const weeklyAlt = alternatives.find((a) => a.is_weekly_rotation);
+    if (!weeklyAlt) {
+      setRotationSuggestion(null);
+      return;
+    }
+    getLastLoggedNormalizedForSlot(exercise.id, sessionId)
+      .then((lastNormalized) => {
+        if (!mounted) return;
+        if (lastNormalized && lastNormalized === exercise.normalized_name) {
+          setRotationSuggestion({ alt: weeklyAlt, lastName: exercise.name });
+        } else {
+          setRotationSuggestion(null);
+        }
+      })
+      .catch(() => {
+        if (mounted) setRotationSuggestion(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [
+    exercise.id,
+    exercise.normalized_name,
+    exercise.name,
+    alternatives,
+    sessionId,
+  ]);
 
   // Switch the active identity between the primary plan exercise (null) and one
   // of its alternatives. Re-points the same effective-state values the one-off
@@ -906,6 +950,18 @@ export function ExerciseLogger({
             </span>
             <Chevron rotate={90} />
           </button>
+        )}
+
+        {rotationSuggestion && activeAltId === null && (
+          <RotationSuggestionBanner
+            lastName={rotationSuggestion.lastName}
+            nextName={rotationSuggestion.alt.name}
+            onSwitch={() => {
+              selectIdentity(rotationSuggestion.alt);
+              setRotationSuggestion(null);
+            }}
+            onDismiss={() => setRotationSuggestion(null)}
+          />
         )}
 
         <div className="mt-5 grid grid-cols-3 gap-3">
@@ -1444,6 +1500,51 @@ function CheckGlyph() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+// Suggest-don't-force banner for weekly-alternation slots. Offers a one-tap
+// switch to the partner movement; dismissing leaves the plan default in place.
+function RotationSuggestionBanner({
+  lastName,
+  nextName,
+  onSwitch,
+  onDismiss,
+}: {
+  lastName: string;
+  nextName: string;
+  onSwitch: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="mt-3 rounded-card border border-line bg-paper-card p-3.5 shadow-card">
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 shrink-0 text-ink">
+          <SwapGlyph />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm text-ink">
+            You did <span className="font-semibold">{lastName}</span> last time.
+            This one alternates weekly — switch to{' '}
+            <span className="font-semibold">{nextName}</span>?
+          </div>
+          <div className="mt-2.5 flex gap-2">
+            <button
+              onClick={onSwitch}
+              className="flex-1 rounded-pill bg-ink py-2 text-xs font-semibold text-white active:opacity-80"
+            >
+              Switch to {nextName}
+            </button>
+            <button
+              onClick={onDismiss}
+              className="rounded-pill border border-line bg-paper px-4 py-2 text-xs font-semibold text-muted active:text-ink"
+            >
+              Keep
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -4,9 +4,11 @@ import {
   parseTrainingPlan,
   type ParsedExercise,
   type ParsedPlan,
+  type WeeklyAlternative,
 } from '../lib/parseTrainingPlan';
 import { parseSetMods } from '../lib/parseSetMods';
 import { getActivePlan, savePlan } from '../lib/plansApi';
+import { normalizeExerciseName } from '../lib/normalizeExerciseName';
 import { PageHeader } from '../components/PageHeader';
 
 function parseTargetReps(repRange: string): number | null {
@@ -187,6 +189,32 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     });
   }
 
+  // Confirm/tweak or remove the "alternate weeks with X" partner detected from a
+  // coach note. Editing the name re-derives its normalized identity so history
+  // lines up with the matching movement. Passing null clears it (won't be saved).
+  function setExerciseAlternative(
+    dayIdx: number,
+    exIdx: number,
+    alt: WeeklyAlternative | null
+  ) {
+    setParsed((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== dayIdx
+            ? d
+            : {
+                ...d,
+                exercises: d.exercises.map((e, j) =>
+                  j !== exIdx ? e : { ...e, weeklyAlternative: alt }
+                ),
+              }
+        ),
+      };
+    });
+  }
+
   function answerSameMachine(dayIdx: number, exIdx: number) {
     const key = `${dayIdx}:${exIdx}`;
     const match = matches.get(key);
@@ -254,6 +282,15 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
 
   const totalExercises =
     parsed?.days.reduce((sum, d) => sum + d.exercises.length, 0) ?? 0;
+
+  const weeklyAltCount = useMemo(() => {
+    if (!parsed) return 0;
+    let n = 0;
+    for (const d of parsed.days) {
+      for (const e of d.exercises) if (e.weeklyAlternative) n += 1;
+    }
+    return n;
+  }, [parsed]);
 
   const overrideCount = useMemo(() => {
     if (!parsed) return 0;
@@ -361,6 +398,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                   {pendingMatchCount === 1 ? 'exercise looks' : 'exercises look'} similar to your previous plan — confirm whether it's the same machine.
                 </div>
               )}
+              {weeklyAltCount > 0 && (
+                <div className="mt-2 text-xs text-muted">
+                  <span className="font-semibold text-ink">{weeklyAltCount}</span>{' '}
+                  {weeklyAltCount === 1 ? 'exercise alternates' : 'exercises alternate'} weekly with another machine — confirm the name below and Reps will offer to rotate it for you.
+                </div>
+              )}
             </div>
 
             {historyCarrierKeys.length > 0 && (
@@ -418,6 +461,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                           onSameMachine={() => answerSameMachine(dayIdx, exIdx)}
                           onDifferentMachine={() => answerDifferentMachine(dayIdx, exIdx)}
                           onToggleKeepHistory={() => toggleKeepHistory(dayIdx, exIdx)}
+                          onAlternativeChange={(alt) =>
+                            setExerciseAlternative(dayIdx, exIdx, alt)
+                          }
                         />
                       </li>
                     ))}
@@ -479,6 +525,111 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   );
 }
 
+// Confirm-on-upload card for a detected "alternate weeks with X" partner. The
+// user can accept the parsed name as-is, tweak it (the parser can over-capture
+// from a busy note), or remove it if it isn't really an alternation.
+function WeeklyAlternativeCard({
+  alternative,
+  onChange,
+}: {
+  alternative: WeeklyAlternative;
+  onChange: (alt: WeeklyAlternative | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(alternative.name);
+
+  function commit() {
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      onChange(null);
+    } else {
+      onChange({ name: trimmed, normalizedName: normalizeExerciseName(trimmed) });
+    }
+    setEditing(false);
+  }
+
+  return (
+    <div className="mt-3 rounded-xl bg-ink/5 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+        <RotateGlyph />
+        Alternates weekly with
+      </div>
+      {editing ? (
+        <div className="mt-1.5">
+          <input
+            type="text"
+            value={draft}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+              if (e.key === 'Escape') {
+                setDraft(alternative.name);
+                setEditing(false);
+              }
+            }}
+            className="w-full rounded-lg border border-line bg-paper px-2.5 py-1.5 text-sm text-ink focus:border-ink focus:outline-none"
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              onClick={() => {
+                setDraft(alternative.name);
+                setEditing(false);
+              }}
+              className="rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={commit}
+              className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <span className="min-w-0 break-words text-sm font-semibold text-ink">
+            {alternative.name}
+          </span>
+          <div className="flex shrink-0 gap-3 text-xs font-semibold">
+            <button
+              onClick={() => {
+                setDraft(alternative.name);
+                setEditing(true);
+              }}
+              className="text-ink/70 active:text-ink"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => onChange(null)}
+              className="text-muted active:text-red-600"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RotateGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 12a8 8 0 0 1 13.5-5.8L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.5 5.8L4 16M4 20v-4h4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function ExerciseReviewRow({
   exercise,
   match,
@@ -487,6 +638,7 @@ function ExerciseReviewRow({
   onSameMachine,
   onDifferentMachine,
   onToggleKeepHistory,
+  onAlternativeChange,
 }: {
   exercise: ParsedExercise;
   match?: Match;
@@ -495,6 +647,7 @@ function ExerciseReviewRow({
   onSameMachine: () => void;
   onDifferentMachine: () => void;
   onToggleKeepHistory: () => void;
+  onAlternativeChange: (alt: WeeklyAlternative | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(exercise.notes ?? '');
@@ -594,6 +747,13 @@ function ExerciseReviewRow({
             </div>
           )}
         </div>
+      )}
+
+      {exercise.weeklyAlternative && (
+        <WeeklyAlternativeCard
+          alternative={exercise.weeklyAlternative}
+          onChange={onAlternativeChange}
+        />
       )}
 
       <div className="mt-3 flex flex-wrap gap-1.5">

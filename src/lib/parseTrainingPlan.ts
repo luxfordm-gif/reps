@@ -25,6 +25,15 @@ export type SetScheme =
   | 'rest_pause'
   | 'hold';
 
+// A movement the plan says to rotate to on alternate weeks (parsed from a coach
+// note like "Alternate weeks with Magnum bench press machine"). Surfaced on the
+// upload review screen for the user to confirm/tweak, then saved as a
+// weekly-rotation alternative on the exercise slot.
+export interface WeeklyAlternative {
+  name: string;
+  normalizedName: string;
+}
+
 export interface ParsedExercise {
   bodyPart: string;
   name: string;
@@ -37,6 +46,8 @@ export interface ParsedExercise {
   position: number;
   repRangeUncertain?: boolean;
   tempoUncertain?: boolean;
+  // Detected "alternate weeks with X" partner movement, if the coach notes name one.
+  weeklyAlternative?: WeeklyAlternative | null;
 }
 
 export interface ParsedTrainingDay {
@@ -90,6 +101,31 @@ const HEADER_BOILERPLATE_PREFIXES = [
   'TAKE REST DAYS',
   'REST PERIODS',
 ];
+
+// Coach notes sometimes name a movement to rotate to on alternate weeks. Trainers
+// phrase this a few ways, so we match a small family: "alternate weeks with X",
+// "alternate with X", and the "alternative" keyword ("Alternative: X",
+// "Alternative is X", "Alternative - X"). Whatever we capture the user confirms
+// or tweaks on the upload screen, so it's fine to be a little generous here.
+const WEEKLY_ALTERNATE_PATTERNS: RegExp[] = [
+  /\balternates?\s+weeks?\s+with\s+(.+)$/i,
+  /\balternates?\s+with\s+(.+)$/i,
+  /\balternatively\s+(?:use\s+|with\s+)?(.+)$/i,
+  /\balternatives?\s*(?:movement|machine|exercise)?\s*(?:is|are|:|-|–|—|=)\s*(.+)$/i,
+];
+
+export function detectWeeklyAlternative(notes: string): WeeklyAlternative | null {
+  if (!notes) return null;
+  for (const pattern of WEEKLY_ALTERNATE_PATTERNS) {
+    const m = notes.match(pattern);
+    if (!m) continue;
+    // Trim trailing punctuation and any leading connector left over ("of choice").
+    const raw = m[1].trim().replace(/^[:\-–—=\s]+/, '').replace(/[.;,]+$/, '').trim();
+    if (raw.length < 2) continue;
+    return { name: toSentenceCase(raw), normalizedName: normalizeName(raw) };
+  }
+  return null;
+}
 
 export function detectSetScheme(notes: string, repRange: string): SetScheme {
   const upper = notes.toUpperCase();
@@ -258,6 +294,7 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
         position: exercisePosition++,
         repRangeUncertain,
         tempoUncertain,
+        weeklyAlternative: detectWeeklyAlternative(cleanedNotes),
       };
       currentDay.exercises.push(exercise);
       lastExercise = exercise;
@@ -284,6 +321,11 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
       const cased = toSentenceCase(line);
       lastExercise.notes = lastExercise.notes ? `${lastExercise.notes} ${cased}` : cased;
       lastExercise.setScheme = detectSetScheme(lastExercise.notes, lastExercise.repRange);
+      // The rotation phrase may spill onto a wrapped note line — detect from the
+      // freshly-appended line so it isn't lost. Don't overwrite an earlier hit.
+      if (!lastExercise.weeklyAlternative) {
+        lastExercise.weeklyAlternative = detectWeeklyAlternative(line);
+      }
       continue;
     }
 

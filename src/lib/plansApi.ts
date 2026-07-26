@@ -204,8 +204,39 @@ export async function savePlan(
           ? nowIso
           : null,
       }));
-      const { error: exErr } = await supabase.from('plan_exercises').insert(rows);
+      const { data: insertedExercises, error: exErr } = await supabase
+        .from('plan_exercises')
+        .insert(rows)
+        .select('id, position');
       if (exErr) throw exErr;
+
+      // Persist any "alternate weeks with X" partners the user confirmed on the
+      // review screen as weekly-rotation alternatives on their slot. Map inserted
+      // ids back by position (unique within a day) since insert order isn't
+      // guaranteed. Failures here are non-fatal — the plan still saves; the
+      // rotation hint just won't be available.
+      const idByPosition = new Map<number, string>();
+      for (const r of (insertedExercises as { id: string; position: number }[]) ?? []) {
+        idByPosition.set(r.position, r.id);
+      }
+      const altRows = day.exercises
+        .filter((e) => e.weeklyAlternative && idByPosition.has(e.position))
+        .map((e) => ({
+          user_id: user.id,
+          plan_exercise_id: idByPosition.get(e.position)!,
+          name: e.weeklyAlternative!.name,
+          normalized_name: e.weeklyAlternative!.normalizedName,
+          position: 0,
+          is_weekly_rotation: true,
+        }));
+      if (altRows.length > 0) {
+        const { error: altErr } = await supabase
+          .from('plan_exercise_alternatives')
+          .insert(altRows);
+        if (altErr) {
+          console.error('Failed to save weekly-rotation alternatives', altErr);
+        }
+      }
     }
   }
 

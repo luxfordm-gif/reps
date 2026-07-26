@@ -1062,6 +1062,32 @@ export async function getSessionSets(
   return (data as LoggedSet[]) ?? [];
 }
 
+// The normalized name of the movement most recently logged against a given
+// plan-exercise slot (in any prior session). A slot's primary and its
+// alternatives all share plan_exercise_id but log under different
+// normalized_names, so this tells us which movement the user actually did last
+// time — used to suggest rotating to the other one on weekly-alternation slots.
+export async function getLastLoggedNormalizedForSlot(
+  planExerciseId: string,
+  excludeSessionId?: string
+): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  let query = supabase
+    .from('logged_sets')
+    .select('exercise_normalized_name, session_id, completed_at')
+    .eq('user_id', user.id)
+    .eq('plan_exercise_id', planExerciseId)
+    .order('completed_at', { ascending: false })
+    .limit(1);
+  if (excludeSessionId) query = query.neq('session_id', excludeSessionId);
+  const { data, error } = await query.maybeSingle();
+  if (error) return null;
+  return (data as { exercise_normalized_name: string } | null)?.exercise_normalized_name ?? null;
+}
+
 export async function getLastSessionSetsForExercise(
   normalizedName: string,
   excludeSessionId?: string,
