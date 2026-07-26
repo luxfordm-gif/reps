@@ -1,12 +1,19 @@
 import { toSentenceCase } from './textCase';
 import { normalizeExerciseName as normalizeName } from './normalizeExerciseName';
 
-// Parses the raw text of a trainer's training plan PDF (The Condition Coaches format)
-// into a structured plan with days, exercises, prescribed sets/reps/tempo and notes.
+// Parses the raw text of a trainer's training plan PDF into a structured plan with
+// days, exercises, prescribed sets/reps/tempo and notes.
 //
-// The PDF has 5 main day sections (PUSH, PULL, LEGS, UPPER, ARMS) plus an Abdominals
-// section, each containing a table of rows in the shape:
+// A plan is split into day sections, each containing a table of rows in the shape:
 //   BODY_PART  EXERCISE_NAME  TOTAL_SETS  REP_RANGE  TEMPO(4 digits)  NOTES?
+//
+// Day sections are titled differently by different trainers. Some use split names
+// (PUSH / PULL / LEGS / UPPER / ARMS); others title each day after the body part(s)
+// it trains (CHEST, LEGS, BACK / REAR DELT, ARMS, DELTS). We therefore detect a day
+// header two ways: (1) a known split keyword, or (2) structurally — a short title
+// line that sits directly above the table's column-header row. Relying only on the
+// keyword list meant unfamiliar titles (e.g. CHEST, DELTS) weren't recognised as new
+// days, so their exercises were dropped or merged into the previous day.
 //
 // Loose rules — parser surfaces unparsed lines as warnings rather than crashing.
 
@@ -141,10 +148,44 @@ function isDayHeader(line: string): string | null {
   return null;
 }
 
+// The next line that carries real content, skipping boilerplate. Used to look at
+// what immediately follows a candidate day-title line.
+function nextMeaningfulLine(lines: string[], i: number): string | null {
+  for (let j = i + 1; j < lines.length; j++) {
+    if (looksLikeBoilerplate(lines[j])) continue;
+    return lines[j];
+  }
+  return null;
+}
+
+// Structural day-header detection for trainers who title each day after the body
+// part(s) it trains (e.g. CHEST, BACK / REAR DELT, DELTS) rather than a fixed split
+// keyword. In every plan we've seen the section title is a short, all-caps line that
+// sits directly above the table's column header ("BODY PART … TEMPO NOTES"). We use
+// that adjacency as the signal, so we don't need to enumerate every possible title.
+function isSectionTitleAboveTable(line: string, lines: string[], i: number): boolean {
+  const trimmed = line.trim();
+  // Title-only line: starts with a letter, all-caps letters plus spaces / slashes /
+  // ampersands / hyphens / apostrophes, and crucially no digits (which would make it
+  // an exercise row or a volume-table entry like "CHEST 8").
+  if (!/^[A-Z][A-Z /&'-]*$/.test(trimmed)) return false;
+  if (trimmed.split(/\s+/).filter(Boolean).length > 6) return false;
+  const next = nextMeaningfulLine(lines, i);
+  return next != null && looksLikeTableHeader(next);
+}
+
+// Title-case a structurally-detected day name: "BACK / REAR DELT" -> "Back / Rear Delt".
+function titleCaseDayName(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/(^|[\s/&-])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
+}
+
 export function parseTrainingPlan(rawText: string): ParsedPlan {
   const lines = rawText
     .split(/\r?\n/)
-    .map((l) => l.replace(/ /g, ' ').trim())
+    .map((l) => l.replace(/\u00A0/g, ' ').trim())
     .filter((l) => l.length > 0);
 
   const days: ParsedTrainingDay[] = [];
@@ -156,14 +197,22 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
   let lastExercise: ParsedExercise | null = null;
   let inSubsection = false; // true after "CALVES WORKOUT" / "ABS WORKOUT" until next exercise/day
 
-  for (const line of lines) {
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx];
     if (looksLikeBoilerplate(line)) continue;
     if (looksLikeTableHeader(line)) continue;
 
-    const dayName = isDayHeader(line);
+    const knownDay = isDayHeader(line);
+    const dayName = knownDay
+      ? knownDay === 'ABS'
+        ? 'Abs'
+        : capitaliseDayName(knownDay)
+      : isSectionTitleAboveTable(line, lines, idx)
+        ? titleCaseDayName(line)
+        : null;
     if (dayName) {
       currentDay = {
-        name: dayName === 'ABS' ? 'Abs' : capitaliseDayName(dayName),
+        name: dayName,
         position: days.length,
         exercises: [],
         inlineNotes: [],
