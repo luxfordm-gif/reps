@@ -281,7 +281,11 @@ export function ExerciseLogger({
   const [lastSets, setLastSets] = useState<LoggedSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [notesOpen, setNotesOpen] = useState(false);
+  // Coach notes start expanded whenever the trainer has left instructions, so
+  // they're seen without a tap; empty ones stay collapsed to save space.
+  const [notesOpen, setNotesOpen] = useState(
+    () => Boolean((exercise.notes ?? '').trim())
+  );
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
   const [shakeIdx, setShakeIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -365,7 +369,8 @@ export function ExerciseLogger({
     const coach = exercise.notes ?? '';
     setSavedCoach(coach);
     setCoachDraft(coach);
-    setNotesOpen(false);
+    // Reopen automatically for exercises that carry coach notes.
+    setNotesOpen(Boolean(coach.trim()));
   }, [
     exercise.id,
     exercise.rest_seconds,
