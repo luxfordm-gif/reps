@@ -289,6 +289,12 @@ function Root() {
           setSessionStartedAt(null);
         }}
         onTapExercise={startExercise}
+        onDayUpdate={(updated) => {
+          setActiveDay(updated);
+          // The Home cache holds the pre-reorder plan; drop it so the next
+          // Home visit refetches the saved order and reset baselines.
+          clearHomeCache();
+        }}
       />
     );
   } else {
