@@ -1,17 +1,27 @@
 import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
-import type { FullPlan, PlanExerciseRow } from '../lib/plansApi';
+import { reorderPlanExercises, type FullPlan, type PlanExerciseRow } from '../lib/plansApi';
+import { hapticBuzz } from '../lib/haptics';
 import {
   getActiveSessionForDay,
   getSessionStats,
   deleteSession,
 } from '../lib/sessionsApi';
 
+type TrainingDay = FullPlan['training_days'][number];
+
 interface Props {
-  day: FullPlan['training_days'][number];
+  day: TrainingDay;
   onBack: () => void;
   onTapExercise?: (exercise: PlanExerciseRow, existingSessionId?: string) => void;
+  /**
+   * Called after the user reorders a body-part group and taps Done. Receives the
+   * whole day with its exercises re-sorted into the new order and the affected
+   * rows' baseline_reset_at bumped, so the parent can keep the workout flow in
+   * sync with what was just saved.
+   */
+  onDayUpdate?: (day: TrainingDay) => void;
 }
 
 interface BodyPartGroup {
@@ -47,7 +57,7 @@ function estimatedMinutes(setsCount: number): number {
   return Math.max(15, Math.round(m / 5) * 5);
 }
 
-export function DayView({ day, onBack, onTapExercise }: Props) {
+export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
   const exercises = day.plan_exercises ?? [];
   const groups = groupByBodyPart(exercises);
   const totalSets = totalSetsForDay(exercises);
@@ -56,6 +66,71 @@ export function DayView({ day, onBack, onTapExercise }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set(groups[0] ? [groups[0].bodyPart] : [])
   );
+
+  // Reorder state. `editingKey` is the id of the first exercise in the group
+  // being edited (unique per group even if a body part repeats); `draft` is the
+  // working order for that group while the user shuffles rows. `saving` guards
+  // the Done tap from double-fires.
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState<PlanExerciseRow[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  function startEdit(group: BodyPartGroup) {
+    hapticBuzz(10);
+    setExpanded((prev) => new Set(prev).add(group.bodyPart));
+    setEditingKey(group.exercises[0]?.id ?? null);
+    setDraft(group.exercises);
+  }
+
+  function cancelEdit() {
+    setEditingKey(null);
+    setDraft([]);
+  }
+
+  function moveDraft(from: number, to: number) {
+    if (to < 0 || to >= draft.length) return;
+    hapticBuzz(10);
+    setDraft((prev) => {
+      const next = [...prev];
+      const [row] = next.splice(from, 1);
+      next.splice(to, 0, row);
+      return next;
+    });
+  }
+
+  async function saveEdit(group: BodyPartGroup) {
+    const original = group.exercises;
+    const changed = draft.some((ex, i) => ex.id !== original[i]?.id);
+    if (!changed) {
+      cancelEdit();
+      return;
+    }
+    setSaving(true);
+    try {
+      // Reuse the slots' existing position values (sorted) so the group stays
+      // contiguous within the day and neighbouring groups aren't shifted.
+      const slots = original.map((e) => e.position).sort((a, b) => a - b);
+      const updates = draft.map((ex, i) => ({ id: ex.id, position: slots[i] }));
+      const resetAt = await reorderPlanExercises(updates);
+
+      const posById = new Map(updates.map((u) => [u.id, u.position]));
+      const nextExercises = exercises
+        .map((ex) =>
+          posById.has(ex.id)
+            ? { ...ex, position: posById.get(ex.id)!, baseline_reset_at: resetAt }
+            : ex
+        )
+        .sort((a, b) => a.position - b.position);
+      onDayUpdate?.({ ...day, plan_exercises: nextExercises });
+      hapticBuzz([12, 40, 12]);
+      cancelEdit();
+    } catch (e) {
+      console.error(e);
+      hapticBuzz([40, 30, 40]);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // In-progress session for this day, if any
   const [inProgress, setInProgress] = useState<{
@@ -157,25 +232,87 @@ export function DayView({ day, onBack, onTapExercise }: Props) {
         <div className="mt-[26px] space-y-3">
           {groups.map((group) => {
             const isOpen = expanded.has(group.bodyPart);
+            const groupKey = group.exercises[0]?.id ?? group.bodyPart;
+            const isEditing = editingKey === groupKey;
+            const canReorder = group.exercises.length > 1;
             return (
-              <div key={group.bodyPart} className="overflow-hidden rounded-card bg-paper-card shadow-card">
-                <button
-                  onClick={() => toggle(group.bodyPart)}
-                  className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-line/40"
-                >
-                  <div>
-                    <div className="text-base font-bold tracking-tight text-ink">
-                      {group.bodyPart}
+              <div key={groupKey} className="overflow-hidden rounded-card bg-paper-card shadow-card">
+                <div className="flex w-full items-center justify-between px-5 py-4">
+                  <button
+                    onClick={() => toggle(group.bodyPart)}
+                    disabled={isEditing}
+                    className="flex flex-1 items-center gap-3 text-left disabled:cursor-default"
+                  >
+                    <div>
+                      <div className="text-base font-bold tracking-tight text-ink">
+                        {group.bodyPart}
+                      </div>
+                      <div className="mt-0.5 text-xs text-muted">
+                        {group.exercises.length}{' '}
+                        {group.exercises.length === 1 ? 'exercise' : 'exercises'}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-xs text-muted">
-                      {group.exercises.length}{' '}
-                      {group.exercises.length === 1 ? 'exercise' : 'exercises'}
-                    </div>
+                  </button>
+                  <div className="flex items-center gap-3">
+                    {isEditing ? (
+                      <>
+                        <button
+                          onClick={cancelEdit}
+                          disabled={saving}
+                          className="text-sm font-medium text-muted active:text-ink disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => saveEdit(group)}
+                          disabled={saving}
+                          className="rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
+                        >
+                          {saving ? 'Saving…' : 'Done'}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {isOpen && canReorder && (
+                          <button
+                            onClick={() => startEdit(group)}
+                            className="text-sm font-semibold text-ink active:opacity-60"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        <button
+                          onClick={() => toggle(group.bodyPart)}
+                          className="text-muted"
+                          aria-label={isOpen ? 'Collapse' : 'Expand'}
+                        >
+                          <Chevron rotate={isOpen ? 90 : 0} />
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <Chevron rotate={isOpen ? 90 : 0} />
-                </button>
+                </div>
 
-                {isOpen && (
+                {isOpen && isEditing && (
+                  <div className="border-t border-line">
+                    <p className="px-5 pt-3 text-xs leading-relaxed text-muted">
+                      Reordering resets weight &amp; reps to base for {group.bodyPart}.
+                    </p>
+                    {draft.map((ex, i) => (
+                      <ReorderRow
+                        key={ex.id}
+                        exercise={ex}
+                        isFirst={i === 0}
+                        isLast={i === draft.length - 1}
+                        disabled={saving}
+                        onUp={() => moveDraft(i, i - 1)}
+                        onDown={() => moveDraft(i, i + 1)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {isOpen && !isEditing && (
                   <div className="border-t border-line">
                     {group.exercises.map((ex, i) => (
                       <ExerciseRow
@@ -270,6 +407,73 @@ function ExerciseRow({
         </div>
       )}
     </div>
+  );
+}
+
+function ReorderRow({
+  exercise,
+  isFirst,
+  isLast,
+  disabled,
+  onUp,
+  onDown,
+}: {
+  exercise: PlanExerciseRow;
+  isFirst: boolean;
+  isLast: boolean;
+  disabled: boolean;
+  onUp: () => void;
+  onDown: () => void;
+}) {
+  return (
+    <div className={`flex items-center gap-3 px-5 py-3.5 ${!isLast ? 'border-b border-line' : ''}`}>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-base font-semibold leading-tight text-ink">
+          {exercise.name}
+        </div>
+        <div className="mt-1 text-xs text-muted">
+          {exercise.total_sets ?? '–'} × {exercise.rep_range}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          onClick={onUp}
+          disabled={disabled || isFirst}
+          aria-label="Move up"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
+        >
+          <MoveArrow up />
+        </button>
+        <button
+          onClick={onDown}
+          disabled={disabled || isLast}
+          aria-label="Move down"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
+        >
+          <MoveArrow />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MoveArrow({ up = false }: { up?: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      style={{ transform: up ? 'none' : 'rotate(180deg)' }}
+    >
+      <path
+        d="M8 12V4M8 4L4.5 7.5M8 4l3.5 3.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

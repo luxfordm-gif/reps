@@ -135,6 +135,28 @@ export async function updatePlanExerciseName(
   return (data?.baseline_reset_at as string | null) ?? null;
 }
 
+// Persist a new exercise order after the user drags exercises up/down within a
+// body-part group. Each row keeps its slot's original position value (so the
+// group stays contiguous and other groups aren't disturbed) but points at a
+// different exercise. Because a changed order means the user may now be
+// stronger or weaker on that body part, every affected exercise's
+// baseline_reset_at is bumped to now so the logger prefill falls back to base
+// weight/reps instead of carrying over the old order's numbers. Returns the
+// reset timestamp so callers can update their in-memory copy.
+export async function reorderPlanExercises(
+  updates: { id: string; position: number }[]
+): Promise<string> {
+  const now = new Date().toISOString();
+  for (const u of updates) {
+    const { error } = await supabase
+      .from('plan_exercises')
+      .update({ position: u.position, baseline_reset_at: now })
+      .eq('id', u.id);
+    if (error) throw error;
+  }
+  return now;
+}
+
 export interface FullPlan extends PlanRow {
   training_days: (TrainingDayRow & { plan_exercises: PlanExerciseRow[] })[];
 }
