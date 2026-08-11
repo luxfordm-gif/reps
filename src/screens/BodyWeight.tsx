@@ -57,19 +57,45 @@ export function BodyWeight({ onBack }: Props) {
   const [kgInput, setKgInput] = useState('');
   const [stInput, setStInput] = useState('');
   const [lbInput, setLbInput] = useState('');
+  const [edited, setEdited] = useState(false);
   const [date, setDate] = useState<string>(todayISO());
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Default the new-entry inputs to a given weight so keeping or nudging the
+  // most recent value is a single tap. No-op once the user has edited the field.
+  function seedInputs(kg: number, u: BodyWeightUnit) {
+    if (u === 'kg') {
+      setKgInput(String(kg));
+    } else {
+      const { stones, pounds } = kgToStoneLb(kg);
+      let p = Math.round(pounds);
+      let s = stones;
+      if (p === 14) {
+        s += 1;
+        p = 0;
+      }
+      setStInput(String(s));
+      setLbInput(String(p));
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
     listBodyWeights()
-      .then((r) => mounted && setRows(r))
+      .then((r) => {
+        if (!mounted) return;
+        setRows(r);
+        // Pre-fill with the most recent weight on first load.
+        if (!edited && r[0]) seedInputs(r[0].weight_kg, unit);
+      })
       .finally(() => mounted && setLoading(false));
     return () => {
       mounted = false;
     };
+    // Runs once on mount; `edited`/`unit` intentionally read from initial state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const todayEntry = getTodayEntry(rows);
@@ -90,6 +116,8 @@ export function BodyWeight({ onBack }: Props) {
   function changeUnit(next: BodyWeightUnit) {
     setUnitState(next);
     setBodyWeightUnit(next);
+    // Keep the pre-filled default in sync with the newly selected unit.
+    if (!edited && rows[0]) seedInputs(rows[0].weight_kg, next);
   }
 
   async function handleSave() {
@@ -98,15 +126,15 @@ export function BodyWeight({ onBack }: Props) {
     setError(null);
     try {
       const newRow = await logBodyWeight(parseFloat(inputKg.toFixed(2)), date);
-      setRows((prev) => {
-        const filtered = prev.filter((r) => r.recorded_on !== newRow.recorded_on);
-        return [newRow, ...filtered].sort((a, b) =>
-          a.recorded_on < b.recorded_on ? 1 : -1
-        );
-      });
-      setKgInput('');
-      setStInput('');
-      setLbInput('');
+      const filtered = rows.filter((r) => r.recorded_on !== newRow.recorded_on);
+      const nextRows = [newRow, ...filtered].sort((a, b) =>
+        a.recorded_on < b.recorded_on ? 1 : -1
+      );
+      setRows(nextRows);
+      // Reset the default to the now-most-recent weight so the next visit or
+      // entry starts from it again.
+      setEdited(false);
+      seedInputs(nextRows[0].weight_kg, unit);
       setDate(todayISO());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save');
@@ -194,7 +222,10 @@ export function BodyWeight({ onBack }: Props) {
                 inputMode="decimal"
                 step="0.1"
                 value={kgInput}
-                onChange={(e) => setKgInput(e.target.value)}
+                onChange={(e) => {
+                  setEdited(true);
+                  setKgInput(e.target.value);
+                }}
                 placeholder="e.g. 82.4"
                 className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
               />
@@ -208,7 +239,10 @@ export function BodyWeight({ onBack }: Props) {
                   inputMode="numeric"
                   step="1"
                   value={stInput}
-                  onChange={(e) => setStInput(e.target.value)}
+                  onChange={(e) => {
+                    setEdited(true);
+                    setStInput(e.target.value);
+                  }}
                   placeholder="14"
                   className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
                 />
@@ -222,7 +256,10 @@ export function BodyWeight({ onBack }: Props) {
                   inputMode="decimal"
                   step="0.1"
                   value={lbInput}
-                  onChange={(e) => setLbInput(e.target.value)}
+                  onChange={(e) => {
+                    setEdited(true);
+                    setLbInput(e.target.value);
+                  }}
                   placeholder="5"
                   className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
                 />
