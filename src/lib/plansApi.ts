@@ -1,6 +1,11 @@
-import { supabase } from './supabase';
+import { supabase, currentUserId, currentUserIdSync } from './supabase';
+import { isOfflineError, query } from './offline/net';
+import { enqueue } from './offline/outbox';
+import { readCache, writeCache } from './offline/storage';
 import type { ParsedPlan } from './parseTrainingPlan';
 import type { SetScheme } from './parseTrainingPlan';
+
+const ACTIVE_PLAN_CACHE = 'activePlan';
 
 export interface PlanRow {
   id: string;
@@ -36,15 +41,58 @@ export interface PlanExerciseRow {
   personal_notes: string | null;
 }
 
+/**
+ * Patch one plan-exercise row, tolerating no signal.
+ *
+ * Rest preferences, coach notes and personal cues all get edited mid-workout,
+ * which is exactly when the phone is least likely to have a connection. The
+ * edit is applied to the cached plan straight away and queued for the server.
+ */
+async function patchPlanExercise(
+  exerciseId: string,
+  patch: Record<string, unknown>
+): Promise<void> {
+  try {
+    await query(
+      supabase.from('plan_exercises').update(patch).eq('id', exerciseId).select('id'),
+      { label: 'patchPlanExercise' }
+    );
+    patchCachedPlanExercise(exerciseId, patch);
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    const userId = await currentUserId();
+    if (!userId) throw e;
+    patchCachedPlanExercise(exerciseId, patch, userId);
+    enqueue(userId, { kind: 'update_row', table: 'plan_exercises', id: exerciseId, patch });
+  }
+}
+
+/** Keep the offline copy of the plan in step with an edit we just made. */
+function patchCachedPlanExercise(
+  exerciseId: string,
+  patch: Record<string, unknown>,
+  userId?: string | null
+): void {
+  const id = userId ?? currentUserIdSync();
+  const plan = getCachedActivePlan(id);
+  if (!plan) return;
+  let touched = false;
+  for (const day of plan.training_days ?? []) {
+    for (let i = 0; i < (day.plan_exercises ?? []).length; i++) {
+      if (day.plan_exercises[i].id === exerciseId) {
+        day.plan_exercises[i] = { ...day.plan_exercises[i], ...patch };
+        touched = true;
+      }
+    }
+  }
+  if (touched) writeCache(id, ACTIVE_PLAN_CACHE, plan);
+}
+
 export async function updatePlanExerciseRest(
   exerciseId: string,
   restSeconds: number
 ): Promise<void> {
-  const { error } = await supabase
-    .from('plan_exercises')
-    .update({ rest_seconds: restSeconds })
-    .eq('id', exerciseId);
-  if (error) throw error;
+  await patchPlanExercise(exerciseId, { rest_seconds: restSeconds });
 }
 
 export async function updatePlanExerciseNotes(
@@ -52,22 +100,14 @@ export async function updatePlanExerciseNotes(
   notes: string | null,
   setScheme: SetScheme
 ): Promise<void> {
-  const { error } = await supabase
-    .from('plan_exercises')
-    .update({ notes, set_scheme: setScheme })
-    .eq('id', exerciseId);
-  if (error) throw error;
+  await patchPlanExercise(exerciseId, { notes, set_scheme: setScheme });
 }
 
 export async function updatePlanExercisePersonalNote(
   exerciseId: string,
   note: string | null
 ): Promise<void> {
-  const { error } = await supabase
-    .from('plan_exercises')
-    .update({ personal_notes: note })
-    .eq('id', exerciseId);
-  if (error) throw error;
+  await patchPlanExercise(exerciseId, { personal_notes: note });
 }
 
 export async function mergeExerciseIntoIdentity(
@@ -106,14 +146,32 @@ export async function swapPlanExerciseIdentity(
     normalized_name: normalizedName,
     baseline_reset_at: options.resetBaseline ? new Date().toISOString() : null,
   };
-  const { data, error } = await supabase
-    .from('plan_exercises')
-    .update(update)
-    .eq('id', exerciseId)
-    .select('baseline_reset_at')
-    .single();
-  if (error) throw error;
-  return (data?.baseline_reset_at as string | null) ?? null;
+  try {
+    const data = await query(
+      supabase
+        .from('plan_exercises')
+        .update(update)
+        .eq('id', exerciseId)
+        .select('baseline_reset_at')
+        .single(),
+      { label: 'swapPlanExerciseIdentity' }
+    );
+    patchCachedPlanExercise(exerciseId, update);
+    return (data?.baseline_reset_at as string | null) ?? null;
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    // Swapping to a free machine is a gym-floor decision — it can't need signal.
+    const userId = await currentUserId();
+    if (!userId) throw e;
+    patchCachedPlanExercise(exerciseId, update, userId);
+    enqueue(userId, {
+      kind: 'update_row',
+      table: 'plan_exercises',
+      id: exerciseId,
+      patch: update,
+    });
+    return update.baseline_reset_at;
+  }
 }
 
 export async function updatePlanExerciseName(
@@ -172,19 +230,17 @@ export async function savePlan(
   // getLastSessionSetsForExercise) without deleting past logged_sets.
   options?: { historyResetKeys?: ReadonlySet<string> }
 ): Promise<PlanRow> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Not signed in');
 
   // Deactivate any existing plans (keep them in the library)
-  await supabase.from('plans').update({ is_active: false }).eq('user_id', user.id);
+  await supabase.from('plans').update({ is_active: false }).eq('user_id', userId);
 
   const nowIso = new Date().toISOString();
   const { data: plan, error: planErr } = await supabase
     .from('plans')
     .insert({
-      user_id: user.id,
+      user_id: userId,
       name,
       raw_text: rawText,
       is_active: true,
@@ -199,7 +255,7 @@ export async function savePlan(
       .from('training_days')
       .insert({
         plan_id: plan.id,
-        user_id: user.id,
+        user_id: userId,
         name: day.name,
         position: day.position,
       })
@@ -210,7 +266,7 @@ export async function savePlan(
     if (day.exercises.length > 0) {
       const rows = day.exercises.map((e) => ({
         training_day_id: td.id,
-        user_id: user.id,
+        user_id: userId,
         body_part: e.bodyPart,
         name: e.name,
         normalized_name: e.normalizedName,
@@ -244,7 +300,7 @@ export async function savePlan(
       const altRows = day.exercises
         .filter((e) => e.weeklyAlternative && idByPosition.has(e.position))
         .map((e) => ({
-          user_id: user.id,
+          user_id: userId,
           plan_exercise_id: idByPosition.get(e.position)!,
           name: e.weeklyAlternative!.name,
           normalized_name: e.weeklyAlternative!.normalizedName,
@@ -265,21 +321,41 @@ export async function savePlan(
   return plan as PlanRow;
 }
 
-export async function getActivePlan(): Promise<FullPlan | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+/**
+ * The last plan we successfully fetched, straight off the device.
+ *
+ * This is the copy the app trains from when there's no signal — the whole
+ * workout (days, exercises, sets, reps, tempo, coach notes) is in here.
+ */
+export function getCachedActivePlan(userId?: string | null): FullPlan | null {
+  return readCache<FullPlan>(userId ?? currentUserIdSync(), ACTIVE_PLAN_CACHE);
+}
 
-  const { data, error } = await supabase
-    .from('plans')
-    .select('*, training_days(*, plan_exercises(*))')
-    .eq('user_id', user.id)
-    .eq('is_active', true)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
+export async function getActivePlan(): Promise<FullPlan | null> {
+  const userId = await currentUserId();
+  if (!userId) return null;
+
+  // Home waits on this one, so when the device already has a copy of the plan
+  // we give the network a short leash and fall back rather than making someone
+  // stare at a spinner on one bar of signal.
+  const cachedPlan = getCachedActivePlan(userId);
+  let data;
+  try {
+    data = await query(
+      supabase
+        .from('plans')
+        .select('*, training_days(*, plan_exercises(*))')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('uploaded_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      { label: 'getActivePlan', timeoutMs: cachedPlan ? 3500 : 12000 }
+    );
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    return cachedPlan;
+  }
   if (!data) return null;
 
   data.training_days?.sort((a: TrainingDayRow, b: TrainingDayRow) => a.position - b.position);
@@ -288,6 +364,7 @@ export async function getActivePlan(): Promise<FullPlan | null> {
       (a: PlanExerciseRow, b: PlanExerciseRow) => a.position - b.position
     );
   }
+  writeCache(userId, ACTIVE_PLAN_CACHE, data);
   return data as FullPlan;
 }
 
@@ -296,15 +373,13 @@ export interface PlanSummary extends PlanRow {
 }
 
 export async function listPlans(): Promise<PlanSummary[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
 
   const { data, error } = await supabase
     .from('plans')
     .select('*, training_days(id)')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('is_active', { ascending: false })
     .order('uploaded_at', { ascending: false });
   if (error) throw error;
@@ -321,14 +396,12 @@ export async function listPlans(): Promise<PlanSummary[]> {
 }
 
 export async function getPlanDetail(planId: string): Promise<FullPlan | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = await currentUserId();
+  if (!userId) return null;
   const { data, error } = await supabase
     .from('plans')
     .select('*, training_days(*, plan_exercises(*))')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('id', planId)
     .maybeSingle();
   if (error) throw error;
@@ -354,16 +427,14 @@ export async function activatePlan(
   planId: string,
   mode: 'resume' | 'restart'
 ): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Not signed in');
 
   // Deactivate everything else first.
   const { error: deErr } = await supabase
     .from('plans')
     .update({ is_active: false })
-    .eq('user_id', user.id);
+    .eq('user_id', userId);
   if (deErr) throw deErr;
 
   const update: { is_active: boolean; activated_at?: string } = { is_active: true };

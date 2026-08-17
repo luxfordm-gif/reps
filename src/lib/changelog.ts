@@ -11,6 +11,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-08-17',
+    emoji: '📶',
+    title: "What's new",
+    bullets: [
+      'Reps now works without signal — the app itself is stored on your phone, so it opens instantly in the gym basement',
+      'Your plan, your last-time weights and the workout you\'re in the middle of are all kept on the device, so you can train through a dead spot',
+      'Sets, weigh-ins and water logged offline are saved on the phone and sync themselves the moment a bar of signal comes back',
+      'A small line tells you what\'s still waiting to sync, so you never have to wonder whether a set made it',
+      'Saving your body weight now confirms with "Recorded for today" instead of leaving the Save button looking untapped',
+      'Add Reps to your home screen for a proper app icon and a full-screen, offline-ready app',
+    ],
+  },
+  {
     version: '2026-05-16',
     emoji: '✨',
     title: "What's new",

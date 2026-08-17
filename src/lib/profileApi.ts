@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, currentUserId } from './supabase';
 
 export type Gender = 'male' | 'female' | 'other';
 export type TopGoal = 'build_muscle' | 'gain_strength' | 'fat_loss';
@@ -20,27 +20,23 @@ export interface Profile {
 export type ProfilePatch = Partial<Omit<Profile, 'user_id' | 'created_at' | 'updated_at'>>;
 
 export async function getMyProfile(): Promise<Profile | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = await currentUserId();
+  if (!userId) return null;
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .maybeSingle();
   if (error) throw error;
   return (data as Profile) ?? null;
 }
 
 export async function upsertProfile(patch: ProfilePatch): Promise<Profile> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Not signed in');
   const { data, error } = await supabase
     .from('profiles')
-    .upsert({ user_id: user.id, ...patch }, { onConflict: 'user_id' })
+    .upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' })
     .select()
     .single();
   if (error) throw error;

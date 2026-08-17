@@ -25,9 +25,23 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { CalendarPopover } from '../components/Calendar';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { SyncStatus } from '../components/SyncStatus';
+import { hapticBuzz } from '../lib/haptics';
+import { isReachable } from '../lib/offline/net';
 
 interface Props {
   onBack: () => void;
+}
+
+interface SavedState {
+  /** The date + weight that were saved, so the button reverts to Save the
+   *  moment either of them changes. */
+  signature: string;
+  /** Whether this replaced an existing entry for that date. */
+  replaced: boolean;
+  /** Saved to the device with no signal, still waiting to sync. */
+  offline: boolean;
+  date: string;
 }
 
 function todayISO(): string {
@@ -62,6 +76,10 @@ export function BodyWeight({ onBack }: Props) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the Save button is showing. It settles on `saved` — greyed out with a
+  // tick — and only goes back to `idle` when the weight or the date changes, so
+  // there's no way to sit there tapping Save on a weight that's already logged.
+  const [saved, setSaved] = useState<SavedState | null>(null);
 
   // Default the new-entry inputs to a given weight so keeping or nudging the
   // most recent value is a single tap. No-op once the user has edited the field.
@@ -120,22 +138,36 @@ export function BodyWeight({ onBack }: Props) {
     if (!edited && rows[0]) seedInputs(rows[0].weight_kg, next);
   }
 
+  // The Save button only counts as "saved" for the exact weight and date that
+  // were saved — type a new number, or pick another day, and it arms again.
+  const saveSignature = `${date}|${inputKg ?? ''}`;
+  const savedNow = saved != null && saved.signature === saveSignature;
+
   async function handleSave() {
-    if (inputKg == null) return;
+    if (inputKg == null || savedNow) return;
     setSaving(true);
     setError(null);
+    const replaced = rows.some((r) => r.recorded_on === date);
     try {
-      const newRow = await logBodyWeight(parseFloat(inputKg.toFixed(2)), date);
+      const weightKg = parseFloat(inputKg.toFixed(2));
+      const newRow = await logBodyWeight(weightKg, date);
       const filtered = rows.filter((r) => r.recorded_on !== newRow.recorded_on);
       const nextRows = [newRow, ...filtered].sort((a, b) =>
         a.recorded_on < b.recorded_on ? 1 : -1
       );
       setRows(nextRows);
-      // Reset the default to the now-most-recent weight so the next visit or
-      // entry starts from it again.
+      setSaved({
+        signature: `${date}|${inputKg}`,
+        replaced,
+        // logBodyWeight banks the entry locally when it can't reach the server;
+        // say so rather than implying it's synced.
+        offline: !isReachable(),
+        date,
+      });
+      hapticBuzz([12, 40, 12]);
+      // Keep the entry that was just saved on screen — the inputs stay showing
+      // it, which is also what the next visit would pre-fill anyway.
       setEdited(false);
-      seedInputs(nextRows[0].weight_kg, unit);
-      setDate(todayISO());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save');
     } finally {
@@ -276,13 +308,13 @@ export function BodyWeight({ onBack }: Props) {
             </div>
           )}
           {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
-          <button
+          <SaveButton
+            state={saving ? 'saving' : savedNow ? 'saved' : 'idle'}
+            disabled={inputKg == null}
+            savedLabel={savedNow && saved ? savedLabel(saved) : ''}
             onClick={handleSave}
-            disabled={inputKg == null || saving}
-            className="mt-4 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          />
+          <SyncStatus className="mt-3" />
         </div>
 
         {rows.length >= 2 && (
@@ -406,6 +438,79 @@ export function BodyWeight({ onBack }: Props) {
         />
       )}
     </div>
+  );
+}
+
+function savedLabel(saved: SavedState): string {
+  if (saved.offline) return 'Saved on this phone';
+  if (saved.replaced) return 'Updated';
+  const today = todayISO();
+  if (saved.date === today) return 'Recorded for today';
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yIso = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+  if (saved.date === yIso) return 'Recorded for yesterday';
+  return `Recorded for ${new Date(saved.date + 'T00:00:00').toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  })}`;
+}
+
+/**
+ * Save → Saving… → a greyed-out confirmation that stays put.
+ *
+ * The settled state is deliberately inert: it's the answer to "did that go in?",
+ * and it can't be tapped again until the weight or date actually changes.
+ */
+function SaveButton({
+  state,
+  disabled,
+  savedLabel,
+  onClick,
+}: {
+  state: 'idle' | 'saving' | 'saved';
+  disabled: boolean;
+  savedLabel: string;
+  onClick: () => void;
+}) {
+  const isSaved = state === 'saved';
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || state !== 'idle'}
+      aria-live="polite"
+      className={`mt-4 flex w-full items-center justify-center gap-2 rounded-pill py-3.5 text-base font-semibold transition-all duration-300 ${
+        isSaved
+          ? 'bg-line text-muted'
+          : 'bg-ink text-white active:opacity-80 disabled:opacity-50'
+      }`}
+    >
+      {state === 'saving' && (
+        <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />
+      )}
+      {isSaved && (
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 18 18"
+          fill="none"
+          className="animate-pop-in text-[#34C759]"
+          aria-hidden="true"
+        >
+          <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5" />
+          <path
+            d="M5.5 9.2l2.3 2.3 4.7-4.9"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+      <span key={state} className={isSaved ? 'animate-rise-in' : undefined}>
+        {state === 'saving' ? 'Saving…' : isSaved ? savedLabel : 'Save'}
+      </span>
+    </button>
   );
 }
 

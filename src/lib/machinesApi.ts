@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, currentUserId } from './supabase';
 import { normalizeExerciseName } from './normalizeExerciseName';
 import {
   fromKgFor,
@@ -32,11 +32,9 @@ interface UnitPrefRow {
 }
 
 async function getUserId(): Promise<string> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
-  return user.id;
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Not signed in');
+  return userId;
 }
 
 function pickUnit(raw: string | null | undefined, fallback: MachineUnit): MachineUnit {

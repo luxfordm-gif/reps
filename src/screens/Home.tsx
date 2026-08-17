@@ -8,6 +8,9 @@ import {
 } from '../lib/sessionsApi';
 import { adjustWater, getWaterGoal, getWaterUnit } from '../lib/waterApi';
 import { getCachedHomeData, loadHomeData, patchHomeCache } from '../lib/homeCache';
+import { SyncStatus } from '../components/SyncStatus';
+import { requestFlush } from '../lib/offline/outbox';
+import { useNetStatus } from '../lib/offline/net';
 import type { Profile } from '../lib/profileApi';
 
 type Day = FullPlan['training_days'][number];
@@ -115,6 +118,7 @@ export function Home({
 
   const showOnboardingBanner =
     !!profile && !profile.onboarding_completed && !bannerDismissed && !!onResumeOnboarding;
+  const offline = !useNetStatus().reachable;
   // Hydrate synchronously from the module-level cache so tab switches don't
   // flash the skeleton. A background refresh always runs on mount to pick up
   // any drift.
@@ -148,6 +152,8 @@ export function Home({
 
   useEffect(() => {
     let mounted = true;
+    // Landing on Home is a good moment to push anything logged offline.
+    requestFlush();
     (async () => {
       try {
         const data = await loadHomeData();
@@ -227,18 +233,21 @@ export function Home({
               <UploadCloudIcon />
             </div>
             <h2 className="mt-5 text-2xl font-bold tracking-tight text-ink">
-              Welcome to Reps.
+              {offline ? "Can't reach your plan" : 'Welcome to Reps.'}
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Drop in your first training plan PDF and we'll turn it into trackable
-              training days.
+              {offline
+                ? "You're offline and this phone hasn't got a copy of your plan yet. Open Reps once with signal and it'll be here next time, connection or not."
+                : "Drop in your first training plan PDF and we'll turn it into trackable training days."}
             </p>
-            <button
-              onClick={onUploadPlan}
-              className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80"
-            >
-              Upload your plan
-            </button>
+            {!offline && (
+              <button
+                onClick={onUploadPlan}
+                className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80"
+              >
+                Upload your plan
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -294,7 +303,9 @@ export function Home({
           />
         )}
 
-        <div className={active ? 'mt-5' : ''}>
+        <SyncStatus className={active || showOnboardingBanner ? 'mt-5' : ''} />
+
+        <div className={active || showOnboardingBanner ? 'mt-5' : ''}>
           <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink">
             {greeting()},
             {greeting().includes(' ') ? (
