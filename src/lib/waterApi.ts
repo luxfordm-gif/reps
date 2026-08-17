@@ -1,4 +1,7 @@
-import { supabase } from './supabase';
+import { supabase, currentUserId } from './supabase';
+import { isOfflineError, query } from './offline/net';
+import { enqueue } from './offline/outbox';
+import { readCache, writeCache } from './offline/storage';
 
 const GOAL_KEY = 'reps.waterGoal';
 const UNIT_KEY = 'reps.waterUnit';
@@ -35,42 +38,72 @@ function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function waterCacheName(date: string): string {
+  return `water.${date}`;
+}
+
 export async function getTodayWaterCount(): Promise<number> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return 0;
-  const { data, error } = await supabase
-    .from('water_logs')
-    .select('count')
-    .eq('user_id', user.id)
-    .eq('recorded_on', todayISO())
-    .maybeSingle();
-  if (error) return 0;
-  return data?.count ?? 0;
+  const userId = await currentUserId();
+  if (!userId) return 0;
+  const today = todayISO();
+  try {
+    const data = await query(
+      supabase
+        .from('water_logs')
+        .select('count')
+        .eq('user_id', userId)
+        .eq('recorded_on', today)
+        .maybeSingle(),
+      { label: 'getTodayWaterCount' }
+    );
+    const count = (data as { count: number } | null)?.count ?? 0;
+    writeCache(userId, waterCacheName(today), count);
+    return count;
+  } catch (e) {
+    if (!isOfflineError(e)) return 0;
+    return readCache<number>(userId, waterCacheName(today)) ?? 0;
+  }
 }
 
 export async function adjustWater(delta: number): Promise<number> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Not signed in');
   const today = todayISO();
-  const { data: existing } = await supabase
-    .from('water_logs')
-    .select('count')
-    .eq('user_id', user.id)
-    .eq('recorded_on', today)
-    .maybeSingle();
-  const next = Math.max(0, (existing?.count ?? 0) + delta);
-  const { data, error } = await supabase
-    .from('water_logs')
-    .upsert(
-      { user_id: user.id, recorded_on: today, count: next },
-      { onConflict: 'user_id,recorded_on' }
-    )
-    .select()
-    .single();
-  if (error) throw error;
-  return data.count;
+  const cacheName = waterCacheName(today);
+  const cached = readCache<number>(userId, cacheName) ?? 0;
+
+  try {
+    const existing = await query(
+      supabase
+        .from('water_logs')
+        .select('count')
+        .eq('user_id', userId)
+        .eq('recorded_on', today)
+        .maybeSingle(),
+      { label: 'water:read' }
+    );
+    const next = Math.max(0, ((existing as { count: number } | null)?.count ?? 0) + delta);
+    const data = await query(
+      supabase
+        .from('water_logs')
+        .upsert(
+          { user_id: userId, recorded_on: today, count: next },
+          { onConflict: 'user_id,recorded_on' }
+        )
+        .select()
+        .single(),
+      { label: 'water:write' }
+    );
+    const saved = (data as { count: number }).count;
+    writeCache(userId, cacheName, saved);
+    return saved;
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    // Count from the last value we knew about and queue the absolute total, so
+    // several taps offline collapse into a single write.
+    const next = Math.max(0, cached + delta);
+    writeCache(userId, cacheName, next);
+    enqueue(userId, { kind: 'water', recorded_on: today, count: next });
+    return next;
+  }
 }

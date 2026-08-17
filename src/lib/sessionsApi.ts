@@ -1,4 +1,22 @@
-import { supabase } from './supabase';
+import { supabase, currentUserId } from './supabase';
+import { getCachedActivePlan } from './plansApi';
+import { isOfflineError, isTransportError, query } from './offline/net';
+import { enqueue, pendingSetIds, requestFlush } from './offline/outbox';
+import { newId, readCache, writeCache } from './offline/storage';
+import {
+  completeLocalSession,
+  getLocalOpenSession,
+  getLocalSessions,
+  getLocalSets,
+  markLocalSessionSynced,
+  mergeServerSets,
+  patchLocalSet,
+  removeLocalSession,
+  removeOpenLocalSessions,
+  toSessionRow,
+  upsertLocalSession,
+  upsertLocalSet,
+} from './offline/localWorkout';
 
 export interface SessionRow {
   id: string;
@@ -14,17 +32,41 @@ export interface SessionNotes {
   notesToCoach: string;
 }
 
+/** Notes typed on the completion screen, kept on the device until they sync. */
+interface LocalNotes {
+  feedback_for_self: string | null;
+  notes_to_coach: string | null;
+}
+
+function notesCacheName(sessionId: string): string {
+  return `notes.${sessionId}`;
+}
+
 export async function getSessionNotes(sessionId: string): Promise<SessionNotes> {
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('feedback_for_self, notes_to_coach')
-    .eq('id', sessionId)
-    .maybeSingle();
-  if (error) throw error;
-  return {
-    feedbackForSelf: (data?.feedback_for_self as string | null) ?? '',
-    notesToCoach: (data?.notes_to_coach as string | null) ?? '',
-  };
+  const userId = await currentUserId();
+  const local = readCache<LocalNotes>(userId, notesCacheName(sessionId));
+  try {
+    const data = await query(
+      supabase
+        .from('sessions')
+        .select('feedback_for_self, notes_to_coach')
+        .eq('id', sessionId)
+        .maybeSingle(),
+      { label: 'getSessionNotes' }
+    );
+    const row = data as LocalNotes | null;
+    // Anything typed offline hasn't reached the server yet, so it wins.
+    return {
+      feedbackForSelf: local?.feedback_for_self ?? row?.feedback_for_self ?? '',
+      notesToCoach: local?.notes_to_coach ?? row?.notes_to_coach ?? '',
+    };
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    return {
+      feedbackForSelf: local?.feedback_for_self ?? '',
+      notesToCoach: local?.notes_to_coach ?? '',
+    };
+  }
 }
 
 export async function updateSessionNotes(
@@ -38,8 +80,19 @@ export async function updateSessionNotes(
   if ('notesToCoach' in patch) {
     update.notes_to_coach = patch.notesToCoach?.trim() ? patch.notesToCoach.trim() : null;
   }
-  const { error } = await supabase.from('sessions').update(update).eq('id', sessionId);
-  if (error) throw error;
+  const userId = await currentUserId();
+  const cacheName = notesCacheName(sessionId);
+  const merged = { ...(readCache<LocalNotes>(userId, cacheName) ?? {}), ...update };
+  try {
+    await query(supabase.from('sessions').update(update).eq('id', sessionId).select('id'), {
+      label: 'updateSessionNotes',
+    });
+    writeCache(userId, cacheName, merged);
+  } catch (e) {
+    if (!isOfflineError(e) || !userId) throw e;
+    writeCache(userId, cacheName, merged);
+    enqueue(userId, { kind: 'session_notes', id: sessionId, patch: update });
+  }
 }
 
 export interface WeekNoteRow {
@@ -51,15 +104,13 @@ export interface WeekNoteRow {
 }
 
 export async function getRecentSessionNotes(daysBack = 7): Promise<WeekNoteRow[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
   const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from('sessions')
     .select('id, completed_at, feedback_for_self, notes_to_coach, training_days(name)')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .not('completed_at', 'is', null)
     .gte('completed_at', since)
     .order('completed_at', { ascending: true });
@@ -101,19 +152,24 @@ export async function getRecentSessionPositions(
   trainingDayIds: string[],
   limit: number = 6
 ): Promise<number[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || trainingDayIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('training_day_id, completed_at, training_days(position)')
-    .eq('user_id', user.id)
-    .not('completed_at', 'is', null)
-    .in('training_day_id', trainingDayIds)
-    .order('completed_at', { ascending: false })
-    .limit(limit);
-  if (error) return [];
+  const userId = await currentUserId();
+  if (!userId || trainingDayIds.length === 0) return [];
+  let data;
+  try {
+    data = await query(
+      supabase
+        .from('sessions')
+        .select('training_day_id, completed_at, training_days(position)')
+        .eq('user_id', userId)
+        .not('completed_at', 'is', null)
+        .in('training_day_id', trainingDayIds)
+        .order('completed_at', { ascending: false })
+        .limit(limit),
+      { label: 'getRecentSessionPositions' }
+    );
+  } catch {
+    return [];
+  }
   type Row = {
     training_day_id: string;
     completed_at: string;
@@ -130,20 +186,24 @@ export async function getRecentSessionPositions(
 export async function getLastCompletedTrainingDayName(
   sinceIso?: string | null
 ): Promise<string | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  let query = supabase
+  const userId = await currentUserId();
+  if (!userId) return null;
+  let builder = supabase
     .from('sessions')
     .select('training_day_id, completed_at, training_days(name)')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false })
     .limit(1);
-  if (sinceIso) query = query.gte('completed_at', sinceIso);
-  const { data, error } = await query.maybeSingle();
-  if (error) return null;
+  if (sinceIso) builder = builder.gte('completed_at', sinceIso);
+  let data;
+  try {
+    data = await query(builder.maybeSingle(), {
+      label: 'getLastCompletedTrainingDayName',
+    });
+  } catch {
+    return null;
+  }
   if (!data) return null;
   // training_days may come through as object or array depending on PostgREST inference
   const td = (data as { training_days: { name: string } | { name: string }[] | null }).training_days;
@@ -160,67 +220,153 @@ export interface ActiveSessionContext {
   lastPlanExerciseId: string | null;
 }
 
-export async function getAnyActiveSession(): Promise<ActiveSessionContext | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('id, started_at, training_day_id, training_days(name)')
-    .eq('user_id', user.id)
-    .is('completed_at', null)
-    .order('started_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) return null;
-  if (!data) return null;
-  const td = (data as { training_days: { name: string } | { name: string }[] | null }).training_days;
-  const tdObj = Array.isArray(td) ? td[0] : td;
-  const stats = await getSessionStats((data as { id: string }).id);
+function cachedTrainingDayName(
+  userId: string | null,
+  trainingDayId: string
+): string | null {
+  const plan = getCachedActivePlan(userId);
+  return plan?.training_days?.find((d) => d.id === trainingDayId)?.name ?? null;
+}
+
+/** The in-progress workout as the device knows it, for when we can't ask the
+ *  server (or the session was started with no signal in the first place). */
+function localActiveSession(userId: string | null): ActiveSessionContext | null {
+  const open = getLocalOpenSession(userId);
+  if (!open) return null;
+  const sets = getLocalSets(userId, open.id);
+  const last = [...sets].sort((a, b) => (a.completed_at < b.completed_at ? 1 : -1))[0];
   return {
-    sessionId: (data as { id: string }).id,
-    startedAt: (data as { started_at: string }).started_at,
-    trainingDayId: (data as { training_day_id: string }).training_day_id,
-    trainingDayName: tdObj?.name ?? 'Workout',
-    lastPlanExerciseId: stats.lastPlanExerciseId,
+    sessionId: open.id,
+    startedAt: open.started_at,
+    trainingDayId: open.training_day_id,
+    trainingDayName: cachedTrainingDayName(userId, open.training_day_id) ?? 'Workout',
+    lastPlanExerciseId: last?.plan_exercise_id ?? null,
   };
+}
+
+export async function getAnyActiveSession(): Promise<ActiveSessionContext | null> {
+  const userId = await currentUserId();
+  if (!userId) return null;
+  try {
+    const data = await query(
+      supabase
+        .from('sessions')
+        .select('id, started_at, training_day_id, training_days(name)')
+        .eq('user_id', userId)
+        .is('completed_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      { label: 'getAnyActiveSession' }
+    );
+    if (!data) {
+      // The server says nothing is open — but a session started offline hasn't
+      // reached it yet, so keep showing that one.
+      const local = localActiveSession(userId);
+      return local && !localSessionIsSynced(userId, local.sessionId) ? local : null;
+    }
+    const td = (data as { training_days: { name: string } | { name: string }[] | null })
+      .training_days;
+    const tdObj = Array.isArray(td) ? td[0] : td;
+    const row = data as { id: string; started_at: string; training_day_id: string };
+    upsertLocalSession(userId, {
+      id: row.id,
+      training_day_id: row.training_day_id,
+      started_at: row.started_at,
+      completed_at: null,
+      synced: true,
+    });
+    const stats = await getSessionStats(row.id);
+    return {
+      sessionId: row.id,
+      startedAt: row.started_at,
+      trainingDayId: row.training_day_id,
+      trainingDayName: tdObj?.name ?? 'Workout',
+      lastPlanExerciseId: stats.lastPlanExerciseId,
+    };
+  } catch (e) {
+    if (!isOfflineError(e)) return null;
+    return localActiveSession(userId);
+  }
+}
+
+function localSessionIsSynced(userId: string | null, sessionId: string): boolean {
+  return getLocalSessions(userId).find((s) => s.id === sessionId)?.synced ?? false;
 }
 
 export async function getActiveSessionForDay(
   trainingDayId: string
 ): Promise<SessionRow | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('training_day_id', trainingDayId)
-    .is('completed_at', null)
-    .order('started_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return (data as SessionRow | null) ?? null;
+  const userId = await currentUserId();
+  if (!userId) return null;
+  const localOpen = getLocalSessions(userId).find(
+    (s) => !s.completed_at && s.training_day_id === trainingDayId
+  );
+  try {
+    const data = await query(
+      supabase
+        .from('sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('training_day_id', trainingDayId)
+        .is('completed_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      { label: 'getActiveSessionForDay' }
+    );
+    const row = (data as SessionRow | null) ?? null;
+    if (row) {
+      upsertLocalSession(userId, {
+        id: row.id,
+        training_day_id: row.training_day_id,
+        started_at: row.started_at,
+        completed_at: null,
+        synced: true,
+      });
+      return row;
+    }
+    // Nothing on the server: only an unsynced local session counts here.
+    return localOpen && !localOpen.synced ? toSessionRow(localOpen) : null;
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    return localOpen ? toSessionRow(localOpen) : null;
+  }
 }
 
 export async function getSessionStats(
   sessionId: string
 ): Promise<{ setsLogged: number; lastPlanExerciseId: string | null }> {
-  const { data, error } = await supabase
-    .from('logged_sets')
-    .select('plan_exercise_id, completed_at')
-    .eq('session_id', sessionId)
-    .order('completed_at', { ascending: false });
-  if (error) throw error;
-  const rows = data ?? [];
-  return {
-    setsLogged: rows.length,
-    lastPlanExerciseId: rows[0]?.plan_exercise_id ?? null,
-  };
+  const userId = await currentUserId();
+  try {
+    const data = await query(
+      supabase
+        .from('logged_sets')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('completed_at', { ascending: false }),
+      { label: 'getSessionStats' }
+    );
+    const rows = mergeServerSets(
+      userId,
+      sessionId,
+      (data as LoggedSet[]) ?? [],
+      pendingSetIds()
+    ).sort((a, b) => (a.completed_at < b.completed_at ? 1 : -1));
+    return {
+      setsLogged: rows.length,
+      lastPlanExerciseId: rows[0]?.plan_exercise_id ?? null,
+    };
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    const rows = [...getLocalSets(userId, sessionId)].sort((a, b) =>
+      a.completed_at < b.completed_at ? 1 : -1
+    );
+    return {
+      setsLogged: rows.length,
+      lastPlanExerciseId: rows[0]?.plan_exercise_id ?? null,
+    };
+  }
 }
 
 export type RecapMedal = 'gold' | 'silver' | 'bronze';
@@ -244,7 +390,70 @@ export interface SessionRecap {
   bodyParts: string[];
 }
 
+/**
+ * The finish-workout summary, computed from the sets on the device.
+ *
+ * The completion screen is the one place we're almost guaranteed to be offline
+ * — it's the last thing you see before leaving the gym — so it gets a full
+ * local build. Medals and the week-on-week volume comparison need the whole
+ * history, so they're left out until the session syncs.
+ */
+function localSessionRecap(userId: string | null, sessionId: string): SessionRecap {
+  const sets = getLocalSets(userId, sessionId);
+  const session = getLocalSessions(userId).find((s) => s.id === sessionId) ?? null;
+  const plan = getCachedActivePlan(userId);
+  const bodyPartByExerciseId = new Map<string, string>();
+  for (const day of plan?.training_days ?? []) {
+    for (const ex of day.plan_exercises ?? []) {
+      if (ex.body_part?.trim()) bodyPartByExerciseId.set(ex.id, ex.body_part.trim());
+    }
+  }
+
+  let totalWeight = 0;
+  const bestPerExercise = new Map<string, { weight: number; reps: number }>();
+  const bodyParts: string[] = [];
+  for (const s of [...sets].sort((a, b) => (a.completed_at < b.completed_at ? -1 : 1))) {
+    if (s.weight != null && s.reps != null) {
+      totalWeight += s.weight * s.reps;
+      const prev = bestPerExercise.get(s.exercise_display_name);
+      if (!prev || s.weight > prev.weight) {
+        bestPerExercise.set(s.exercise_display_name, { weight: s.weight, reps: s.reps });
+      }
+    }
+    const bp = s.plan_exercise_id ? bodyPartByExerciseId.get(s.plan_exercise_id) : null;
+    if (bp && !bodyParts.includes(bp)) bodyParts.push(bp);
+  }
+
+  let durationMinutes: number | null = null;
+  if (session?.started_at && session.completed_at) {
+    const ms = new Date(session.completed_at).getTime() - new Date(session.started_at).getTime();
+    if (ms > 0) durationMinutes = Math.round(ms / 60000);
+  }
+
+  return {
+    setsLogged: sets.length,
+    totalWeight,
+    durationMinutes,
+    bestSets: [...bestPerExercise.entries()]
+      .map(([exercise, v]) => ({ exercise, weight: v.weight, reps: v.reps, medal: null }))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 5),
+    previousTotalWeight: null,
+    bodyParts,
+  };
+}
+
 export async function getSessionRecap(sessionId: string): Promise<SessionRecap> {
+  const userId = await currentUserId();
+  try {
+    return await serverSessionRecap(sessionId);
+  } catch (e) {
+    if (!isOfflineError(e) && !isTransportError(e)) throw e;
+    return localSessionRecap(userId, sessionId);
+  }
+}
+
+async function serverSessionRecap(sessionId: string): Promise<SessionRecap> {
   const [{ data: sets, error: setsErr }, { data: sess, error: sessErr }] = await Promise.all([
     supabase
       .from('logged_sets')
@@ -402,14 +611,12 @@ export interface LastDayRecap {
 }
 
 export async function getLastDayRecap(trainingDayId: string): Promise<LastDayRecap | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = await currentUserId();
+  if (!userId) return null;
   const { data: sessions } = await supabase
     .from('sessions')
     .select('id, started_at, completed_at')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('training_day_id', trainingDayId)
     .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false })
@@ -475,15 +682,13 @@ export async function getExerciseHistories(
   normalizedNames: string[],
   excludeSessionId?: string
 ): Promise<Record<string, ExerciseHistory>> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userId = await currentUserId();
   const out: Record<string, ExerciseHistory> = {};
-  if (!user || normalizedNames.length === 0) return out;
+  if (!userId || normalizedNames.length === 0) return out;
   let query = supabase
     .from('logged_sets')
     .select('exercise_normalized_name, session_id, weight, reps, set_index, completed_at')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .in('exercise_normalized_name', normalizedNames)
     .order('completed_at', { ascending: false })
     .limit(500);
@@ -537,14 +742,12 @@ export interface CompletedSessionSummary {
 }
 
 export async function listCompletedSessions(): Promise<CompletedSessionSummary[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
   const { data, error } = await supabase
     .from('sessions')
     .select('id, started_at, completed_at, training_days(name, plan_exercises(id))')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false });
   if (error) throw error;
@@ -593,8 +796,16 @@ export async function listCompletedSessions(): Promise<CompletedSessionSummary[]
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  const { error } = await supabase.from('sessions').delete().eq('id', sessionId);
-  if (error) throw error;
+  const userId = await currentUserId();
+  removeLocalSession(userId, sessionId);
+  try {
+    await query(supabase.from('sessions').delete().eq('id', sessionId).select('id'), {
+      label: 'deleteSession',
+    });
+  } catch (e) {
+    if (!isOfflineError(e) || !userId) throw e;
+    enqueue(userId, { kind: 'delete_session', id: sessionId });
+  }
 }
 
 // Delete every open (not-yet-completed) session belonging to the current user.
@@ -630,22 +841,27 @@ export function mondayOfWeek(offsetWeeks: number): Date {
 }
 
 export async function getCompletedDayNamesThisWeek(): Promise<string[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
   const monday = startOfThisWeek();
   const nextMonday = new Date(monday);
   nextMonday.setDate(nextMonday.getDate() + 7);
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('completed_at, training_days(name)')
-    .eq('user_id', user.id)
-    .not('completed_at', 'is', null)
-    .gte('completed_at', monday.toISOString())
-    .lt('completed_at', nextMonday.toISOString())
-    .order('completed_at', { ascending: true });
-  if (error) return [];
+  let data;
+  try {
+    data = await query(
+      supabase
+        .from('sessions')
+        .select('completed_at, training_days(name)')
+        .eq('user_id', userId)
+        .not('completed_at', 'is', null)
+        .gte('completed_at', monday.toISOString())
+        .lt('completed_at', nextMonday.toISOString())
+        .order('completed_at', { ascending: true }),
+      { label: 'getCompletedDayNamesThisWeek' }
+    );
+  } catch {
+    return [];
+  }
   type Row = {
     completed_at: string;
     training_days: { name: string } | { name: string }[] | null;
@@ -660,24 +876,30 @@ export async function getCompletedDayNamesThisWeek(): Promise<string[]> {
 }
 
 export async function getThisWeekSummary(): Promise<WeekSummary> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userId = await currentUserId();
   const emptyBars: number[][] = [[], [], [], [], [], [], []];
   const emptyDetails: WeekSessionBreakdown[][] = [[], [], [], [], [], [], []];
-  if (!user) return { workoutsDone: 0, bars: emptyBars, dayDetails: emptyDetails };
+  if (!userId) return { workoutsDone: 0, bars: emptyBars, dayDetails: emptyDetails };
 
   const monday = mondayOfWeek(0);
   const nextMonday = new Date(monday);
   nextMonday.setDate(nextMonday.getDate() + 7);
 
-  const { data: sessions } = await supabase
-    .from('sessions')
-    .select('id, completed_at, training_days(name)')
-    .eq('user_id', user.id)
-    .not('completed_at', 'is', null)
-    .gte('completed_at', monday.toISOString())
-    .lt('completed_at', nextMonday.toISOString());
+  let sessions;
+  try {
+    sessions = await query(
+      supabase
+        .from('sessions')
+        .select('id, completed_at, training_days(name)')
+        .eq('user_id', userId)
+        .not('completed_at', 'is', null)
+        .gte('completed_at', monday.toISOString())
+        .lt('completed_at', nextMonday.toISOString()),
+      { label: 'getThisWeekSummary' }
+    );
+  } catch {
+    return { workoutsDone: 0, bars: emptyBars, dayDetails: emptyDetails };
+  }
   type SRow = {
     id: string;
     completed_at: string;
@@ -809,15 +1031,13 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
     exerciseBests: [],
   };
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return empty;
+  const userId = await currentUserId();
+  if (!userId) return empty;
 
   const { data: sessionRows, error: sessErr } = await supabase
     .from('sessions')
     .select('id, completed_at, training_days(name)')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .not('completed_at', 'is', null)
     .gte('completed_at', weekStart.toISOString())
     .lt('completed_at', weekEnd.toISOString())
@@ -929,14 +1149,12 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
 }
 
 export async function hasAnySessionsBefore(iso: string): Promise<boolean> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
+  const userId = await currentUserId();
+  if (!userId) return false;
   const { count, error } = await supabase
     .from('sessions')
     .select('id', { count: 'exact', head: true })
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .not('completed_at', 'is', null)
     .lt('completed_at', iso);
   if (error) return false;
@@ -944,38 +1162,101 @@ export async function hasAnySessionsBefore(iso: string): Promise<boolean> {
 }
 
 export async function deleteAllOpenSessions(): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-  const { error } = await supabase
-    .from('sessions')
-    .delete()
-    .eq('user_id', user.id)
-    .is('completed_at', null);
-  if (error) throw error;
+  const userId = await currentUserId();
+  if (!userId) return;
+  removeOpenLocalSessions(userId);
+  try {
+    await query(
+      supabase
+        .from('sessions')
+        .delete()
+        .eq('user_id', userId)
+        .is('completed_at', null)
+        .select('id'),
+      { label: 'deleteAllOpenSessions' }
+    );
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    enqueue(userId, { kind: 'delete_open_sessions' });
+  }
 }
 
 export async function createSession(trainingDayId: string): Promise<SessionRow> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
-  const { data, error } = await supabase
-    .from('sessions')
-    .insert({ user_id: user.id, training_day_id: trainingDayId })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as SessionRow;
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Not signed in');
+  // The id is minted here rather than by Postgres so the sets logged against
+  // this session have something stable to point at before it ever syncs.
+  const row: SessionRow = {
+    id: newId(),
+    training_day_id: trainingDayId,
+    started_at: new Date().toISOString(),
+    completed_at: null,
+  };
+  try {
+    const data = await query(
+      supabase
+        .from('sessions')
+        .insert({
+          id: row.id,
+          user_id: userId,
+          training_day_id: trainingDayId,
+          started_at: row.started_at,
+        })
+        .select()
+        .single(),
+      { label: 'createSession' }
+    );
+    const saved = data as SessionRow;
+    upsertLocalSession(userId, {
+      id: saved.id,
+      training_day_id: saved.training_day_id,
+      started_at: saved.started_at,
+      completed_at: null,
+      synced: true,
+    });
+    return saved;
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    upsertLocalSession(userId, {
+      id: row.id,
+      training_day_id: trainingDayId,
+      started_at: row.started_at,
+      completed_at: null,
+      synced: false,
+    });
+    enqueue(userId, {
+      kind: 'create_session',
+      row: {
+        id: row.id,
+        training_day_id: trainingDayId,
+        started_at: row.started_at,
+      },
+    });
+    return row;
+  }
 }
 
 export async function completeSession(sessionId: string): Promise<void> {
-  const { error } = await supabase
-    .from('sessions')
-    .update({ completed_at: new Date().toISOString() })
-    .eq('id', sessionId);
-  if (error) throw error;
+  const userId = await currentUserId();
+  const completedAt = new Date().toISOString();
+  completeLocalSession(userId, sessionId, completedAt);
+  try {
+    await query(
+      supabase
+        .from('sessions')
+        .update({ completed_at: completedAt })
+        .eq('id', sessionId)
+        .select('id'),
+      { label: 'completeSession' }
+    );
+    markLocalSessionSynced(userId, sessionId);
+  } catch (e) {
+    if (!isOfflineError(e) || !userId) throw e;
+    enqueue(userId, { kind: 'complete_session', id: sessionId, completed_at: completedAt });
+    // Finishing a workout is the moment to try to push everything — if a bar
+    // of signal has come back on the walk out, it all lands now.
+    requestFlush();
+  }
 }
 
 export async function logSet(params: {
@@ -989,56 +1270,87 @@ export async function logSet(params: {
   reps?: number | null;
   holdSeconds?: number | null;
 }): Promise<LoggedSet> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
-  const { data, error } = await supabase
-    .from('logged_sets')
-    .insert({
-      user_id: user.id,
-      session_id: params.sessionId,
-      plan_exercise_id: params.planExerciseId,
-      exercise_display_name: params.exerciseDisplayName,
-      exercise_normalized_name: params.exerciseNormalizedName,
-      set_index: params.setIndex,
-      drop_index: params.dropIndex ?? 0,
-      weight: params.weight ?? null,
-      reps: params.reps ?? null,
-      hold_seconds: params.holdSeconds ?? null,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as LoggedSet;
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Not signed in');
+  const row: LoggedSet = {
+    id: newId(),
+    session_id: params.sessionId,
+    plan_exercise_id: params.planExerciseId,
+    exercise_display_name: params.exerciseDisplayName,
+    exercise_normalized_name: params.exerciseNormalizedName,
+    set_index: params.setIndex,
+    drop_index: params.dropIndex ?? 0,
+    weight: params.weight ?? null,
+    reps: params.reps ?? null,
+    hold_seconds: params.holdSeconds ?? null,
+    completed_at: new Date().toISOString(),
+  };
+  try {
+    const data = await query(
+      supabase
+        .from('logged_sets')
+        .insert({ ...row, user_id: userId })
+        .select()
+        .single(),
+      { label: 'logSet' }
+    );
+    const saved = data as LoggedSet;
+    upsertLocalSet(userId, saved);
+    return saved;
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    // No signal: the set is banked on the device and pushed when there is some.
+    upsertLocalSet(userId, row);
+    enqueue(userId, { kind: 'log_set', row });
+    return row;
+  }
 }
 
 export async function getAllSessionSets(sessionId: string): Promise<LoggedSet[]> {
-  const { data, error } = await supabase
-    .from('logged_sets')
-    .select('*')
-    .eq('session_id', sessionId)
-    .order('completed_at', { ascending: true });
-  if (error) throw error;
-  return (data as LoggedSet[]) ?? [];
+  const userId = await currentUserId();
+  try {
+    const data = await query(
+      supabase
+        .from('logged_sets')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('completed_at', { ascending: true }),
+      { label: 'getAllSessionSets' }
+    );
+    return mergeServerSets(userId, sessionId, (data as LoggedSet[]) ?? [], pendingSetIds());
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    return [...getLocalSets(userId, sessionId)].sort((a, b) =>
+      a.completed_at < b.completed_at ? -1 : 1
+    );
+  }
 }
 
+/** Returns the saved row, or null when the edit was queued offline and we have
+ *  no local copy of the row to hand back (editing an old workout with no signal). */
 export async function updateLoggedSet(
   id: string,
   patch: { weight?: number | null; reps?: number | null; holdSeconds?: number | null }
-): Promise<LoggedSet> {
+): Promise<LoggedSet | null> {
   const update: Record<string, number | null> = {};
   if ('weight' in patch) update.weight = patch.weight ?? null;
   if ('reps' in patch) update.reps = patch.reps ?? null;
   if ('holdSeconds' in patch) update.hold_seconds = patch.holdSeconds ?? null;
-  const { data, error } = await supabase
-    .from('logged_sets')
-    .update(update)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data as LoggedSet;
+  const userId = await currentUserId();
+  try {
+    const data = await query(
+      supabase.from('logged_sets').update(update).eq('id', id).select().single(),
+      { label: 'updateLoggedSet' }
+    );
+    const saved = data as LoggedSet;
+    upsertLocalSet(userId, saved);
+    return saved;
+  } catch (e) {
+    if (!isOfflineError(e) || !userId) throw e;
+    const local = patchLocalSet(userId, id, update);
+    enqueue(userId, { kind: 'update_set', id, patch: update });
+    return local;
+  }
 }
 
 export async function getSessionSets(
@@ -1051,15 +1363,37 @@ export async function getSessionSets(
   // Pass normalizedName so each active identity only sees the sets it logged
   // this session (otherwise switching pills would mark an alternative's rows
   // completed using the primary's weights).
-  let query = supabase
+  const userId = await currentUserId();
+  const matches = (s: LoggedSet) =>
+    s.session_id === sessionId &&
+    s.plan_exercise_id === planExerciseId &&
+    (!normalizedName || s.exercise_normalized_name === normalizedName);
+
+  let builder = supabase
     .from('logged_sets')
     .select('*')
     .eq('session_id', sessionId)
     .eq('plan_exercise_id', planExerciseId);
-  if (normalizedName) query = query.eq('exercise_normalized_name', normalizedName);
-  const { data, error } = await query.order('set_index', { ascending: true });
-  if (error) throw error;
-  return (data as LoggedSet[]) ?? [];
+  if (normalizedName) builder = builder.eq('exercise_normalized_name', normalizedName);
+  try {
+    const data = await query(builder.order('set_index', { ascending: true }), {
+      label: 'getSessionSets',
+    });
+    const rows = (data as LoggedSet[]) ?? [];
+    // Fold in anything logged offline for this exercise that hasn't synced yet,
+    // so re-opening the exercise doesn't lose the ticks.
+    const pending = pendingSetIds();
+    const local = getLocalSets(userId, sessionId).filter(
+      (s) => matches(s) && pending.has(s.id) && !rows.some((r) => r.id === s.id)
+    );
+    for (const s of rows) upsertLocalSet(userId, s);
+    return [...rows, ...local].sort((a, b) => a.set_index - b.set_index);
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    return getLocalSets(userId, sessionId)
+      .filter(matches)
+      .sort((a, b) => a.set_index - b.set_index);
+  }
 }
 
 // The normalized name of the movement most recently logged against a given
@@ -1071,21 +1405,27 @@ export async function getLastLoggedNormalizedForSlot(
   planExerciseId: string,
   excludeSessionId?: string
 ): Promise<string | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  let query = supabase
+  const userId = await currentUserId();
+  if (!userId) return null;
+  let builder = supabase
     .from('logged_sets')
     .select('exercise_normalized_name, session_id, completed_at')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('plan_exercise_id', planExerciseId)
     .order('completed_at', { ascending: false })
     .limit(1);
-  if (excludeSessionId) query = query.neq('session_id', excludeSessionId);
-  const { data, error } = await query.maybeSingle();
-  if (error) return null;
-  return (data as { exercise_normalized_name: string } | null)?.exercise_normalized_name ?? null;
+  if (excludeSessionId) builder = builder.neq('session_id', excludeSessionId);
+  try {
+    const data = await query(builder.maybeSingle(), {
+      label: 'getLastLoggedNormalizedForSlot',
+    });
+    return (
+      (data as { exercise_normalized_name: string } | null)?.exercise_normalized_name ?? null
+    );
+  } catch {
+    // Only a hint for the weekly-rotation prompt — never worth an error.
+    return null;
+  }
 }
 
 export async function getLastSessionSetsForExercise(
@@ -1093,24 +1433,73 @@ export async function getLastSessionSetsForExercise(
   excludeSessionId?: string,
   baselineResetAt?: string | null
 ): Promise<LoggedSet[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
-  let query = supabase
+  const userId = await currentUserId();
+  if (!userId) return [];
+  let builder = supabase
     .from('logged_sets')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('exercise_normalized_name', normalizedName)
     .order('completed_at', { ascending: false })
     .limit(20);
-  if (excludeSessionId) query = query.neq('session_id', excludeSessionId);
-  if (baselineResetAt) query = query.gte('completed_at', baselineResetAt);
-  const { data, error } = await query;
-  if (error) throw error;
-  if (!data || data.length === 0) return [];
-  const sessionId = data[0].session_id;
-  return (data as LoggedSet[])
-    .filter((d) => d.session_id === sessionId)
-    .sort((a, b) => a.set_index - b.set_index);
+  if (excludeSessionId) builder = builder.neq('session_id', excludeSessionId);
+  if (baselineResetAt) builder = builder.gte('completed_at', baselineResetAt);
+  try {
+    const data = await query(builder, { label: 'getLastSessionSetsForExercise' });
+    const rows = (data as LoggedSet[]) ?? [];
+    if (rows.length === 0) {
+      writeCache(userId, lastSetsCacheName(normalizedName), []);
+      return [];
+    }
+    const sessionId = rows[0].session_id;
+    const lastSets = rows
+      .filter((d) => d.session_id === sessionId)
+      .sort((a, b) => a.set_index - b.set_index);
+    // "Last time" is what the logger pre-fills every set with, so it's the one
+    // read the exercise screen can't do without. Keep a copy per machine.
+    writeCache(userId, lastSetsCacheName(normalizedName), lastSets);
+    return lastSets;
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    return offlineLastSetsForExercise(
+      userId,
+      normalizedName,
+      excludeSessionId,
+      baselineResetAt
+    );
+  }
+}
+
+function lastSetsCacheName(normalizedName: string): string {
+  return `lastSets.${normalizedName}`;
+}
+
+/**
+ * "Last time" with no signal: prefer a session logged on this device (two
+ * offline workouts in a row still progress properly), and otherwise fall back
+ * to the copy cached the last time this exercise was opened online.
+ */
+function offlineLastSetsForExercise(
+  userId: string | null,
+  normalizedName: string,
+  excludeSessionId?: string,
+  baselineResetAt?: string | null
+): LoggedSet[] {
+  const sessions = getLocalSessions(userId)
+    .filter((s) => s.id !== excludeSessionId)
+    .sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
+  for (const session of sessions) {
+    const sets = getLocalSets(userId, session.id).filter(
+      (s) =>
+        s.exercise_normalized_name === normalizedName &&
+        (!baselineResetAt || s.completed_at >= baselineResetAt)
+    );
+    if (sets.length > 0) return [...sets].sort((a, b) => a.set_index - b.set_index);
+  }
+  const cached = readCache<LoggedSet[]>(userId, lastSetsCacheName(normalizedName)) ?? [];
+  return cached.filter(
+    (s) =>
+      s.session_id !== excludeSessionId &&
+      (!baselineResetAt || s.completed_at >= baselineResetAt)
+  );
 }

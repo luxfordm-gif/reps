@@ -26,6 +26,7 @@ import {
 import { BottomNav, type Tab } from './components/BottomNav';
 import { Splash } from './components/Splash';
 import { clearHomeCache, loadHomeData } from './lib/homeCache';
+import { requestFlush } from './lib/offline/outbox';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 import { getMyProfile, type Profile as ProfileData } from './lib/profileApi';
 
@@ -258,6 +259,8 @@ function Root() {
               } catch (e) {
                 console.error(e);
               }
+              // Everything logged during the workout goes up now, if it can.
+              requestFlush();
             }
             setExerciseIdx(null);
             setSessionId(null);
@@ -381,6 +384,7 @@ function Root() {
       } catch (e) {
         console.error(e);
       }
+      requestFlush();
     }
     setExerciseIdx(null);
     setSessionId(null);

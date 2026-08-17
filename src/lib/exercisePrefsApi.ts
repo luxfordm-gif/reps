@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, currentUserId } from './supabase';
 import { getLiftWeightUnit, type MachineUnit } from './units';
 
 const CACHE_PREFIX = 'reps.liftWeightUnit.';
@@ -44,13 +44,11 @@ export async function setExerciseUnit(
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(cacheKey(normalizedName), unit);
   }
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Not signed in');
   const { error } = await supabase.from('exercise_unit_prefs').upsert(
     {
-      user_id: user.id,
+      user_id: userId,
       normalized_name: normalizedName,
       weight_unit: unit,
       updated_at: new Date().toISOString(),

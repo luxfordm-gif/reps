@@ -1,4 +1,4 @@
-import { getActivePlan, type FullPlan } from './plansApi';
+import { getActivePlan, getCachedActivePlan, type FullPlan } from './plansApi';
 import {
   getLastCompletedTrainingDayName,
   getAnyActiveSession,
@@ -9,6 +9,8 @@ import {
   type WeekSummary,
 } from './sessionsApi';
 import { getTodayWaterCount } from './waterApi';
+import { currentUserIdSync } from './supabase';
+import { readCache, writeCache } from './offline/storage';
 
 export interface HomeData {
   plan: FullPlan | null;
@@ -20,10 +22,26 @@ export interface HomeData {
   recentPositions: number[];
 }
 
+const PERSISTED_KEY = 'home';
+
+const EMPTY_WEEK: WeekSummary = {
+  workoutsDone: 0,
+  bars: [[], [], [], [], [], [], []],
+  dayDetails: [[], [], [], [], [], [], []],
+};
+
 let cached: HomeData | null = null;
 let inflight: Promise<HomeData> | null = null;
 
+/**
+ * Home's data — from memory if this app session has already loaded it, and
+ * otherwise from the copy persisted on the device. The persisted copy is what
+ * lets the app open straight into a usable home screen with no signal.
+ */
 export function getCachedHomeData(): HomeData | null {
+  if (cached) return cached;
+  const persisted = readCache<HomeData>(currentUserIdSync(), PERSISTED_KEY);
+  if (persisted) cached = persisted;
   return cached;
 }
 
@@ -34,6 +52,7 @@ export function clearHomeCache(): void {
 export function patchHomeCache(patch: Partial<HomeData>): void {
   if (!cached) return;
   cached = { ...cached, ...patch };
+  writeCache(currentUserIdSync(), PERSISTED_KEY, cached);
 }
 
 export async function loadHomeData(): Promise<HomeData> {
@@ -62,7 +81,27 @@ export async function loadHomeData(): Promise<HomeData> {
         recentPositions: rp,
       };
       cached = data;
+      writeCache(currentUserIdSync(), PERSISTED_KEY, data);
       return data;
+    } catch (e) {
+      // Each read already falls back to its own cache when there's no signal;
+      // this is the backstop for anything else going wrong — Home still has to
+      // render something rather than blanking out.
+      const fallback = getCachedHomeData();
+      if (fallback) return fallback;
+      const plan = getCachedActivePlan();
+      if (plan) {
+        return {
+          plan,
+          lastCompleted: null,
+          waterCount: 0,
+          active: null,
+          weekSummary: EMPTY_WEEK,
+          completedThisWeek: [],
+          recentPositions: [],
+        };
+      }
+      throw e;
     } finally {
       inflight = null;
     }

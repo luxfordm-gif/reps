@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, currentUserId } from './supabase';
 import { listBodyWeights, type BodyWeightRow } from './bodyWeightApi';
 
 // Performance page data + aggregation.
@@ -91,16 +91,14 @@ type SetRow = {
 // app's history queries; all-time bests for users beyond the cap may miss very
 // old lifts, an acceptable trade for a single fast query.
 async function fetchPerfSets(limit = 5000): Promise<PerfSet[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
   const { data, error } = await supabase
     .from('logged_sets')
     .select(
       'exercise_display_name, exercise_normalized_name, weight, reps, completed_at, plan_exercises(body_part)'
     )
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('completed_at', { ascending: false })
     .limit(limit);
   if (error) throw error;

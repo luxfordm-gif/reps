@@ -31,6 +31,7 @@ import {
 import { detectSetScheme } from '../lib/parseTrainingPlan';
 import { clearHomeCache } from '../lib/homeCache';
 import BarbellCalculator from '../components/BarbellCalculator';
+import { SyncStatus } from '../components/SyncStatus';
 import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
 import { kgToLb, lbToKg, type MachineUnit } from '../lib/units';
@@ -921,6 +922,8 @@ export function ExerciseLogger({
             />
           }
         />
+
+        <SyncStatus className="mt-4" />
 
         <div className="mt-4">
           <a

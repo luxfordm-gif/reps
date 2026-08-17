@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getSessionRecap, type SessionRecap, type RecapMedal } from '../lib/sessionsApi';
 import { getLiftWeightUnit } from '../lib/units';
 import { NotesAccordion } from '../components/NotesAccordion';
+import { SyncStatus } from '../components/SyncStatus';
 
 interface Props {
   sessionId: string;
@@ -60,6 +61,8 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
         <p className="mt-3 text-base text-muted">
           {dayName} · {subpar ? 'every session counts — here’s the breakdown' : 'here’s your greatest achievements'}
         </p>
+
+        <SyncStatus className="mt-6" />
 
         {recap ? (
           <p className="mt-6 rounded-card bg-paper-card px-5 py-4 text-sm leading-relaxed text-ink shadow-card">
