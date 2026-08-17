@@ -5,6 +5,8 @@ import { enqueue, pendingSetIds, requestFlush } from './offline/outbox';
 import { newId, readCache, writeCache } from './offline/storage';
 import {
   completeLocalSession,
+  finishedAt,
+  forgetFinishedSession,
   getLocalOpenSession,
   getLocalSessions,
   getLocalSets,
@@ -244,6 +246,52 @@ function localActiveSession(userId: string | null): ActiveSessionContext | null 
   };
 }
 
+/**
+ * Drop any session the user has already finished on this device, and re-queue
+ * the completion the server never got.
+ *
+ * Ending a workout is a single write, and if it fails — no signal on the way
+ * out of the gym, a blip on the server — the session stays open. Without this,
+ * the next launch reads that row back and puts you right back in the middle of
+ * a workout you finished yesterday.
+ */
+function dropFinishedSessions<T extends { id: string; started_at?: string }>(
+  userId: string,
+  rows: T[]
+): T[] {
+  const live: T[] = [];
+  const abandoned: string[] = [];
+  for (const row of rows) {
+    const completedAt = finishedAt(userId, row.id);
+    if (completedAt) {
+      enqueue(userId, {
+        kind: 'complete_session',
+        id: row.id,
+        completed_at: completedAt,
+      });
+      requestFlush();
+      continue;
+    }
+    // Nothing on this device says it was finished, but a workout can't run for
+    // the best part of a day. This is what clears a session stranded by an
+    // older version of the app, without the user having to re-enter and end it.
+    if (
+      row.started_at &&
+      Date.now() - new Date(row.started_at).getTime() > ABANDONED_AFTER_MS
+    ) {
+      abandoned.push(row.id);
+      continue;
+    }
+    live.push(row);
+  }
+  if (abandoned.length > 0) {
+    resolveAbandonedSessions(userId, abandoned).catch(() => {
+      // Best effort; it'll be retried the next time the list is read.
+    });
+  }
+  return live;
+}
+
 export async function getAnyActiveSession(): Promise<ActiveSessionContext | null> {
   const userId = await currentUserId();
   if (!userId) return null;
@@ -255,20 +303,27 @@ export async function getAnyActiveSession(): Promise<ActiveSessionContext | null
         .eq('user_id', userId)
         .is('completed_at', null)
         .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+        // More than one, so a stale row we've already finished doesn't hide a
+        // workout that really is in progress.
+        .limit(5),
       { label: 'getAnyActiveSession' }
     );
-    if (!data) {
-      // The server says nothing is open — but a session started offline hasn't
-      // reached it yet, so keep showing that one.
+    type OpenRow = {
+      id: string;
+      started_at: string;
+      training_day_id: string;
+      training_days: { name: string } | { name: string }[] | null;
+    };
+    const open = dropFinishedSessions(userId, (data as OpenRow[]) ?? []);
+    if (open.length === 0) {
+      // Nothing genuinely open on the server — but a session started offline
+      // hasn't reached it yet, so keep showing that one.
       const local = localActiveSession(userId);
       return local && !localSessionIsSynced(userId, local.sessionId) ? local : null;
     }
-    const td = (data as { training_days: { name: string } | { name: string }[] | null })
-      .training_days;
+    const row = open[0];
+    const td = row.training_days;
     const tdObj = Array.isArray(td) ? td[0] : td;
-    const row = data as { id: string; started_at: string; training_day_id: string };
     upsertLocalSession(userId, {
       id: row.id,
       training_day_id: row.training_day_id,
@@ -311,11 +366,10 @@ export async function getActiveSessionForDay(
         .eq('training_day_id', trainingDayId)
         .is('completed_at', null)
         .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+        .limit(5),
       { label: 'getActiveSessionForDay' }
     );
-    const row = (data as SessionRow | null) ?? null;
+    const row = dropFinishedSessions(userId, (data as SessionRow[]) ?? [])[0] ?? null;
     if (row) {
       upsertLocalSession(userId, {
         id: row.id,
@@ -1239,6 +1293,8 @@ export async function createSession(trainingDayId: string): Promise<SessionRow> 
 export async function completeSession(sessionId: string): Promise<void> {
   const userId = await currentUserId();
   const completedAt = new Date().toISOString();
+  // Record it on the device first: from here on, this workout is over as far
+  // as the app is concerned, whatever the server does or doesn't hear.
   completeLocalSession(userId, sessionId, completedAt);
   try {
     await query(
@@ -1250,12 +1306,103 @@ export async function completeSession(sessionId: string): Promise<void> {
       { label: 'completeSession' }
     );
     markLocalSessionSynced(userId, sessionId);
+    forgetFinishedSession(userId, sessionId);
+    if (userId) await closeStrayOpenSessions(userId, sessionId);
   } catch (e) {
-    if (!isOfflineError(e) || !userId) throw e;
+    if (!userId) throw e;
+    // Any failure at all — no signal, a server error — gets queued. Ending a
+    // workout is one write, and losing it silently is what leaves people
+    // staring at yesterday's session next time they open the app.
     enqueue(userId, { kind: 'complete_session', id: sessionId, completed_at: completedAt });
     // Finishing a workout is the moment to try to push everything — if a bar
     // of signal has come back on the walk out, it all lands now.
     requestFlush();
+    if (!isOfflineError(e)) {
+      console.error('[sessions] completing the workout failed, queued for retry', e);
+    }
+  }
+}
+
+/**
+ * A workout that has been "in progress" for this long was abandoned, not
+ * paused. Long enough to cover an evening session you come back to after a
+ * night's sleep, short enough that a session left open by a failed completion
+ * clears itself the next day.
+ */
+const ABANDONED_AFTER_MS = 18 * 60 * 60 * 1000;
+
+/**
+ * Close out sessions that are open but shouldn't be.
+ *
+ * Empty ones are deleted — nothing was logged, so there's nothing to keep.
+ * Ones with sets in them are marked complete, so the work stays in history and
+ * they stop masquerading as a live workout.
+ */
+async function resolveAbandonedSessions(userId: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const sets = await query(
+    supabase.from('logged_sets').select('session_id').in('session_id', ids),
+    { label: 'abandonedSessionSets' }
+  );
+  const withSets = new Set(
+    ((sets as { session_id: string }[]) ?? []).map((s) => s.session_id)
+  );
+  const empty = ids.filter((id) => !withSets.has(id));
+  const used = ids.filter((id) => withSets.has(id));
+
+  if (empty.length > 0) {
+    await query(supabase.from('sessions').delete().in('id', empty).select('id'), {
+      label: 'deleteAbandonedSessions',
+    });
+    for (const id of empty) removeLocalSession(userId, id);
+  }
+  if (used.length > 0) {
+    const completedAt = new Date().toISOString();
+    await query(
+      supabase
+        .from('sessions')
+        .update({ completed_at: completedAt })
+        .in('id', used)
+        .select('id'),
+      { label: 'closeAbandonedSessions' }
+    );
+    for (const id of used) completeLocalSession(userId, id, completedAt);
+  }
+}
+
+/**
+ * Tidy up sessions that were left open before the one just finished.
+ *
+ * A session is orphaned whenever a workout ends without its completion
+ * landing, and it then shows up forever as "workout in progress". The user has
+ * just finished training, so anything still open from earlier is abandoned.
+ */
+async function closeStrayOpenSessions(
+  userId: string,
+  justFinishedId: string
+): Promise<void> {
+  try {
+    const startedAt = getLocalSessions(userId).find((s) => s.id === justFinishedId)
+      ?.started_at;
+    const rows = await query(
+      supabase
+        .from('sessions')
+        .select('id, started_at')
+        .eq('user_id', userId)
+        .is('completed_at', null)
+        .neq('id', justFinishedId)
+        .limit(20),
+      { label: 'strayOpenSessions' }
+    );
+    const stray = ((rows as { id: string; started_at: string }[]) ?? []).filter(
+      (s) => !startedAt || s.started_at < startedAt
+    );
+    await resolveAbandonedSessions(
+      userId,
+      stray.map((s) => s.id)
+    );
+  } catch {
+    // Housekeeping only — never let it break finishing a workout.
   }
 }
 

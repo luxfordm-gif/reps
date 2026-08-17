@@ -21,6 +21,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'A small line tells you what\'s still waiting to sync, so you never have to wonder whether a set made it',
       'Saving your body weight now confirms with "Recorded for today" instead of leaving the Save button looking untapped',
       'Add Reps to your home screen for a proper app icon and a full-screen, offline-ready app',
+      "Finishing a workout now sticks — no more opening the app to find yesterday's session still running",
     ],
   },
   {
