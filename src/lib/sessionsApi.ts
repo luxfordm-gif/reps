@@ -1,6 +1,6 @@
-import { supabase, currentUserId } from './supabase';
+import { supabase, currentUserId, currentUserIdSync } from './supabase';
 import { getCachedActivePlan } from './plansApi';
-import { isOfflineError, isTransportError, query } from './offline/net';
+import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
 import { enqueue, pendingSetIds, requestFlush } from './offline/outbox';
 import { newId, readCache, writeCache } from './offline/storage';
 import {
@@ -382,8 +382,9 @@ export async function getActiveSessionForDay(
     }
     // Nothing on the server: only an unsynced local session counts here.
     return localOpen && !localOpen.synced ? toSessionRow(localOpen) : null;
-  } catch (e) {
-    if (!isOfflineError(e)) throw e;
+  } catch {
+    // However the read failed, the device knows whether this day has a workout
+    // running — falling back to it beats leaving the day screen unusable.
     return localOpen ? toSessionRow(localOpen) : null;
   }
 }
@@ -411,8 +412,7 @@ export async function getSessionStats(
       setsLogged: rows.length,
       lastPlanExerciseId: rows[0]?.plan_exercise_id ?? null,
     };
-  } catch (e) {
-    if (!isOfflineError(e)) throw e;
+  } catch {
     const rows = [...getLocalSets(userId, sessionId)].sort((a, b) =>
       a.completed_at < b.completed_at ? 1 : -1
     );
@@ -1269,8 +1269,11 @@ export async function createSession(trainingDayId: string): Promise<SessionRow> 
       synced: true,
     });
     return saved;
-  } catch (e) {
-    if (!isOfflineError(e)) throw e;
+  } catch {
+    // Any failure, not just a recognised "no signal" one. A gateway error on
+    // one bar of signal used to leave Start workout doing nothing at all; the
+    // row is idempotent (upsert on id), so banking it and replaying is always
+    // safe.
     upsertLocalSession(userId, {
       id: row.id,
       training_day_id: trainingDayId,
@@ -1444,9 +1447,10 @@ export async function logSet(params: {
     const saved = data as LoggedSet;
     upsertLocalSet(userId, saved);
     return saved;
-  } catch (e) {
-    if (!isOfflineError(e)) throw e;
-    // No signal: the set is banked on the device and pushed when there is some.
+  } catch {
+    // The set is banked on the device and pushed when the write can land —
+    // whether the request never left the phone or the server refused it. A
+    // logged set is never worth losing to a bad minute of signal.
     upsertLocalSet(userId, row);
     enqueue(userId, { kind: 'log_set', row });
     return row;
@@ -1493,7 +1497,9 @@ export async function updateLoggedSet(
     upsertLocalSet(userId, saved);
     return saved;
   } catch (e) {
-    if (!isOfflineError(e) || !userId) throw e;
+    if (!userId) throw e;
+    // Same reasoning as logSet: an edit the server didn't take is queued
+    // rather than dropped.
     const local = patchLocalSet(userId, id, update);
     enqueue(userId, { kind: 'update_set', id, patch: update });
     return local;
@@ -1594,18 +1600,28 @@ export async function getLastSessionSetsForExercise(
   try {
     const data = await query(builder, { label: 'getLastSessionSetsForExercise' });
     const rows = (data as LoggedSet[]) ?? [];
-    if (rows.length === 0) {
-      writeCache(userId, lastSetsCacheName(normalizedName), []);
-      return [];
-    }
-    const sessionId = rows[0].session_id;
+    const sessionId = rows[0]?.session_id;
     const lastSets = rows
       .filter((d) => d.session_id === sessionId)
       .sort((a, b) => a.set_index - b.set_index);
+    // A workout logged offline may not have reached the server yet. If the
+    // device has a more recent session for this exercise, that's the real
+    // "last time" — otherwise a week of training in a dead spot shows up as
+    // the weights from the week before.
+    const local = offlineLastSetsForExercise(
+      userId,
+      normalizedName,
+      excludeSessionId,
+      baselineResetAt
+    );
+    const newer =
+      local.length > 0 &&
+      (lastSets.length === 0 || local[0].completed_at > lastSets[0].completed_at);
+    const result = newer ? local : lastSets;
     // "Last time" is what the logger pre-fills every set with, so it's the one
     // read the exercise screen can't do without. Keep a copy per machine.
-    writeCache(userId, lastSetsCacheName(normalizedName), lastSets);
-    return lastSets;
+    writeCache(userId, lastSetsCacheName(normalizedName), result);
+    return result;
   } catch (e) {
     if (!isOfflineError(e)) throw e;
     return offlineLastSetsForExercise(
@@ -1649,4 +1665,103 @@ function offlineLastSetsForExercise(
       s.session_id !== excludeSessionId &&
       (!baselineResetAt || s.completed_at >= baselineResetAt)
   );
+}
+
+/**
+ * "Last time" without waiting on the network — the same device-side lookup the
+ * offline path uses. The exercise screen falls back to this whenever the read
+ * fails for any reason, so a dropped request never leaves the sets blank.
+ */
+export function getCachedLastSetsForExercise(
+  normalizedName: string,
+  excludeSessionId?: string,
+  baselineResetAt?: string | null
+): LoggedSet[] {
+  return offlineLastSetsForExercise(
+    currentUserIdSync(),
+    normalizedName,
+    excludeSessionId,
+    baselineResetAt
+  );
+}
+
+/** Sets already logged in this session, from the device mirror. */
+export function getCachedSessionSets(
+  sessionId: string,
+  planExerciseId: string,
+  normalizedName?: string
+): LoggedSet[] {
+  return getLocalSets(currentUserIdSync(), sessionId)
+    .filter(
+      (s) =>
+        s.plan_exercise_id === planExerciseId &&
+        (!normalizedName || s.exercise_normalized_name === normalizedName)
+    )
+    .sort((a, b) => a.set_index - b.set_index);
+}
+
+/** How many previous sessions' worth of rows to pull when warming a day. */
+const PREFETCH_ROW_LIMIT = 600;
+
+export interface PrefetchExercise {
+  normalizedName: string;
+  baselineResetAt?: string | null;
+}
+
+/**
+ * Warm the "last time" cache for a whole workout in one request.
+ *
+ * The per-exercise read only caches an exercise once you've opened it with
+ * signal, which is the wrong way round: by the time you tap into an exercise
+ * at the gym the signal is already gone. This runs when the day is opened —
+ * still on wifi, usually — so every exercise in the workout has last week's
+ * weights and reps on the device before the session starts.
+ *
+ * Best-effort: never throws, and does nothing when we already know we're
+ * offline (the caches it would write are the ones being read instead).
+ */
+export async function prefetchLastSetsForDay(
+  exercises: PrefetchExercise[],
+  excludeSessionId?: string
+): Promise<void> {
+  if (exercises.length === 0 || !isReachable()) return;
+  const userId = await currentUserId();
+  if (!userId) return;
+  const names = [...new Set(exercises.map((e) => e.normalizedName))];
+  let builder = supabase
+    .from('logged_sets')
+    .select('*')
+    .eq('user_id', userId)
+    .in('exercise_normalized_name', names)
+    .order('completed_at', { ascending: false })
+    .limit(PREFETCH_ROW_LIMIT);
+  if (excludeSessionId) builder = builder.neq('session_id', excludeSessionId);
+  let rows: LoggedSet[];
+  try {
+    rows = ((await query(builder, { label: 'prefetchLastSetsForDay' })) as LoggedSet[]) ?? [];
+  } catch {
+    // No signal, or the read failed — the existing caches stay as they are.
+    return;
+  }
+  // A workout that's still running isn't "last time" — caching its sets would
+  // have the logger pre-filling today's numbers with today's numbers.
+  const open = new Set(
+    getLocalSessions(userId)
+      .filter((s) => !s.completed_at)
+      .map((s) => s.id)
+  );
+  for (const ex of exercises) {
+    const mine = rows.filter(
+      (r) =>
+        r.exercise_normalized_name === ex.normalizedName &&
+        !open.has(r.session_id) &&
+        (!ex.baselineResetAt || r.completed_at >= ex.baselineResetAt)
+    );
+    if (mine.length === 0) continue;
+    const lastSessionId = mine[0].session_id;
+    const lastSets = mine
+      .filter((r) => r.session_id === lastSessionId)
+      .sort((a, b) => a.set_index - b.set_index);
+    writeCache(userId, lastSetsCacheName(ex.normalizedName), lastSets);
+  }
 }

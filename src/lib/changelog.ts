@@ -22,6 +22,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Saving your body weight now confirms with "Recorded for today" instead of leaving the Save button looking untapped',
       'Add Reps to your home screen for a proper app icon and a full-screen, offline-ready app',
       "Finishing a workout now sticks — no more opening the app to find yesterday's session still running",
+      "Opening a workout saves last time's weights and reps to your phone, so the LAST TIME numbers are there even when the signal isn't",
+      'Sets you log are kept on the phone whenever a write fails — not just when you are obviously offline',
     ],
   },
   {

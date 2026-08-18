@@ -13,7 +13,7 @@ const SETS_PREFIX = 'sets.';
 const FINISHED_KEY = 'finishedSessions';
 /** Sets are kept for the most recent sessions only, so localStorage can't grow
  *  without bound on a phone that's been logging for a year. */
-const MAX_SESSIONS_KEPT = 12;
+const MAX_SESSIONS_KEPT = 20;
 /** How many "I finished this one" receipts to keep. Only needed until the
  *  server agrees, so a short list is plenty. */
 const MAX_FINISHED_KEPT = 20;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { reorderPlanExercises, type FullPlan, type PlanExerciseRow } from '../lib/plansApi';
@@ -7,7 +7,10 @@ import {
   getActiveSessionForDay,
   getSessionStats,
   deleteSession,
+  prefetchLastSetsForDay,
+  type PrefetchExercise,
 } from '../lib/sessionsApi';
+import { prefetchAlternativesForExercises } from '../lib/alternativesApi';
 
 type TrainingDay = FullPlan['training_days'][number];
 
@@ -58,7 +61,9 @@ function estimatedMinutes(setsCount: number): number {
 }
 
 export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
-  const exercises = day.plan_exercises ?? [];
+  // Memoised so the effects below key off the day's exercises, not a fresh
+  // empty array on every render.
+  const exercises = useMemo(() => day.plan_exercises ?? [], [day.plan_exercises]);
   const groups = groupByBodyPart(exercises);
   const totalSets = totalSetsForDay(exercises);
 
@@ -170,6 +175,37 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
       mounted = false;
     };
   }, [day.id, exercises]);
+
+  // Pull this workout's history onto the device while there's still signal.
+  //
+  // Opening the day is the last reliably-connected moment before training —
+  // once you're on the gym floor the requests time out, and "LAST TIME" is the
+  // one thing you can't log without. Warming every exercise (and every
+  // alternative) here means the weights and reps are already on the phone.
+  useEffect(() => {
+    if (exercises.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const targets: PrefetchExercise[] = exercises.map((ex) => ({
+        normalizedName: ex.normalized_name,
+        baselineResetAt: ex.baseline_reset_at,
+      }));
+      const alts = await prefetchAlternativesForExercises(exercises.map((ex) => ex.id));
+      if (cancelled) return;
+      const byId = new Map(exercises.map((ex) => [ex.id, ex]));
+      for (const alt of alts) {
+        targets.push({
+          normalizedName: alt.normalized_name,
+          // An alternative shares its slot's baseline, so a reorder resets both.
+          baselineResetAt: byId.get(alt.plan_exercise_id)?.baseline_reset_at ?? null,
+        });
+      }
+      await prefetchLastSetsForDay(targets);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [exercises]);
 
   async function handleDiscard() {
     if (!inProgress) return;
