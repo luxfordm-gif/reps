@@ -1,5 +1,5 @@
 import { supabase, currentUserId } from './supabase';
-import { isOfflineError, query } from './offline/net';
+import { isOfflineError, isReachable, query } from './offline/net';
 import { readCache, writeCache } from './offline/storage';
 
 // An alternative movement attached to a plan-exercise slot. The primary
@@ -47,6 +47,45 @@ export async function listAlternativesForExercise(
     // depend on signal, so the list is kept on the device.
     return readCache<ExerciseAlternativeRow[]>(userId, altCacheName(planExerciseId)) ?? [];
   }
+}
+
+/**
+ * Cache the alternatives for a whole workout in one request.
+ *
+ * Swapping to an alternative is what you do when the machine is taken — in the
+ * gym, with no signal. Warming the list when the day is opened means the pills
+ * are there when you need them, and the names come back so their previous
+ * weights can be cached too.
+ */
+export async function prefetchAlternativesForExercises(
+  planExerciseIds: string[]
+): Promise<ExerciseAlternativeRow[]> {
+  if (planExerciseIds.length === 0 || !isReachable()) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
+  let rows: ExerciseAlternativeRow[];
+  try {
+    rows =
+      ((await query(
+        supabase
+          .from('plan_exercise_alternatives')
+          .select(ALT_COLUMNS)
+          .in('plan_exercise_id', planExerciseIds)
+          .order('position', { ascending: true }),
+        { label: 'prefetchAlternativesForExercises' }
+      )) as ExerciseAlternativeRow[]) ?? [];
+  } catch {
+    // Best-effort warm-up: leave whatever is already cached alone.
+    return [];
+  }
+  for (const id of planExerciseIds) {
+    writeCache(
+      userId,
+      altCacheName(id),
+      rows.filter((r) => r.plan_exercise_id === id)
+    );
+  }
+  return rows;
 }
 
 export async function addAlternative(

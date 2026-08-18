@@ -6,6 +6,8 @@ import {
   updateLoggedSet,
   getSessionSets,
   getLastSessionSetsForExercise,
+  getCachedLastSetsForExercise,
+  getCachedSessionSets,
   getLastLoggedNormalizedForSlot,
   type LoggedSet,
 } from '../lib/sessionsApi';
@@ -631,12 +633,23 @@ export function ExerciseLogger({
   useEffect(() => {
     let mounted = true;
     setLoading(true);
+    // Each read falls back to the copy on the device on its own, so a request
+    // that fails for a reason the offline layer doesn't recognise still leaves
+    // the screen with last time's weights rather than an empty form.
     Promise.all([
-      getSessionSets(sessionId, exercise.id, effectiveNormalized),
+      getSessionSets(sessionId, exercise.id, effectiveNormalized).catch(() =>
+        getCachedSessionSets(sessionId, exercise.id, effectiveNormalized)
+      ),
       getLastSessionSetsForExercise(
         effectiveNormalized,
         sessionId,
         effectiveBaselineResetAt
+      ).catch(() =>
+        getCachedLastSetsForExercise(
+          effectiveNormalized,
+          sessionId,
+          effectiveBaselineResetAt
+        )
       ),
     ])
       .then(([existing, last]) => {

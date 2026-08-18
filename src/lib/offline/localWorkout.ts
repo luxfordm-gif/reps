@@ -10,9 +10,13 @@ import { readCache, writeCache, dropCache, listCacheNames } from './storage';
 
 const SESSIONS_KEY = 'sessions';
 const SETS_PREFIX = 'sets.';
+const FINISHED_KEY = 'finishedSessions';
 /** Sets are kept for the most recent sessions only, so localStorage can't grow
  *  without bound on a phone that's been logging for a year. */
-const MAX_SESSIONS_KEPT = 12;
+const MAX_SESSIONS_KEPT = 20;
+/** How many "I finished this one" receipts to keep. Only needed until the
+ *  server agrees, so a short list is plenty. */
+const MAX_FINISHED_KEPT = 20;
 
 export interface LocalSession {
   id: string;
@@ -51,9 +55,59 @@ export function upsertLocalSession(
   if (!userId) return;
   const all = getLocalSessions(userId);
   const idx = all.findIndex((s) => s.id === session.id);
-  if (idx >= 0) all[idx] = { ...all[idx], ...session };
-  else all.push(session);
+  if (idx >= 0) {
+    const existing = all[idx];
+    all[idx] = { ...existing, ...session };
+    // The server is the source of truth for everything except "is it over".
+    // A session the user finished on this phone stays finished even while the
+    // server still lists it as open — otherwise a completion that failed to
+    // send comes back as a workout in progress on the next launch.
+    if (session.completed_at == null && existing.completed_at != null) {
+      all[idx].completed_at = existing.completed_at;
+    }
+  } else {
+    all.push(session);
+  }
   saveLocalSessions(userId, all);
+}
+
+interface FinishedSession {
+  id: string;
+  completedAt: string;
+}
+
+/**
+ * Remember that the user finished a workout, independently of the session
+ * mirror. This is the receipt the app checks before believing a server row that
+ * still says "in progress".
+ */
+export function markSessionFinished(
+  userId: string | null,
+  id: string,
+  completedAt: string
+): void {
+  if (!userId) return;
+  const kept = getFinishedSessions(userId).filter((f) => f.id !== id);
+  kept.push({ id, completedAt });
+  writeCache(userId, FINISHED_KEY, kept.slice(-MAX_FINISHED_KEPT));
+}
+
+export function getFinishedSessions(userId: string | null): FinishedSession[] {
+  return readCache<FinishedSession[]>(userId, FINISHED_KEY) ?? [];
+}
+
+/** When the user finished this session on this device, if they did. */
+export function finishedAt(userId: string | null, id: string): string | null {
+  const receipt = getFinishedSessions(userId).find((f) => f.id === id);
+  if (receipt) return receipt.completedAt;
+  return getLocalSessions(userId).find((s) => s.id === id)?.completed_at ?? null;
+}
+
+/** Forget the receipt once the server has caught up (or the row is gone). */
+export function forgetFinishedSession(userId: string | null, id: string): void {
+  if (!userId) return;
+  const kept = getFinishedSessions(userId).filter((f) => f.id !== id);
+  writeCache(userId, FINISHED_KEY, kept);
 }
 
 export function markLocalSessionSynced(userId: string | null, id: string): void {
@@ -71,6 +125,9 @@ export function completeLocalSession(
   completedAt: string
 ): void {
   if (!userId) return;
+  // The receipt is written whether or not the session is still in the mirror,
+  // so an old workout finished on a fresh install is still remembered.
+  markSessionFinished(userId, id, completedAt);
   const all = getLocalSessions(userId);
   const row = all.find((s) => s.id === id);
   if (!row) return;
