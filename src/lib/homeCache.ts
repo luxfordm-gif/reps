@@ -10,7 +10,7 @@ import {
 } from './sessionsApi';
 import { getTodayWaterCount } from './waterApi';
 import { currentUserIdSync } from './supabase';
-import { readCache, writeCache } from './offline/storage';
+import { dropCache, readCache, writeCache } from './offline/storage';
 
 export interface HomeData {
   plan: FullPlan | null;
@@ -47,6 +47,10 @@ export function getCachedHomeData(): HomeData | null {
 
 export function clearHomeCache(): void {
   cached = null;
+  // The copy on disk has to go too. It holds the in-progress workout, so
+  // leaving it behind means finishing a workout and then seeing it again as
+  // "in progress" the next time the app starts from cold.
+  dropCache(currentUserIdSync(), PERSISTED_KEY);
 }
 
 export function patchHomeCache(patch: Partial<HomeData>): void {

@@ -178,6 +178,15 @@ export function enqueue(userId: string, op: OutboxOp): void {
     }
   }
 
+  if (op.kind === 'complete_session') {
+    // Re-queued every time a stale "in progress" row is spotted, so keep one
+    // per session rather than a growing pile of identical writes.
+    const existing = entries.find(
+      (e) => e.op.kind === 'complete_session' && e.op.id === op.id
+    );
+    if (existing) return;
+  }
+
   if (op.kind === 'update_row') {
     const existing = entries.find(
       (e) =>
