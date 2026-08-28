@@ -1499,13 +1499,6 @@ function ExerciseMenu({
           </button>
           <div className="border-t border-line/60" />
           <button
-            onClick={() => pick(onSkip)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
-          >
-            {hasNext ? 'Skip exercise' : 'Skip & finish workout'}
-          </button>
-          <div className="border-t border-line/60" />
-          <button
             onClick={() => pick(onOverview)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
           >
@@ -1517,6 +1510,13 @@ function ExerciseMenu({
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
           >
             Back to home
+          </button>
+          <div className="border-t border-line/60" />
+          <button
+            onClick={() => pick(onSkip)}
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+          >
+            {hasNext ? 'Skip exercise' : 'Skip & finish workout'}
           </button>
           <div className="border-t border-line/60" />
           <button
