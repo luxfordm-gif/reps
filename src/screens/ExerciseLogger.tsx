@@ -121,16 +121,49 @@ function buildInitialSets(
   // lastSets values are kg; seed inputs in the active display unit so the
   // suggested number matches what the user expects to type.
   const fmtW = (kg: number) => String(fromKg(kg, unit));
+  /**
+   * The closest thing last time has to this set.
+   *
+   * An exact match is what we want, but last time doesn't always have one: the
+   * workout was ended halfway through the exercise, or the plan asks for more
+   * sets than were logged. Rather than showing an empty row for a lift with
+   * weeks of history behind it, fall back to the nearest set that *was* logged
+   * — preferring an earlier one, since that's the weight the set after it was
+   * built on. Only ever fills a row that would otherwise be blank.
+   */
+  const nearestLast = (setIndex: number, dropIndex: number): LoggedSet | undefined => {
+    const exact = lastSets.find(
+      (s) => s.set_index === setIndex && s.drop_index === dropIndex
+    );
+    if (exact) return exact;
+    let best: LoggedSet | undefined;
+    for (const s of lastSets) {
+      if (s.drop_index !== dropIndex || s.weight == null) continue;
+      if (!best) {
+        best = s;
+        continue;
+      }
+      const distance = Math.abs(s.set_index - setIndex);
+      const bestDistance = Math.abs(best.set_index - setIndex);
+      if (distance < bestDistance || (distance === bestDistance && s.set_index < best.set_index)) {
+        best = s;
+      }
+    }
+    return best;
+  };
   for (let i = 0; i < Math.max(1, totalSets); i++) {
     const setIndex = i + 1;
     const mod = mods.bySetIndex.get(setIndex);
     const targetStr =
       mod?.repTarget != null ? String(mod.repTarget) : baseTargetStr;
     // Main set
-    const mainLast = lastSets.find((s) => s.set_index === setIndex && s.drop_index === 0);
+    const mainExact = lastSets.find((s) => s.set_index === setIndex && s.drop_index === 0);
+    const mainLast = mainExact ?? nearestLast(setIndex, 0);
     const mainWeightSugg = mainLast?.weight != null ? fmtW(mainLast.weight) : '';
+    // Reps only carry over from the set this actually was last time. Borrowed
+    // from a neighbouring set, the plan's target is the better suggestion.
     const mainRepsSugg =
-      mainLast?.reps != null ? String(mainLast.reps) : targetStr;
+      mainExact?.reps != null ? String(mainExact.reps) : targetStr;
     rows.push({
       setIndex,
       dropIndex: 0,
@@ -147,13 +180,16 @@ function buildInitialSets(
     if (mod && mod.drops.length > 0) {
       mod.drops.forEach((drop, di) => {
         const dropIndex = di + 1;
-        const dropLast = lastSets.find(
+        const dropExact = lastSets.find(
           (s) => s.set_index === setIndex && s.drop_index === dropIndex
         );
+        // Same idea for a drop, but only ever from another drop at the same
+        // depth — a drop is lighter than its main set by design.
+        const dropLast = dropExact ?? nearestLast(setIndex, dropIndex);
         const wSugg = dropLast?.weight != null ? fmtW(dropLast.weight) : '';
         const rSugg =
-          dropLast?.reps != null
-            ? String(dropLast.reps)
+          dropExact?.reps != null
+            ? String(dropExact.reps)
             : drop.repTarget != null
               ? String(drop.repTarget)
               : '';

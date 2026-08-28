@@ -1,8 +1,9 @@
 import { supabase, currentUserId, currentUserIdSync } from './supabase';
-import { getCachedActivePlan } from './plansApi';
+import { getActivePlan, getCachedActivePlan } from './plansApi';
+import { prefetchAlternativesForExercises } from './alternativesApi';
 import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
 import { enqueue, pendingSetIds, requestFlush } from './offline/outbox';
-import { newId, readCache, writeCache } from './offline/storage';
+import { dropCache, newId, readCache, writeCache } from './offline/storage';
 import {
   completeLocalSession,
   finishedAt,
@@ -11,6 +12,8 @@ import {
   getLocalSessions,
   getLocalSets,
   markLocalSessionSynced,
+  markSetsVerified,
+  markSetUnverified,
   mergeServerSets,
   patchLocalSet,
   removeLocalSession,
@@ -1452,6 +1455,9 @@ export async function logSet(params: {
     // whether the request never left the phone or the server refused it. A
     // logged set is never worth losing to a bad minute of signal.
     upsertLocalSet(userId, row);
+    // Until a server read hands this row back, it exists only here: that's what
+    // reconciliation checks on the next launch with signal.
+    markSetUnverified(userId, row);
     enqueue(userId, { kind: 'log_set', row });
     return row;
   }
@@ -1540,6 +1546,10 @@ export async function getSessionSets(
       (s) => matches(s) && pending.has(s.id) && !rows.some((r) => r.id === s.id)
     );
     for (const s of rows) upsertLocalSet(userId, s);
+    markSetsVerified(
+      userId,
+      rows.map((r) => r.id)
+    );
     return [...rows, ...local].sort((a, b) => a.set_index - b.set_index);
   } catch (e) {
     if (!isOfflineError(e)) throw e;
@@ -1619,8 +1629,22 @@ export async function getLastSessionSetsForExercise(
       (lastSets.length === 0 || local[0].completed_at > lastSets[0].completed_at);
     const result = newer ? local : lastSets;
     // "Last time" is what the logger pre-fills every set with, so it's the one
-    // read the exercise screen can't do without. Keep a copy per machine.
-    writeCache(userId, lastSetsCacheName(normalizedName), result);
+    // read the exercise screen can't do without. Keep a copy per machine — but
+    // never replace a good copy with nothing: an empty answer here usually means
+    // the filters excluded everything, not that the history is gone.
+    if (result.length > 0) {
+      writeLastSetsCache(userId, normalizedName, result, baselineResetAt ?? null);
+    } else {
+      const prev = readLastSetsCache(userId, normalizedName);
+      const invalidated =
+        prev != null &&
+        prev.sets.length > 0 &&
+        baselineResetAt != null &&
+        prev.sets.every((s) => s.completed_at < baselineResetAt);
+      // The one empty answer worth believing: the baseline has moved past every
+      // row we had cached, so those weights are genuinely no longer "last time".
+      if (invalidated) dropLastSetsCache(userId, normalizedName);
+    }
     return result;
   } catch (e) {
     if (!isOfflineError(e)) throw e;
@@ -1633,8 +1657,68 @@ export async function getLastSessionSetsForExercise(
   }
 }
 
+const LAST_SETS_PREFIX = 'lastSets.';
+
 function lastSetsCacheName(normalizedName: string): string {
-  return `lastSets.${normalizedName}`;
+  return `${LAST_SETS_PREFIX}${normalizedName}`;
+}
+
+/**
+ * A warmed "last time" for one machine.
+ *
+ * Stamped with when it was written so the app can tell a fresh warm from a
+ * copy taken months ago, and with the baseline it was filtered against so a
+ * re-baselined exercise doesn't keep showing the old machine's weights.
+ */
+export interface LastSetsCacheEntry {
+  sets: LoggedSet[];
+  sessionId: string | null;
+  cachedAt: string;
+  baselineResetAt: string | null;
+}
+
+function readLastSetsCache(
+  userId: string | null,
+  normalizedName: string
+): LastSetsCacheEntry | null {
+  const raw = readCache<LoggedSet[] | LastSetsCacheEntry>(
+    userId,
+    lastSetsCacheName(normalizedName)
+  );
+  if (!raw) return null;
+  // Phones upgrading from the previous build have a bare array here; keep it
+  // rather than making every exercise blank until the next warm.
+  if (Array.isArray(raw)) {
+    return {
+      sets: raw,
+      sessionId: raw[0]?.session_id ?? null,
+      cachedAt: '',
+      baselineResetAt: null,
+    };
+  }
+  return raw;
+}
+
+function writeLastSetsCache(
+  userId: string | null,
+  normalizedName: string,
+  sets: LoggedSet[],
+  baselineResetAt: string | null
+): void {
+  if (!userId || sets.length === 0) return;
+  const entry: LastSetsCacheEntry = {
+    sets,
+    sessionId: sets[0]?.session_id ?? null,
+    cachedAt: new Date().toISOString(),
+    baselineResetAt,
+  };
+  writeCache(userId, lastSetsCacheName(normalizedName), entry);
+}
+
+/** Forget a machine's warmed weights — used when a slot is renamed or merged
+ *  into another identity and the old key can never match again. */
+export function dropLastSetsCache(userId: string | null, normalizedName: string): void {
+  dropCache(userId, lastSetsCacheName(normalizedName));
 }
 
 /**
@@ -1659,7 +1743,7 @@ function offlineLastSetsForExercise(
     );
     if (sets.length > 0) return [...sets].sort((a, b) => a.set_index - b.set_index);
   }
-  const cached = readCache<LoggedSet[]>(userId, lastSetsCacheName(normalizedName)) ?? [];
+  const cached = readLastSetsCache(userId, normalizedName)?.sets ?? [];
   return cached.filter(
     (s) =>
       s.session_id !== excludeSessionId &&
@@ -1700,68 +1784,284 @@ export function getCachedSessionSets(
     .sort((a, b) => a.set_index - b.set_index);
 }
 
-/** How many previous sessions' worth of rows to pull when warming a day. */
-const PREFETCH_ROW_LIMIT = 600;
-
 export interface PrefetchExercise {
   normalizedName: string;
   baselineResetAt?: string | null;
 }
 
+/** How far back a warm looks. Longer than any sane training block, short
+ *  enough that the query stays small. */
+const WARM_WINDOW_DAYS = 84;
+/** Rows per page of the warm query, and how many pages we'll walk. */
+const WARM_PAGE_ROWS = 1000;
+const WARM_MAX_PAGES = 6;
+/** Beyond this many names, filtering server-side makes the URL unwieldy — take
+ *  the whole window instead and bucket it here. */
+const WARM_IN_FILTER_MAX = 80;
+/** Names per query when topping up exercises with nothing in the window. */
+const WARM_TOPUP_CHUNK = 20;
+/** Rows to pull per top-up chunk (an exercise not trained in months). */
+const WARM_TOPUP_ROWS = 200;
+/** Don't re-warm the whole plan more often than this. */
+const WARM_THROTTLE_MS = 10 * 60 * 1000;
+const WARM_RECEIPT = 'lastSetsWarm';
+
+interface WarmReceipt {
+  at: string;
+  names: number;
+  warmed: number;
+}
+
+/** When the plan's weights were last pulled onto this device. */
+export function lastWarmAt(userId: string | null): string | null {
+  return readCache<WarmReceipt>(userId, WARM_RECEIPT)?.at ?? null;
+}
+
 /**
- * Warm the "last time" cache for a whole workout in one request.
+ * Group rows into "the most recent session for each exercise".
  *
- * The per-exercise read only caches an exercise once you've opened it with
- * signal, which is the wrong way round: by the time you tap into an exercise
- * at the gym the signal is already gone. This runs when the day is opened —
- * still on wifi, usually — so every exercise in the workout has last week's
- * weights and reps on the device before the session starts.
+ * Shared by the day warm and the plan warm so both agree on what "last time"
+ * means: the newest session that isn't still running, filtered by each
+ * exercise's own baseline.
+ */
+function bucketLastSets(
+  rows: LoggedSet[],
+  targets: PrefetchExercise[],
+  excludeSessionIds: Set<string>
+): Map<string, LoggedSet[]> {
+  const out = new Map<string, LoggedSet[]>();
+  for (const ex of targets) {
+    if (out.has(ex.normalizedName)) continue;
+    const mine = rows.filter(
+      (r) =>
+        r.exercise_normalized_name === ex.normalizedName &&
+        !excludeSessionIds.has(r.session_id) &&
+        (!ex.baselineResetAt || r.completed_at >= ex.baselineResetAt)
+    );
+    if (mine.length === 0) continue;
+    // rows arrive newest-first, so the first one names the session to keep.
+    const lastSessionId = mine[0].session_id;
+    out.set(
+      ex.normalizedName,
+      mine
+        .filter((r) => r.session_id === lastSessionId)
+        .sort((a, b) => a.set_index - b.set_index)
+    );
+  }
+  return out;
+}
+
+/** Sessions whose sets aren't "last time" — the one running now, and any other
+ *  workout still open on this device. */
+function openSessionIds(userId: string | null, excludeSessionId?: string): Set<string> {
+  const ids = new Set(
+    getLocalSessions(userId)
+      .filter((s) => !s.completed_at)
+      .map((s) => s.id)
+  );
+  if (excludeSessionId) ids.add(excludeSessionId);
+  return ids;
+}
+
+/**
+ * Walk back through recent logged sets, newest first, one page at a time.
+ *
+ * A single `.limit(N)` over many exercises is badly skewed: the newest N rows
+ * can all belong to the two days trained this week, leaving the rest of the
+ * plan with nothing. Paging by `completed_at` covers the whole window instead.
+ */
+async function fetchWarmWindow(userId: string, names: string[]): Promise<LoggedSet[]> {
+  const since = new Date(Date.now() - WARM_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const filterServerSide = names.length <= WARM_IN_FILTER_MAX;
+  const rows: LoggedSet[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < WARM_MAX_PAGES; page++) {
+    let builder = supabase
+      .from('logged_sets')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('completed_at', since)
+      .order('completed_at', { ascending: false })
+      .limit(WARM_PAGE_ROWS);
+    if (filterServerSide) builder = builder.in('exercise_normalized_name', names);
+    if (cursor) builder = builder.lt('completed_at', cursor);
+    const batch = ((await query(builder, { label: 'warmLastSets' })) as LoggedSet[]) ?? [];
+    rows.push(...batch);
+    if (batch.length < WARM_PAGE_ROWS) break;
+    cursor = batch[batch.length - 1].completed_at;
+  }
+  return rows;
+}
+
+/** Exercises with nothing in the window get their own look further back — a
+ *  movement you last did four months ago should still pre-fill. */
+async function fetchWarmTopUp(userId: string, names: string[]): Promise<LoggedSet[]> {
+  const rows: LoggedSet[] = [];
+  for (let i = 0; i < names.length; i += WARM_TOPUP_CHUNK) {
+    const chunk = names.slice(i, i + WARM_TOPUP_CHUNK);
+    const batch =
+      ((await query(
+        supabase
+          .from('logged_sets')
+          .select('*')
+          .eq('user_id', userId)
+          .in('exercise_normalized_name', chunk)
+          .order('completed_at', { ascending: false })
+          .limit(WARM_TOPUP_ROWS),
+        { label: 'warmLastSetsTopUp' }
+      )) as LoggedSet[]) ?? [];
+    rows.push(...batch);
+  }
+  return rows;
+}
+
+/**
+ * Pull "last time" onto the device for a set of exercises.
  *
  * Best-effort: never throws, and does nothing when we already know we're
  * offline (the caches it would write are the ones being read instead).
+ * Returns how many exercises ended up with weights on the phone.
+ */
+async function warmLastSets(
+  targets: PrefetchExercise[],
+  excludeSessionId?: string
+): Promise<number> {
+  if (targets.length === 0 || !isReachable()) return 0;
+  const userId = await currentUserId();
+  if (!userId) return 0;
+  const byName = new Map<string, PrefetchExercise>();
+  for (const t of targets) if (!byName.has(t.normalizedName)) byName.set(t.normalizedName, t);
+  const unique = [...byName.values()];
+  const names = unique.map((t) => t.normalizedName);
+
+  let rows: LoggedSet[];
+  try {
+    rows = await fetchWarmWindow(userId, names);
+  } catch {
+    // No signal, or the read failed — the existing caches stay as they are.
+    return 0;
+  }
+  const exclude = openSessionIds(userId, excludeSessionId);
+  let buckets = bucketLastSets(rows, unique, exclude);
+
+  const missing = unique.filter((t) => !buckets.has(t.normalizedName));
+  if (missing.length > 0) {
+    try {
+      const extra = await fetchWarmTopUp(
+        userId,
+        missing.map((t) => t.normalizedName)
+      );
+      const topped = bucketLastSets(extra, missing, exclude);
+      buckets = new Map([...buckets, ...topped]);
+    } catch {
+      // Keep whatever the window did find.
+    }
+  }
+
+  for (const [name, sets] of buckets) {
+    writeLastSetsCache(userId, name, sets, byName.get(name)?.baselineResetAt ?? null);
+  }
+  return buckets.size;
+}
+
+/**
+ * Warm the "last time" cache for a whole workout in one pass.
+ *
+ * The per-exercise read only caches an exercise once you've opened it with
+ * signal, which is the wrong way round: by the time you tap into an exercise
+ * at the gym the signal is already gone.
  */
 export async function prefetchLastSetsForDay(
   exercises: PrefetchExercise[],
   excludeSessionId?: string
 ): Promise<void> {
-  if (exercises.length === 0 || !isReachable()) return;
+  await warmLastSets(exercises, excludeSessionId);
+}
+
+/**
+ * Warm every exercise in the active plan — days you haven't opened, and the
+ * alternatives you might swap to when a machine is taken.
+ *
+ * This is the one that makes a gym with no signal work at all: it runs from
+ * Home, on wifi, before the workout, so nothing depends on remembering to open
+ * the day screen while you still had bars.
+ */
+export async function warmLastSetsForPlan(options: { force?: boolean } = {}): Promise<number> {
+  if (!isReachable()) return 0;
   const userId = await currentUserId();
-  if (!userId) return;
-  const names = [...new Set(exercises.map((e) => e.normalizedName))];
-  let builder = supabase
-    .from('logged_sets')
-    .select('*')
-    .eq('user_id', userId)
-    .in('exercise_normalized_name', names)
-    .order('completed_at', { ascending: false })
-    .limit(PREFETCH_ROW_LIMIT);
-  if (excludeSessionId) builder = builder.neq('session_id', excludeSessionId);
-  let rows: LoggedSet[];
+  if (!userId) return 0;
+  const receipt = readCache<WarmReceipt>(userId, WARM_RECEIPT);
+  if (
+    !options.force &&
+    receipt &&
+    Date.now() - new Date(receipt.at).getTime() < WARM_THROTTLE_MS
+  ) {
+    return 0;
+  }
+  let plan = getCachedActivePlan(userId);
+  if (!plan) {
+    try {
+      plan = await getActivePlan();
+    } catch {
+      return 0;
+    }
+  }
+  if (!plan) return 0;
+
+  const targets: PrefetchExercise[] = [];
+  const exerciseIds: string[] = [];
+  const baselineById = new Map<string, string | null>();
+  for (const day of plan.training_days ?? []) {
+    for (const ex of day.plan_exercises ?? []) {
+      targets.push({ normalizedName: ex.normalized_name, baselineResetAt: ex.baseline_reset_at });
+      exerciseIds.push(ex.id);
+      baselineById.set(ex.id, ex.baseline_reset_at);
+    }
+  }
+  if (targets.length === 0) return 0;
+
   try {
-    rows = ((await query(builder, { label: 'prefetchLastSetsForDay' })) as LoggedSet[]) ?? [];
+    const alts = await prefetchAlternativesForExercises(exerciseIds);
+    for (const alt of alts) {
+      targets.push({
+        normalizedName: alt.normalized_name,
+        // An alternative shares its slot's baseline, so a reorder resets both.
+        baselineResetAt: baselineById.get(alt.plan_exercise_id) ?? null,
+      });
+    }
   } catch {
-    // No signal, or the read failed — the existing caches stay as they are.
-    return;
+    // The primaries are the ones that matter; carry on without alternatives.
   }
-  // A workout that's still running isn't "last time" — caching its sets would
-  // have the logger pre-filling today's numbers with today's numbers.
-  const open = new Set(
-    getLocalSessions(userId)
-      .filter((s) => !s.completed_at)
-      .map((s) => s.id)
-  );
+
+  const warmed = await warmLastSets(targets);
+  writeCache(userId, WARM_RECEIPT, {
+    at: new Date().toISOString(),
+    names: targets.length,
+    warmed,
+  } satisfies WarmReceipt);
+  return warmed;
+}
+
+/**
+ * How much of a day can be logged with no signal: exercises whose last weights
+ * are already on the phone, out of the total.
+ */
+export function lastSetsWarmth(
+  exercises: { normalized_name: string; baseline_reset_at?: string | null }[]
+): { covered: number; total: number } {
+  const seen = new Set<string>();
+  let covered = 0;
+  let total = 0;
   for (const ex of exercises) {
-    const mine = rows.filter(
-      (r) =>
-        r.exercise_normalized_name === ex.normalizedName &&
-        !open.has(r.session_id) &&
-        (!ex.baselineResetAt || r.completed_at >= ex.baselineResetAt)
-    );
-    if (mine.length === 0) continue;
-    const lastSessionId = mine[0].session_id;
-    const lastSets = mine
-      .filter((r) => r.session_id === lastSessionId)
-      .sort((a, b) => a.set_index - b.set_index);
-    writeCache(userId, lastSetsCacheName(ex.normalizedName), lastSets);
+    if (seen.has(ex.normalized_name)) continue;
+    seen.add(ex.normalized_name);
+    total += 1;
+    if (
+      getCachedLastSetsForExercise(ex.normalized_name, undefined, ex.baseline_reset_at ?? null)
+        .length > 0
+    ) {
+      covered += 1;
+    }
   }
+  return { covered, total };
 }

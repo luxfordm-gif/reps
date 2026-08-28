@@ -27,6 +27,9 @@ import { BottomNav, type Tab } from './components/BottomNav';
 import { Splash } from './components/Splash';
 import { clearHomeCache, loadHomeData } from './lib/homeCache';
 import { requestFlush } from './lib/offline/outbox';
+import { subscribeNet, isReachable } from './lib/offline/net';
+import { reconcileRecentWorkouts } from './lib/offline/reconcile';
+import { warmLastSetsForPlan } from './lib/sessionsApi';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 import { getMyProfile, type Profile as ProfileData } from './lib/profileApi';
 
@@ -38,6 +41,18 @@ type Modal =
   | 'plans'
   | 'onboarding'
   | 'machines';
+
+/**
+ * After a workout: give the flush a moment to land, then confirm the session
+ * really is on the server and cache today's sets as next week's "last time" —
+ * so next week pre-fills even if the phone never finds signal again first.
+ */
+function afterWorkoutSync(): void {
+  window.setTimeout(() => {
+    reconcileRecentWorkouts({ force: true }).catch(() => {});
+    warmLastSetsForPlan({ force: true }).catch(() => {});
+  }, 4000);
+}
 
 function Root() {
   const { session, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
@@ -56,6 +71,26 @@ function Root() {
     } else {
       clearHomeCache();
     }
+  }, [session]);
+  // Two things that have to happen while there is still signal, because the
+  // gym won't have any: pull every exercise's last weights onto the phone, and
+  // check that the last workout actually made it to the server. Both run again
+  // the moment a connection comes back — including when the "one bar" cool-off
+  // ends, which is the case that actually matters mid-workout.
+  useEffect(() => {
+    if (!session) return;
+    const sync = (force: boolean) => {
+      warmLastSetsForPlan({ force }).catch(() => {});
+      reconcileRecentWorkouts({ force }).catch(() => {});
+    };
+    sync(false);
+    let wasReachable = isReachable();
+    return subscribeNet(() => {
+      const now = isReachable();
+      const regained = now && !wasReachable;
+      wasReachable = now;
+      if (regained) sync(true);
+    });
   }, [session]);
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
@@ -261,6 +296,7 @@ function Root() {
               }
               // Everything logged during the workout goes up now, if it can.
               requestFlush();
+              afterWorkoutSync();
             }
             setExerciseIdx(null);
             setSessionId(null);
@@ -385,6 +421,7 @@ function Root() {
         console.error(e);
       }
       requestFlush();
+      afterWorkoutSync();
     }
     setExerciseIdx(null);
     setSessionId(null);

@@ -10,6 +10,7 @@ import { adjustWater, getWaterGoal, getWaterUnit } from '../lib/waterApi';
 import { getCachedHomeData, loadHomeData, patchHomeCache } from '../lib/homeCache';
 import { SyncStatus } from '../components/SyncStatus';
 import { requestFlush } from '../lib/offline/outbox';
+import { warmLastSetsForPlan } from '../lib/sessionsApi';
 import { useNetStatus } from '../lib/offline/net';
 import type { Profile } from '../lib/profileApi';
 
@@ -165,6 +166,10 @@ export function Home({
         setWeekSummary(data.weekSummary);
         setCompletedThisWeek(data.completedThisWeek);
         setRecentPositions(data.recentPositions);
+        // Home is the screen that gets opened on wifi. Pull every exercise's
+        // last weights onto the phone now, so a workout started in a basement
+        // gym still pre-fills.
+        warmLastSetsForPlan().catch(() => {});
       } finally {
         if (mounted) setLoading(false);
       }

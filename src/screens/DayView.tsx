@@ -11,6 +11,8 @@ import {
   type PrefetchExercise,
 } from '../lib/sessionsApi';
 import { prefetchAlternativesForExercises } from '../lib/alternativesApi';
+import { lastSetsWarmth, warmLastSetsForPlan } from '../lib/sessionsApi';
+import { useNetStatus } from '../lib/offline/net';
 
 type TrainingDay = FullPlan['training_days'][number];
 
@@ -145,6 +147,10 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
   } | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Bumped whenever a warm finishes, so the coverage line re-reads the device.
+  const [warmKey, setWarmKey] = useState(0);
+  const [warming, setWarming] = useState(false);
+  const { reachable } = useNetStatus();
 
   useEffect(() => {
     let mounted = true;
@@ -201,17 +207,40 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
         });
       }
       await prefetchLastSetsForDay(targets);
+      if (!cancelled) setWarmKey((k) => k + 1);
     })();
     return () => {
       cancelled = true;
     };
-  }, [exercises]);
+    // `reachable` is in here on purpose: a warm that failed on the walk in
+    // should be retried the moment the phone finds a connection again.
+  }, [exercises, reachable]);
+
+  // What can be logged with no signal. Shown only when something is missing —
+  // when it's all there, there is nothing worth saying.
+  const warmth = useMemo(
+    () => lastSetsWarmth(exercises),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [exercises, warmKey]
+  );
+  const missingWarmth = warmth.total - warmth.covered;
 
   async function handleDiscard() {
     if (!inProgress) return;
     await deleteSession(inProgress.sessionId);
     setInProgress(null);
     setConfirmDiscard(false);
+  }
+
+  async function handleWarmNow() {
+    if (warming) return;
+    setWarming(true);
+    try {
+      await warmLastSetsForPlan({ force: true });
+    } finally {
+      setWarming(false);
+      setWarmKey((k) => k + 1);
+    }
   }
 
   function toggle(bp: string) {
@@ -235,6 +264,23 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
           <span className="h-1 w-1 rounded-full bg-muted/50" />
           <span>~{estimatedMinutes(totalSets)} min</span>
         </div>
+
+        {missingWarmth > 0 && reachable && (
+          <button
+            onClick={handleWarmNow}
+            disabled={warming}
+            className="mt-3 flex w-full items-center gap-2 rounded-pill bg-line/70 px-3 py-1.5 text-left text-xs font-medium text-muted disabled:opacity-60"
+          >
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted" />
+            <span className="truncate">
+              {warming
+                ? 'Saving last time\u2019s weights\u2026'
+                : `Last time\u2019s weights aren\u2019t saved for ${missingWarmth} ${
+                    missingWarmth === 1 ? 'exercise' : 'exercises'
+                  } \u2014 tap to load now`}
+            </span>
+          </button>
+        )}
 
         <button
           className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
