@@ -1,7 +1,7 @@
 import { supabase, currentUserId, currentUserIdSync } from './supabase';
 import { isOfflineError, query } from './offline/net';
 import { enqueue } from './offline/outbox';
-import { readCache, writeCache } from './offline/storage';
+import { dropCache, readCache, writeCache } from './offline/storage';
 import type { ParsedPlan } from './parseTrainingPlan';
 import type { SetScheme } from './parseTrainingPlan';
 
@@ -110,6 +110,27 @@ export async function updatePlanExercisePersonalNote(
   await patchPlanExercise(exerciseId, { personal_notes: note });
 }
 
+/**
+ * Forget a machine's warmed "last time" weights.
+ *
+ * Named here rather than imported from `sessionsApi` (which imports this
+ * module) — it must match `lastSetsCacheName` there.
+ */
+function dropWarmedWeights(userId: string | null, normalizedName: string): void {
+  dropCache(userId, `lastSets.${normalizedName}`);
+}
+
+/** The normalized name a slot currently has, from the cached plan. */
+function cachedNormalizedName(userId: string | null, exerciseId: string): string | null {
+  const plan = getCachedActivePlan(userId);
+  for (const day of plan?.training_days ?? []) {
+    for (const ex of day.plan_exercises ?? []) {
+      if (ex.id === exerciseId) return ex.normalized_name;
+    }
+  }
+  return null;
+}
+
 export async function mergeExerciseIntoIdentity(
   exerciseId: string,
   targetName: string,
@@ -128,6 +149,12 @@ export async function mergeExerciseIntoIdentity(
     })
     .eq('plan_exercise_id', exerciseId);
   if (lsError) throw lsError;
+  // History just moved from one name to the other, so both warmed copies are
+  // wrong now. The next warm rebuilds the target's.
+  const userId = currentUserIdSync();
+  const previous = cachedNormalizedName(userId, exerciseId);
+  if (previous && previous !== targetNormalizedName) dropWarmedWeights(userId, previous);
+  dropWarmedWeights(userId, targetNormalizedName);
 }
 
 // Swap this one plan_exercise slot to a different machine identity (name +
@@ -157,6 +184,10 @@ export async function swapPlanExerciseIdentity(
       { label: 'swapPlanExerciseIdentity' }
     );
     patchCachedPlanExercise(exerciseId, update);
+    if (options.resetBaseline) {
+      // A fresh start on a new machine: last time's weights no longer apply.
+      dropWarmedWeights(currentUserIdSync(), normalizedName);
+    }
     return (data?.baseline_reset_at as string | null) ?? null;
   } catch (e) {
     if (!isOfflineError(e)) throw e;
