@@ -2406,21 +2406,16 @@ function SetGroup({
               </div>
             )}
             <div
-              className={`relative flex items-center gap-2 px-5 py-3 transition-colors ${
-                !isMain ? 'pl-11 bg-line/30' : ''
+              className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
+                !isMain ? 'bg-line/30' : ''
               } ${row.completed ? 'opacity-70' : ''} ${
                 isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
               } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
             >
-              {!isMain && (
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                  Drop
-                </div>
-              )}
-              <div className="w-12 text-xs font-semibold uppercase tracking-wider text-muted">
-                {isMain ? `Set ${setIndex}` : ''}
+              <div className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
+                {isMain ? `Set ${setIndex}` : 'Drop'}
               </div>
-            <div className="relative w-24 min-w-[76px]">
+            <div className="relative min-w-[76px] max-w-[112px] flex-1">
               <input
                 type="number"
                 inputMode="decimal"
@@ -2450,7 +2445,7 @@ function SetGroup({
                 {unitSuffix(unit)}
               </span>
             </div>
-            <span className="text-xs text-muted">×</span>
+            <span className="shrink-0 text-xs text-muted">×</span>
             <input
               type="number"
               inputMode="numeric"
@@ -2465,39 +2460,52 @@ function SetGroup({
                 e.target.select();
               }}
               placeholder="reps"
-              className={`w-16 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+              className={`w-16 shrink-0 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
                 row.reps === row.repsSuggested && row.repsSuggested !== ''
                   ? 'text-ink/40'
                   : 'text-ink'
               }`}
             />
-            <div className="flex-1" />
-            {row.completed ? (
-              <button
-                onClick={() => onEdit(idx)}
-                aria-label="Edit set"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white active:opacity-70"
-              >
-                <Check />
-              </button>
-            ) : (
-              <>
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              {row.completed ? (
+                // Keeps the calculator's slot so the tick sits in the same
+                // column as every other row's.
+                <div className="h-9 w-9" aria-hidden />
+              ) : (
                 <button
                   onClick={() => onOpenCalculator(idx)}
                   aria-label="Open barbell calculator"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-ink active:opacity-70"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
                 >
                   <PlateIcon />
                 </button>
+              )}
+              {/* Outline tick that fills in once the set is logged — the same
+                  circle in both states, so the row reads as one control and the
+                  width goes to the weight field instead of a word. */}
+              {row.completed ? (
+                <button
+                  onClick={() => onEdit(idx)}
+                  aria-label={`Edit set ${setIndex}`}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white active:opacity-70"
+                >
+                  <Check />
+                </button>
+              ) : (
                 <button
                   onClick={() => onComplete(idx)}
                   disabled={savingIdx === idx}
-                  className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-50"
+                  aria-label={`Log set ${setIndex} as done`}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-ink text-ink active:opacity-60 disabled:opacity-40"
                 >
-                  {savingIdx === idx ? '…' : 'Done'}
+                  {savingIdx === idx ? (
+                    <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-ink/25 border-t-ink" />
+                  ) : (
+                    <Check />
+                  )}
                 </button>
-              </>
-            )}
+              )}
+            </div>
             </div>
           </div>
         );
