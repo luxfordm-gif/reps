@@ -2322,10 +2322,10 @@ function Stat({
   );
 }
 
-// Unit as it reads inside the weight field: "40 kg", "40 lb", "40 P." for a
+// Unit as it reads inside the weight field: "40 kg", "40 lb", "40 P" for a
 // stack machine's pin number.
 function unitSuffix(unit: MachineUnit): string {
-  return unit === 'pin' ? 'P.' : unit;
+  return unit === 'pin' ? 'P' : unit;
 }
 
 // Persistent read-out of the unit this machine logs in. Muted when it matches
