@@ -36,7 +36,7 @@ import BarbellCalculator from '../components/BarbellCalculator';
 import { SyncStatus } from '../components/SyncStatus';
 import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
-import { kgToLb, lbToKg, type MachineUnit } from '../lib/units';
+import { getLiftWeightUnit, kgToLb, lbToKg, type MachineUnit } from '../lib/units';
 import {
   getCachedExerciseUnit,
   getExerciseUnit,
@@ -337,6 +337,12 @@ export function ExerciseLogger({
   const [unit, setUnit] = useState<MachineUnit>(() =>
     getCachedExerciseUnit(exercise.normalized_name)
   );
+  // The user's usual lift unit, read once on mount. Anything else on this
+  // machine is an override worth flagging — otherwise a kg-by-default user can
+  // land on an lb or pin machine (via a swap, or a pref set weeks ago) and read
+  // the numbers as kg.
+  const [defaultUnit] = useState(getLiftWeightUnit);
+  const unitIsOverride = unit !== defaultUnit;
   // Mirrors `unit` for use inside the async load effect, which captures a
   // stale closure value otherwise (cache-vs-DB reconcile may setUnit between
   // the effect starting and resolving).
@@ -984,7 +990,10 @@ export function ExerciseLogger({
           >
             {displayName}
           </a>
-          <div className="mt-1 text-sm text-muted">{exercise.body_part}</div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-sm text-muted">{exercise.body_part}</span>
+            <UnitBadge unit={unit} isOverride={unitIsOverride} />
+          </div>
         </div>
 
         {alternatives.length > 0 && (
@@ -1054,6 +1063,7 @@ export function ExerciseLogger({
                 savingIdx={savingIdx}
                 shakeIdx={shakeIdx}
                 unit={unit}
+                showUnitOnRows={unitIsOverride}
                 onChange={update}
                 onComplete={handleComplete}
                 onEdit={handleEdit}
@@ -2312,12 +2322,37 @@ function Stat({
   );
 }
 
+// Persistent read-out of the unit this machine logs in. Muted when it matches
+// the user's default; filled when it doesn't, so an lb/pin machine announces
+// itself without opening the menu.
+function UnitBadge({
+  unit,
+  isOverride,
+}: {
+  unit: MachineUnit;
+  isOverride: boolean;
+}) {
+  return (
+    <span
+      title={`${
+        unit === 'pin' ? 'Logged as pin numbers' : `Logged in ${unit}`
+      }${isOverride ? ' — not your default unit' : ''}`}
+      className={`inline-flex items-center rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] ${
+        isOverride ? 'bg-ink text-white' : 'bg-line text-muted'
+      }`}
+    >
+      {unit}
+    </span>
+  );
+}
+
 function SetGroup({
   rows,
   activeIndex,
   savingIdx,
   shakeIdx,
   unit,
+  showUnitOnRows,
   onChange,
   onComplete,
   onEdit,
@@ -2328,6 +2363,9 @@ function SetGroup({
   savingIdx: number | null;
   shakeIdx: number | null;
   unit: MachineUnit;
+  // Only set when the unit isn't the user's default — a filled-in number is
+  // otherwise unlabelled once the placeholder is gone.
+  showUnitOnRows: boolean;
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
@@ -2396,6 +2434,11 @@ function SetGroup({
                   : 'text-ink'
               }`}
             />
+            {showUnitOnRows && (
+              <span className="-ml-2 text-[10px] font-bold uppercase tracking-wider text-ink">
+                {unit}
+              </span>
+            )}
             <span className="text-xs text-muted">×</span>
             <input
               type="number"
