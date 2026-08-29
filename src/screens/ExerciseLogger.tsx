@@ -1063,7 +1063,7 @@ export function ExerciseLogger({
                 savingIdx={savingIdx}
                 shakeIdx={shakeIdx}
                 unit={unit}
-                showUnitOnRows={unitIsOverride}
+                unitIsOverride={unitIsOverride}
                 onChange={update}
                 onComplete={handleComplete}
                 onEdit={handleEdit}
@@ -2322,6 +2322,12 @@ function Stat({
   );
 }
 
+// Unit as it reads inside the weight field: "40 kg", "40 lb", "40 P" for a
+// stack machine's pin number.
+function unitSuffix(unit: MachineUnit): string {
+  return unit === 'pin' ? 'P' : unit;
+}
+
 // Persistent read-out of the unit this machine logs in. Muted when it matches
 // the user's default; filled when it doesn't, so an lb/pin machine announces
 // itself without opening the menu.
@@ -2352,7 +2358,7 @@ function SetGroup({
   savingIdx,
   shakeIdx,
   unit,
-  showUnitOnRows,
+  unitIsOverride,
   onChange,
   onComplete,
   onEdit,
@@ -2363,9 +2369,9 @@ function SetGroup({
   savingIdx: number | null;
   shakeIdx: number | null;
   unit: MachineUnit;
-  // Only set when the unit isn't the user's default — a filled-in number is
-  // otherwise unlabelled once the placeholder is gone.
-  showUnitOnRows: boolean;
+  // Emphasises the in-field unit suffix when this machine isn't logging in the
+  // user's default unit.
+  unitIsOverride: boolean;
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
@@ -2401,45 +2407,45 @@ function SetGroup({
             )}
             <div
               className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
-                !isMain ? 'pl-11 bg-line/30' : ''
+                !isMain ? 'bg-line/30' : ''
               } ${row.completed ? 'opacity-70' : ''} ${
                 isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
               } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
             >
-              {!isMain && (
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                  Drop
-                </div>
-              )}
-              <div className="w-12 text-xs font-semibold uppercase tracking-wider text-muted">
-                {isMain ? `Set ${setIndex}` : ''}
+              <div className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
+                {isMain ? `Set ${setIndex}` : 'Drop'}
               </div>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.5"
-              value={row.weight}
-              disabled={row.completed}
-              onChange={(e) => onChange(idx, { weight: e.target.value })}
-              onFocus={(e) => {
-                if (row.weight === row.weightSuggested && row.weightSuggested !== '') {
-                  onChange(idx, { weight: '' });
-                }
-                e.target.select();
-              }}
-              placeholder={unit}
-              className={`w-20 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
-                row.weight === row.weightSuggested && row.weightSuggested !== ''
-                  ? 'text-ink/40'
-                  : 'text-ink'
-              }`}
-            />
-            {showUnitOnRows && (
-              <span className="-ml-2 text-[10px] font-bold uppercase tracking-wider text-ink">
-                {unit}
+            <div className="relative min-w-[76px] max-w-[112px] flex-1">
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.5"
+                value={row.weight}
+                disabled={row.completed}
+                onChange={(e) => onChange(idx, { weight: e.target.value })}
+                onFocus={(e) => {
+                  if (row.weight === row.weightSuggested && row.weightSuggested !== '') {
+                    onChange(idx, { weight: '' });
+                  }
+                  e.target.select();
+                }}
+                aria-label={`Weight in ${unit}`}
+                className={`no-spinner w-full rounded-xl border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+                  row.weight === row.weightSuggested && row.weightSuggested !== ''
+                    ? 'text-ink/40'
+                    : 'text-ink'
+                }`}
+              />
+              <span
+                aria-hidden
+                className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
+                  unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
+                }`}
+              >
+                {unitSuffix(unit)}
               </span>
-            )}
-            <span className="text-xs text-muted">×</span>
+            </div>
+            <span className="shrink-0 text-xs text-muted">×</span>
             <input
               type="number"
               inputMode="numeric"
@@ -2454,39 +2460,52 @@ function SetGroup({
                 e.target.select();
               }}
               placeholder="reps"
-              className={`w-16 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+              className={`w-16 shrink-0 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
                 row.reps === row.repsSuggested && row.repsSuggested !== ''
                   ? 'text-ink/40'
                   : 'text-ink'
               }`}
             />
-            <div className="flex-1" />
-            {row.completed ? (
-              <button
-                onClick={() => onEdit(idx)}
-                aria-label="Edit set"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white active:opacity-70"
-              >
-                <Check />
-              </button>
-            ) : (
-              <>
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              {row.completed ? (
+                // Keeps the calculator's slot so the tick sits in the same
+                // column as every other row's.
+                <div className="h-9 w-9" aria-hidden />
+              ) : (
                 <button
                   onClick={() => onOpenCalculator(idx)}
                   aria-label="Open barbell calculator"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-ink active:opacity-70"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
                 >
                   <PlateIcon />
                 </button>
+              )}
+              {/* Outline tick that fills in once the set is logged — the same
+                  circle in both states, so the row reads as one control and the
+                  width goes to the weight field instead of a word. */}
+              {row.completed ? (
+                <button
+                  onClick={() => onEdit(idx)}
+                  aria-label={`Edit set ${setIndex}`}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white active:opacity-70"
+                >
+                  <Check />
+                </button>
+              ) : (
                 <button
                   onClick={() => onComplete(idx)}
                   disabled={savingIdx === idx}
-                  className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-50"
+                  aria-label={`Log set ${setIndex} as done`}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-ink text-ink active:opacity-60 disabled:opacity-40"
                 >
-                  {savingIdx === idx ? '…' : 'Done'}
+                  {savingIdx === idx ? (
+                    <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-ink/25 border-t-ink" />
+                  ) : (
+                    <Check />
+                  )}
                 </button>
-              </>
-            )}
+              )}
+            </div>
             </div>
           </div>
         );
