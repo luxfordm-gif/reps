@@ -1063,7 +1063,7 @@ export function ExerciseLogger({
                 savingIdx={savingIdx}
                 shakeIdx={shakeIdx}
                 unit={unit}
-                showUnitOnRows={unitIsOverride}
+                unitIsOverride={unitIsOverride}
                 onChange={update}
                 onComplete={handleComplete}
                 onEdit={handleEdit}
@@ -2322,6 +2322,12 @@ function Stat({
   );
 }
 
+// Unit as it reads inside the weight field: "40 kg", "40 lb", "40 P." for a
+// stack machine's pin number.
+function unitSuffix(unit: MachineUnit): string {
+  return unit === 'pin' ? 'P.' : unit;
+}
+
 // Persistent read-out of the unit this machine logs in. Muted when it matches
 // the user's default; filled when it doesn't, so an lb/pin machine announces
 // itself without opening the menu.
@@ -2352,7 +2358,7 @@ function SetGroup({
   savingIdx,
   shakeIdx,
   unit,
-  showUnitOnRows,
+  unitIsOverride,
   onChange,
   onComplete,
   onEdit,
@@ -2363,9 +2369,9 @@ function SetGroup({
   savingIdx: number | null;
   shakeIdx: number | null;
   unit: MachineUnit;
-  // Only set when the unit isn't the user's default — a filled-in number is
-  // otherwise unlabelled once the placeholder is gone.
-  showUnitOnRows: boolean;
+  // Emphasises the in-field unit suffix when this machine isn't logging in the
+  // user's default unit.
+  unitIsOverride: boolean;
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
@@ -2400,7 +2406,7 @@ function SetGroup({
               </div>
             )}
             <div
-              className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
+              className={`relative flex items-center gap-2 px-5 py-3 transition-colors ${
                 !isMain ? 'pl-11 bg-line/30' : ''
               } ${row.completed ? 'opacity-70' : ''} ${
                 isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
@@ -2414,31 +2420,36 @@ function SetGroup({
               <div className="w-12 text-xs font-semibold uppercase tracking-wider text-muted">
                 {isMain ? `Set ${setIndex}` : ''}
               </div>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.5"
-              value={row.weight}
-              disabled={row.completed}
-              onChange={(e) => onChange(idx, { weight: e.target.value })}
-              onFocus={(e) => {
-                if (row.weight === row.weightSuggested && row.weightSuggested !== '') {
-                  onChange(idx, { weight: '' });
-                }
-                e.target.select();
-              }}
-              placeholder={unit}
-              className={`w-20 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
-                row.weight === row.weightSuggested && row.weightSuggested !== ''
-                  ? 'text-ink/40'
-                  : 'text-ink'
-              }`}
-            />
-            {showUnitOnRows && (
-              <span className="-ml-2 text-[10px] font-bold uppercase tracking-wider text-ink">
-                {unit}
+            <div className="relative w-24 min-w-[76px]">
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.5"
+                value={row.weight}
+                disabled={row.completed}
+                onChange={(e) => onChange(idx, { weight: e.target.value })}
+                onFocus={(e) => {
+                  if (row.weight === row.weightSuggested && row.weightSuggested !== '') {
+                    onChange(idx, { weight: '' });
+                  }
+                  e.target.select();
+                }}
+                aria-label={`Weight in ${unit}`}
+                className={`no-spinner w-full rounded-xl border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+                  row.weight === row.weightSuggested && row.weightSuggested !== ''
+                    ? 'text-ink/40'
+                    : 'text-ink'
+                }`}
+              />
+              <span
+                aria-hidden
+                className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
+                  unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
+                }`}
+              >
+                {unitSuffix(unit)}
               </span>
-            )}
+            </div>
             <span className="text-xs text-muted">×</span>
             <input
               type="number"

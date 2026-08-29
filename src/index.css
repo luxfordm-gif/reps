@@ -54,3 +54,17 @@ html, body, #root {
 .animate-spin-slow {
   animation: spin 700ms linear infinite;
 }
+
+/* Number fields that carry an in-field suffix (e.g. the set weight, which
+   prints its unit at the right edge) — the browser's spin buttons would sit
+   on top of that label. */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
