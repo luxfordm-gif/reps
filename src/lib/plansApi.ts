@@ -4,6 +4,7 @@ import { enqueue } from './offline/outbox';
 import { dropCache, readCache, writeCache } from './offline/storage';
 import type { ParsedPlan } from './parseTrainingPlan';
 import type { SetScheme } from './parseTrainingPlan';
+import { restSecondsForExercises } from './restDefaults';
 
 const ACTIVE_PLAN_CACHE = 'activePlan';
 
@@ -295,7 +296,19 @@ export async function savePlan(
     if (tdErr) throw tdErr;
 
     if (day.exercises.length > 0) {
-      const rows = day.exercises.map((e) => ({
+      // Rest comes from the plan itself — drop sets run straight through, heavy
+      // compounds get longer, and an explicit rest in the coach's notes wins.
+      // Leaving it null (as we used to) meant every exercise fell back to
+      // whatever rest was last picked anywhere in the app.
+      const restByIndex = restSecondsForExercises(
+        day.exercises.map((e) => ({
+          name: e.name,
+          notes: e.notes,
+          setScheme: e.setScheme,
+          supersetGroup: e.supersetGroup ?? null,
+        }))
+      );
+      const rows = day.exercises.map((e, i) => ({
         training_day_id: td.id,
         user_id: userId,
         body_part: e.bodyPart,
@@ -306,6 +319,8 @@ export async function savePlan(
         tempo: e.tempo,
         notes: e.notes,
         set_scheme: e.setScheme,
+        superset_group: e.supersetGroup ?? null,
+        rest_seconds: restByIndex[i],
         position: e.position,
         baseline_reset_at: options?.historyResetKeys?.has(
           `${day.position}:${e.position}`

@@ -9,6 +9,8 @@ import {
 import { parseSetMods } from '../lib/parseSetMods';
 import { getActivePlan, savePlan } from '../lib/plansApi';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
+import { restLabel, restSecondsForExercises } from '../lib/restDefaults';
+import { formatNameList, groupedSetLabel } from '../lib/supersets';
 import { PageHeader } from '../components/PageHeader';
 
 function parseTargetReps(repRange: string): number | null {
@@ -85,6 +87,23 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const [planName, setPlanName] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<ParsedPlan | null>(null);
+  // The rest each exercise will be saved with, keyed "dayIdx:exIdx" — the same
+  // figures savePlan writes, so the review screen shows what you're getting.
+  // Recomputed when notes are edited here, since notes can name a rest.
+  const restByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    parsed?.days.forEach((day, dayIdx) => {
+      restSecondsForExercises(
+        day.exercises.map((e) => ({
+          name: e.name,
+          notes: e.notes,
+          setScheme: e.setScheme,
+          supersetGroup: e.supersetGroup ?? null,
+        }))
+      ).forEach((rest, exIdx) => map.set(`${dayIdx}:${exIdx}`, rest));
+    });
+    return map;
+  }, [parsed]);
   const [rawText, setRawText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -455,6 +474,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                       <li key={`${ex.name}-${ex.position}`}>
                         <ExerciseReviewRow
                           exercise={ex}
+                          restSeconds={restByKey.get(`${dayIdx}:${exIdx}`) ?? null}
                           match={matches.get(`${dayIdx}:${exIdx}`)}
                           keepHistory={keepHistory.has(`${dayIdx}:${exIdx}`)}
                           onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
@@ -632,6 +652,7 @@ function RotateGlyph() {
 
 function ExerciseReviewRow({
   exercise,
+  restSeconds,
   match,
   keepHistory,
   onNotesChange,
@@ -641,6 +662,7 @@ function ExerciseReviewRow({
   onAlternativeChange,
 }: {
   exercise: ParsedExercise;
+  restSeconds: number | null;
   match?: Match;
   keepHistory: boolean;
   onNotesChange: (notes: string) => void;
@@ -692,8 +714,22 @@ function ExerciseReviewRow({
             <span className="text-ink">{exercise.totalSets ?? '—'}</span> sets
           </div>
           <div>{exercise.repRange || '—'} reps</div>
+          {restSeconds != null && <div>{restLabel(restSeconds)} rest</div>}
         </div>
       </div>
+
+      {(exercise.supersetPartnerNames ?? []).length > 0 && (
+        <div className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs text-ink/80">
+          <span className="font-semibold text-ink">
+            {groupedSetLabel((exercise.supersetPartnerNames?.length ?? 0) + 1)}
+          </span>{' '}
+          — alternates with{' '}
+          <span className="font-semibold text-ink">
+            {formatNameList(exercise.supersetPartnerNames ?? [])}
+          </span>
+          , resting once the round is done.
+        </div>
+      )}
 
       {match && match.kind !== 'none' && (
         <div className="mt-3">

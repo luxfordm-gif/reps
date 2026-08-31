@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useThemeColor } from '../lib/useThemeColor';
 import {
@@ -36,6 +36,8 @@ import BarbellCalculator from '../components/BarbellCalculator';
 import { SyncStatus } from '../components/SyncStatus';
 import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
+import { restLabel } from '../lib/restDefaults';
+import { formatNameList, groupedSetLabel } from '../lib/supersets';
 import { getLiftWeightUnit, kgToLb, lbToKg, type MachineUnit } from '../lib/units';
 import {
   getCachedExerciseUnit,
@@ -71,6 +73,18 @@ interface Props {
   sessionStartedAt?: string | null;
   dayName?: string;
   exercise: PlanExerciseRow;
+  /**
+   * The exercise to hand over to when this one belongs to a group performed back
+   * to back — a superset, tri-set or giant set. Cycles round to the first member
+   * once the round's last exercise has logged its set.
+   */
+  supersetNext?: PlanExerciseRow | null;
+  /** The rest of the round, for describing the pairing on screen. */
+  supersetPartnerNames?: string[];
+  /** True when this is the round's last exercise, i.e. rest comes after it. */
+  supersetLastOfRound?: boolean;
+  /** Open `supersetNext`. Provided whenever that is. */
+  onGoToSupersetNext?: () => void;
   hasNext: boolean;
   hasPrev: boolean;
   totalExercises: number;
@@ -239,18 +253,64 @@ function googleImagesUrl(name: string): string {
   return `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(name + ' gym machine')}`;
 }
 
-const REST_VALID = [30, 60, 90, 120, 180] as const;
+// Rest is stored per exercise, seeded from the plan at upload (see
+// lib/restDefaults). 0 means "no rest" — a drop set runs straight through — and
+// a coach's own figure ("45 seconds max rest") doesn't have to be one of the
+// picker's presets, so any sane number is accepted rather than just the presets.
+const MAX_REST_SECONDS = 600;
+
+function isValidRest(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n <= MAX_REST_SECONDS;
+}
 
 function initialRestSeconds(stored: number | null | undefined): number {
-  if (stored != null && REST_VALID.includes(stored as (typeof REST_VALID)[number])) {
-    return stored;
-  }
+  if (stored != null && isValidRest(stored)) return stored;
+  // Only plans uploaded before rest defaults existed have no stored value; they
+  // keep the old behaviour of reusing whatever was last picked.
   if (typeof window !== 'undefined') {
     const v = window.localStorage.getItem('reps.restSeconds');
     const n = v ? parseInt(v, 10) : NaN;
-    if (REST_VALID.includes(n as (typeof REST_VALID)[number])) return n;
+    if (isValidRest(n) && n > 0) return n;
   }
   return 60;
+}
+
+// A superset hands you to the partner exercise the moment a set is logged, so
+// the countdown has to outlive the screen that started it. Session-scoped: a
+// timer left running is meaningless once the tab is gone.
+interface StoredRest {
+  endsAt: number;
+  totalSeconds: number;
+}
+
+function restStoreKey(sessionId: string): string {
+  return `reps.rest.${sessionId}`;
+}
+
+function readStoredRest(sessionId: string): StoredRest | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(restStoreKey(sessionId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredRest;
+    if (typeof parsed?.endsAt !== 'number' || parsed.endsAt <= Date.now()) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredRest(sessionId: string, value: StoredRest | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) {
+      window.sessionStorage.setItem(restStoreKey(sessionId), JSON.stringify(value));
+    } else {
+      window.sessionStorage.removeItem(restStoreKey(sessionId));
+    }
+  } catch {
+    // Private-mode storage failures just mean the timer doesn't survive the hop.
+  }
 }
 
 // Bell-like "ding" when the rest timer ends. Plays everywhere as the audible
@@ -304,6 +364,10 @@ export function ExerciseLogger({
   sessionStartedAt,
   dayName,
   exercise,
+  supersetNext,
+  supersetPartnerNames,
+  supersetLastOfRound,
+  onGoToSupersetNext,
   hasNext,
   hasPrev,
   totalExercises,
@@ -329,10 +393,19 @@ export function ExerciseLogger({
   const [shakeIdx, setShakeIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [calcOpen, setCalcOpen] = useState<number | null>(null);
-  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  // Seeded from storage so a rest started on the other half of a superset keeps
+  // counting down after the handover.
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(
+    () => readStoredRest(sessionId)?.endsAt ?? null
+  );
   const [restMinimised, setRestMinimised] = useState(false);
   const [restSeconds, setRestSecondsState] = useState<number>(() =>
     initialRestSeconds(exercise.rest_seconds)
+  );
+  // What the running countdown was started with — which is the pair's rest, not
+  // necessarily this exercise's, so the ring reads correctly after a handover.
+  const [restTotalSeconds, setRestTotalSeconds] = useState<number>(
+    () => readStoredRest(sessionId)?.totalSeconds ?? initialRestSeconds(exercise.rest_seconds)
   );
   const [unit, setUnit] = useState<MachineUnit>(() =>
     getCachedExerciseUnit(exercise.normalized_name)
@@ -483,7 +556,7 @@ export function ExerciseLogger({
   // the chosen movement. Tempo / rep range / target sets stay from the plan.
   function selectIdentity(alt: ExerciseAlternativeRow | null) {
     setError(null);
-    setRestEndsAt(null);
+    clearRest();
     if (alt === null) {
       setActiveAltId(null);
       setDisplayName(exercise.name);
@@ -566,9 +639,49 @@ export function ExerciseLogger({
     });
   }
 
+  // Every start/stop of the countdown goes through these so the stored copy
+  // (which carries it across a superset handover) can't drift from the state.
+  const clearRest = useCallback(() => {
+    setRestEndsAt(null);
+    writeStoredRest(sessionId, null);
+  }, [sessionId]);
+
+  const startRest = useCallback(
+    (seconds: number) => {
+      if (seconds <= 0) {
+        clearRest();
+        return;
+      }
+      const endsAt = Date.now() + seconds * 1000;
+      setRestTotalSeconds(seconds);
+      setRestEndsAt(endsAt);
+      writeStoredRest(sessionId, { endsAt, totalSeconds: seconds });
+    },
+    [sessionId, clearRest]
+  );
+
+  /** Nudge the running countdown by ±n seconds (the overlay's +15/−15 buttons). */
+  const adjustRest = useCallback(
+    (deltaMs: number) => {
+      const now = Date.now();
+      setRestEndsAt((t) => {
+        const next = (t ?? now) + deltaMs;
+        if (next <= now) {
+          writeStoredRest(sessionId, null);
+          return null;
+        }
+        writeStoredRest(sessionId, { endsAt: next, totalSeconds: restTotalSeconds });
+        return next;
+      });
+    },
+    [sessionId, restTotalSeconds]
+  );
+
   function setRestSeconds(s: number) {
     setRestSecondsState(s);
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && s > 0) {
+      // "No rest" is a property of the exercise, not a preference to reuse on
+      // the next one, so it never becomes the app-wide fallback.
       window.localStorage.setItem('reps.restSeconds', String(s));
     }
     // Fire-and-forget — persists the per-exercise preference.
@@ -742,6 +855,45 @@ export function ExerciseLogger({
     exercise.notes,
   ]);
 
+  // How much of the next exercise in the round is still to do. Read once per
+  // mount, which is when the handover decision gets made — if it has already
+  // finished we stay put and rest normally rather than bouncing to a done screen.
+  const partnerId = supersetNext?.id ?? null;
+  const partnerNormalized = supersetNext?.normalized_name ?? null;
+  // Stamped with the partner it was read for: switching exercises keeps this
+  // component mounted, so an unstamped count would still describe the previous
+  // partner until the new read lands.
+  const [partnerProgress, setPartnerProgress] = useState<{
+    id: string;
+    groupsDone: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!partnerId || !partnerNormalized) return;
+    let mounted = true;
+    getSessionSets(sessionId, partnerId, partnerNormalized)
+      .catch(() => getCachedSessionSets(sessionId, partnerId, partnerNormalized))
+      .then((rows) => {
+        if (!mounted) return;
+        setPartnerProgress({
+          id: partnerId,
+          groupsDone: new Set(rows.map((r) => r.set_index)).size,
+        });
+      })
+      .catch(() => {
+        // Best effort: without a count we just don't hand over, and rest normally.
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [sessionId, partnerId, partnerNormalized]);
+
+  const partnerHasWork =
+    supersetNext != null &&
+    partnerProgress?.id === supersetNext.id &&
+    partnerProgress.groupsDone < (supersetNext.total_sets ?? 0);
+  const roundNames = supersetPartnerNames ?? [];
+  const inRound = supersetNext != null && roundNames.length > 0;
+
   const targetSets = exercise.total_sets ?? sets.length;
   const allDone = sets.length > 0 && sets.every((s) => s.completed);
 
@@ -763,7 +915,7 @@ export function ExerciseLogger({
 
   function handleEdit(idx: number) {
     setError(null);
-    setRestEndsAt(null);
+    clearRest();
     update(idx, { completed: false });
     setActiveIndex(idx);
   }
@@ -905,13 +1057,22 @@ export function ExerciseLogger({
         // Auto-advance
         const nextIdx = sets.findIndex((s, i) => i > idx && !s.completed);
         if (nextIdx !== -1) setActiveIndex(nextIdx);
-        // Rest timer only when stepping into a NEW set group (not within drops of
-        // the same set) AND only when there is a next set still to do.
+        // Rest only when stepping into a NEW set group (not within drops of the
+        // same set) AND only when there is more still to do.
         const next = sets[idx + 1];
         const isLastInGroup = !next || next.setIndex !== set.setIndex;
         const hasMoreToDo = sets.some((s, i) => i !== idx && !s.completed);
-        if (isLastInGroup && hasMoreToDo && set.scheme !== 'intensifier') {
-          setRestEndsAt(Date.now() + restSeconds * 1000);
+        if (isLastInGroup && set.scheme !== 'intensifier') {
+          if (supersetNext && partnerHasWork && onGoToSupersetNext) {
+            // Grouped set: straight over to the next movement, no rest between.
+            // The rest belongs at the end of the round, so only its last exercise
+            // starts the clock — and it starts it before handing over, which is
+            // why the countdown is persisted rather than held in this screen.
+            if (supersetLastOfRound) startRest(restSeconds);
+            onGoToSupersetNext();
+          } else if (hasMoreToDo) {
+            startRest(restSeconds);
+          }
         }
       }
     } catch (e) {
@@ -1079,9 +1240,9 @@ export function ExerciseLogger({
           <div className="mt-6">
             <RestTimer
               remainingMs={restRemainingMs}
-              totalMs={restSeconds * 1000}
-              onSkip={() => setRestEndsAt(null)}
-              onAdd={() => setRestEndsAt((t) => (t ?? Date.now()) + 15000)}
+              totalMs={restTotalSeconds * 1000}
+              onSkip={clearRest}
+              onAdd={() => adjustRest(15000)}
             />
             <div className="mt-4 flex justify-center">
               <RestPicker value={restSeconds} onChange={setRestSeconds} />
@@ -1090,6 +1251,34 @@ export function ExerciseLogger({
         )}
         {!USE_REST_OVERLAY && !restActive && (
           <div className="mt-5 flex items-center justify-center">
+            <RestPicker value={restSeconds} onChange={setRestSeconds} compact />
+          </div>
+        )}
+
+        {inRound && !restActive && (
+          <div className="mt-5 rounded-card bg-paper-card px-4 py-3 text-center shadow-card">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+              {groupedSetLabel(roundNames.length + 1)}
+            </div>
+            <div className="mt-1 text-sm text-ink">
+              Alternates with{' '}
+              <span className="font-semibold">{formatNameList(roundNames)}</span>
+            </div>
+            <div className="mt-0.5 text-xs text-muted">
+              {supersetLastOfRound
+                ? `Rest ${restLabel(restSeconds)} once the round is done.`
+                : 'Log a set and you go straight over — no rest in between.'}
+            </div>
+          </div>
+        )}
+
+        {/* With the full-screen overlay the rest pills only live inside it, so an
+            exercise set to "no rest" would have no way back. Surface them here. */}
+        {USE_REST_OVERLAY && !restActive && restSeconds === 0 && (
+          <div className="mt-5 flex flex-col items-center gap-2">
+            <div className="text-[11px] text-muted">
+              No rest timer on this one — it runs straight through.
+            </div>
             <RestPicker value={restSeconds} onChange={setRestSeconds} compact />
           </div>
         )}
@@ -1237,23 +1426,15 @@ export function ExerciseLogger({
           dayName={dayName ?? exercise.body_part ?? 'Rest'}
           sessionStartedAt={sessionStartedAt ?? null}
           remainingMs={restRemainingMs}
-          totalMs={restSeconds * 1000}
+          totalMs={restTotalSeconds * 1000}
           restSeconds={restSeconds}
           onSetRestSeconds={(s) => {
             setRestSeconds(s);
-            if (restEndsAt != null) {
-              setRestEndsAt(Date.now() + s * 1000);
-            }
+            if (restEndsAt != null) startRest(s);
           }}
-          onAdd={() => setRestEndsAt((t) => (t ?? Date.now()) + 15000)}
-          onSubtract={() =>
-            setRestEndsAt((t) => {
-              if (t == null) return t;
-              const next = t - 15000;
-              return next <= Date.now() ? null : next;
-            })
-          }
-          onSkip={() => setRestEndsAt(null)}
+          onAdd={() => adjustRest(15000)}
+          onSubtract={() => adjustRest(-15000)}
+          onSkip={clearRest}
           onMinimise={() => setRestMinimised(true)}
           nextSetName={nextSet ? displayName : null}
           nextSetWeight={nextSet?.weight ?? ''}
@@ -1267,7 +1448,7 @@ export function ExerciseLogger({
       {USE_REST_OVERLAY && restActive && restMinimised && (
         <MiniRestBar
           remainingMs={restRemainingMs}
-          totalMs={restSeconds * 1000}
+          totalMs={restTotalSeconds * 1000}
           onExpand={() => setRestMinimised(false)}
         />
       )}
@@ -2751,8 +2932,8 @@ function RestOverlay({
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
               Default rest time
             </div>
-            <div className="mt-2 flex items-center gap-2">
-              {REST_OPTIONS.map((s) => {
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              {restChoices(restSeconds).map((s) => {
                 const active = s === restSeconds;
                 return (
                   <button
@@ -2764,7 +2945,7 @@ function RestOverlay({
                         : 'border border-white/30 text-white/80 active:bg-white/10'
                     }`}
                   >
-                    {s} sec
+                    {restLabel(s)}
                   </button>
                 );
               })}
@@ -2892,6 +3073,14 @@ function WorkoutProgressBar({ value }: { value: number }) {
 
 const REST_OPTIONS = [30, 60, 90, 120, 180];
 
+function restChoices(value: number): number[] {
+  // 0 is always offered (drop sets run straight through), and a value the plan
+  // itself set — a coach's "45 seconds max rest" — has to be selectable too, or
+  // the pill row would show nothing as active.
+  const set = new Set<number>([0, ...REST_OPTIONS, value]);
+  return [...set].sort((a, b) => a - b);
+}
+
 function RestPicker({
   value,
   onChange,
@@ -2902,13 +3091,13 @@ function RestPicker({
   compact?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
       {!compact && (
         <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
           Rest
         </span>
       )}
-      {REST_OPTIONS.map((s) => {
+      {restChoices(value).map((s) => {
         const active = s === value;
         return (
           <button
@@ -2918,7 +3107,7 @@ function RestPicker({
               active ? 'bg-ink text-white' : 'bg-line text-muted active:text-ink'
             }`}
           >
-            {s}s
+            {restLabel(s)}
           </button>
         );
       })}
