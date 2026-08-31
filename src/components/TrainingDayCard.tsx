@@ -2,13 +2,18 @@ import { imageForDay } from '../lib/dayImages';
 
 interface Props {
   name: string;
-  bodyParts: string;
-  exerciseCount: number;
+  // Usually the day's body parts; the active-workout card passes its timer.
+  bodyParts: React.ReactNode;
+  // Omitted by the active-workout card, which has a timer to show instead.
+  exerciseCount?: number | null;
   accent: string;
   // Small pill after the title — "Week 2" on a rotating day, "Home" on the abs
   // reference card.
   tag?: string | null;
   isNext?: boolean;
+  // Pill above a dark card. Defaults to "Up next"; the active-workout card
+  // labels itself instead.
+  badgeLabel?: string;
   done?: boolean;
   onClick?: () => void;
   /**
@@ -26,6 +31,7 @@ export function TrainingDayCard({
   accent,
   tag,
   isNext,
+  badgeLabel = 'Up next',
   done,
   onClick,
   onStart,
@@ -36,7 +42,7 @@ export function TrainingDayCard({
 
   const badge = isNext ? (
     <span className="absolute -top-2 left-5 rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink shadow-card">
-      Up next
+      {badgeLabel}
     </span>
   ) : null;
 
@@ -97,7 +103,9 @@ export function TrainingDayCard({
           isNext ? 'text-white/65' : 'text-muted'
         }`}
       >
-        <span className="font-medium">{exerciseCount}</span>
+        {exerciseCount != null && (
+          <span className="font-medium">{exerciseCount}</span>
+        )}
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path
             d="M6 4L10 8L6 12"

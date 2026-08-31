@@ -353,6 +353,10 @@ export function Home({
         {active && (
           <ActiveWorkoutBanner
             context={active}
+            exerciseCount={
+              plan?.training_days.find((d) => d.id === active.trainingDayId)
+                ?.plan_exercises?.length ?? null
+            }
             onResume={() => {
               if (!plan || !onResumeWorkout) return;
               const day = plan.training_days.find((d) => d.id === active.trainingDayId);
@@ -517,9 +521,11 @@ function OnboardingBanner({
 
 function ActiveWorkoutBanner({
   context,
+  exerciseCount,
   onResume,
 }: {
   context: ActiveSessionContext;
+  exerciseCount: number | null;
   onResume: () => void;
 }) {
   const [, setTick] = useState(0);
@@ -534,43 +540,27 @@ function ActiveWorkoutBanner({
   );
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
-  const label = `${String(Math.floor(mins / 60)).padStart(0, '0')}${
-    mins >= 60 ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}` : String(mins)
-  }:${String(secs).padStart(2, '0')}`;
-  // Simpler: hours only when needed
+  // Hours only when needed.
   const displayLabel =
     mins >= 60
       ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
       : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  void label;
 
+  // The same card as the rest of Home, in its dark variant — so a workout in
+  // progress reads as the day it belongs to, photo and all, with the elapsed
+  // time where the body parts normally sit.
   return (
-    <button
-      onClick={onResume}
-      className="mt-4 flex w-full items-center gap-4 rounded-card bg-[#1F1F1F] px-5 py-4 text-left text-white shadow-card active:opacity-80"
-    >
-      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
-        <span className="text-xl font-bold text-white">{context.trainingDayName[0]}</span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
-          Workout in progress
-        </div>
-        <div className="mt-0.5 text-xl font-bold tracking-tight">
-          {context.trainingDayName} ·{' '}
-          <span className="font-mono tabular-nums">{displayLabel}</span>
-        </div>
-      </div>
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <path
-          d="M7 4l5 5-5 5"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </button>
+    <div className="mt-4">
+      <TrainingDayCard
+        name={context.trainingDayName}
+        bodyParts={<span className="font-mono tabular-nums">{displayLabel}</span>}
+        exerciseCount={exerciseCount}
+        accent={accentFor(context.trainingDayName)}
+        isNext
+        badgeLabel="Workout in progress"
+        onClick={onResume}
+      />
+    </div>
   );
 }
 
