@@ -7,7 +7,8 @@ import {
   type WeeklyAlternative,
 } from '../lib/parseTrainingPlan';
 import { parseSetMods } from '../lib/parseSetMods';
-import { getActivePlan, savePlan } from '../lib/plansApi';
+import { savePlan } from '../lib/plansApi';
+import { listMachines } from '../lib/machinesApi';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
 import { restLabel, restSecondsForExercises } from '../lib/restDefaults';
 import { formatNameList, groupedSetLabel } from '../lib/supersets';
@@ -38,7 +39,13 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return union === 0 ? 0 : inter / union;
 }
 
-type PreviousExercise = { name: string; normalizedName: string };
+type PreviousExercise = {
+  name: string;
+  normalizedName: string;
+  // How many sets you've logged on it, used to break ties between equally
+  // similar candidates — the machine you actually train is the likelier match.
+  setCount: number;
+};
 type MatchKind = 'exact' | 'fuzzy' | 'none';
 type Match = {
   kind: MatchKind;
@@ -59,7 +66,13 @@ function computeMatch(
   let best: { p: PreviousExercise; score: number } | null = null;
   for (const p of previous) {
     const score = jaccard(newTokens, tokenize(p.name));
-    if (!best || score > best.score) best = { p, score };
+    if (!best || score > best.score) {
+      best = { p, score };
+    } else if (score === best.score && p.setCount > best.p.setCount) {
+      // Matching against your whole history means near-ties are more common
+      // than they were against a single plan; prefer the better-used machine.
+      best = { p, score };
+    }
   }
   if (best && best.score >= FUZZY_THRESHOLD) {
     return { kind: 'fuzzy', candidate: best.p, decision: 'pending' };
@@ -109,22 +122,33 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [previousExercises, setPreviousExercises] = useState<PreviousExercise[]>([]);
   const [matches, setMatches] = useState<Map<string, Match>>(new Map());
-  // Keys of carried-over machines the user chose to KEEP history for. Default is a
-  // fresh start (reset to zero) for every match, so anything not in here resets.
+  // Keys of carried-over machines whose history is KEPT. Default is to keep every
+  // match: a new block is usually the same machines with a different set and rep
+  // prescription, and walking up to a familiar machine with a blank weight field
+  // is friction. Nothing is deleted either way — a reset only cuts off the "last
+  // time" prefill, so untick anything you'd rather restart from zero.
   const [keepHistory, setKeepHistory] = useState<Set<string>>(new Set());
 
+  // Candidates are every machine you have actually logged sets on, across all
+  // plans — not just the plan that happens to be active. The "last time" prefill
+  // has always looked at your whole history, so matching only the active plan
+  // made the two disagree: a machine in the current plan was reset by default,
+  // while one from an older plan silently kept its weights and was never asked
+  // about. Machines with no logged sets are left out — there's nothing to carry.
   useEffect(() => {
     let cancelled = false;
-    getActivePlan()
-      .then((plan) => {
-        if (cancelled || !plan) return;
-        const list: PreviousExercise[] = [];
-        for (const d of plan.training_days ?? []) {
-          for (const ex of d.plan_exercises ?? []) {
-            list.push({ name: ex.name, normalizedName: ex.normalized_name });
-          }
-        }
-        setPreviousExercises(list);
+    listMachines()
+      .then((machines) => {
+        if (cancelled) return;
+        setPreviousExercises(
+          machines
+            .filter((m) => m.setCount > 0)
+            .map((m) => ({
+              name: m.displayName,
+              normalizedName: m.normalizedName,
+              setCount: m.setCount,
+            }))
+        );
       })
       .catch(() => {
         // Non-fatal — the matcher just won't surface candidates.
@@ -146,8 +170,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       });
     });
     setMatches(next);
-    // New parse → default every carried-over machine back to a fresh start.
-    setKeepHistory(new Set());
+    // New parse → carry history over on every machine that matched.
+    const carriers: string[] = [];
+    for (const [key, m] of next) {
+      if (carriesHistory(m)) carriers.push(key);
+    }
+    setKeepHistory(new Set(carriers));
   }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
@@ -175,8 +203,8 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     setSaving(true);
     setError(null);
     try {
-      // Default is a fresh start: reset every carried-over machine except the ones
-      // the user explicitly chose to keep.
+      // Default is to carry history over: reset only the machines the user
+      // explicitly unticked.
       const historyResetKeys = new Set(
         historyCarrierKeys.filter((k) => !keepHistory.has(k))
       );
@@ -258,6 +286,13 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     setMatches((prev) => {
       const next = new Map(prev);
       next.set(key, { ...match, decision: 'same' });
+      return next;
+    });
+    // It's a carried-over machine now, so it takes the same default as the rest.
+    setKeepHistory((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
       return next;
     });
   }
@@ -432,12 +467,16 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                 </div>
                 <div className="mt-1 text-sm text-ink">
                   <span className="font-semibold">{historyCarrierKeys.length}</span>{' '}
-                  {historyCarrierKeys.length === 1 ? 'machine matches' : 'machines match'}{' '}
-                  your last plan. New plans <span className="font-semibold">start fresh at zero</span> by
-                  default — tick “Keep history” on any you want to carry over.
+                  {historyCarrierKeys.length === 1
+                    ? "machine matches one you've"
+                    : "machines match ones you've"}{' '}
+                  trained before. Your weights{' '}
+                  <span className="font-semibold">carry over</span> by default — untick
+                  “Keep history” on any you'd rather restart at zero.
                 </div>
                 <div className="mt-2 text-xs text-muted">
-                  Keeping {keptCount} · resetting {resetCount}
+                  Keeping {keptCount} · resetting {resetCount}. Nothing is deleted either
+                  way — a reset only clears the weights the logger pre-fills.
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button
@@ -744,7 +783,7 @@ function ExerciseReviewRow({
               <span className="text-xs text-ink/80">
                 <span className="font-semibold text-ink">Keep history</span> from{' '}
                 <span className="font-semibold text-ink">
-                  {match.candidate?.name ?? 'your previous plan'}
+                  {match.candidate?.name ?? "a machine you've used before"}
                 </span>
                 <span className="mt-0.5 block text-muted">
                   {keepHistory
@@ -759,7 +798,7 @@ function ExerciseReviewRow({
               <div className="text-xs text-ink/80">
                 Looks similar to{' '}
                 <span className="font-semibold text-ink">{match.candidate?.name}</span>{' '}
-                from your last plan. Same machine?
+                from your history. Same machine?
               </div>
               <div className="mt-2 flex gap-2">
                 <button

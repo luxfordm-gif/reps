@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-01',
+    emoji: '🔁',
+    title: "What's new",
+    bullets: [
+      'Uploading a new plan now keeps your weights on machines you have trained before, instead of resetting them to zero — untick "Keep history" on the review screen for anything you would rather restart',
+      'Machines are matched against everything you have ever logged, not just your current plan, so a machine from an older plan is recognised too',
+      'The review screen spells out that nothing is deleted either way — a reset only clears the weights the logger pre-fills',
+    ],
+  },
+  {
     version: '2026-08-31',
     emoji: '⏱️',
     title: "What's new",
