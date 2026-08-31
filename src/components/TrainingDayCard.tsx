@@ -1,3 +1,5 @@
+import { imageForDay } from '../lib/dayImages';
+
 interface Props {
   name: string;
   bodyParts: string;
@@ -38,21 +40,37 @@ export function TrainingDayCard({
     </span>
   ) : null;
 
+  // Days with a photo show it in the square tile; the rest keep the accent
+  // square with the day's initial. Completed days dim the photo behind the tick.
+  const image = imageForDay(name);
+  const tile = image ? (
+    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl">
+      <img src={image} alt="" aria-hidden className="h-full w-full object-cover" />
+      {done && (
+        <span className="absolute inset-0 flex items-center justify-center bg-black/55">
+          <DoneCheck inverted />
+        </span>
+      )}
+    </div>
+  ) : (
+    <div
+      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${
+        isNext ? 'bg-white/15' : accent
+      }`}
+    >
+      {done ? (
+        <DoneCheck inverted={!!isNext} />
+      ) : (
+        <span className={`text-xl font-bold ${isNext ? 'text-white' : 'text-ink'}`}>
+          {name[0]}
+        </span>
+      )}
+    </div>
+  );
+
   const row = (
     <>
-      <div
-        className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${
-          isNext ? 'bg-white/15' : accent
-        }`}
-      >
-        {done ? (
-          <DoneCheck inverted={!!isNext} />
-        ) : (
-          <span className={`text-xl font-bold ${isNext ? 'text-white' : 'text-ink'}`}>
-            {name[0]}
-          </span>
-        )}
-      </div>
+      {tile}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-xl font-bold tracking-tight">{name}</span>
