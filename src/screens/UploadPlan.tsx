@@ -7,7 +7,7 @@ import {
   type WeeklyAlternative,
 } from '../lib/parseTrainingPlan';
 import { parseSetMods } from '../lib/parseSetMods';
-import { savePlan } from '../lib/plansApi';
+import { rotationWeeks, savePlan } from '../lib/plansApi';
 import { listMachines } from '../lib/machinesApi';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
 import { restLabel, restSecondsForExercises } from '../lib/restDefaults';
@@ -337,6 +337,10 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const totalExercises =
     parsed?.days.reduce((sum, d) => sum + d.exercises.length, 0) ?? 0;
 
+  // A rotating plan runs one set of days one week and another the next, so the
+  // review screen labels which is which.
+  const rotates = useMemo(() => rotationWeeks(parsed ?? { days: [], warnings: [], unparsedLines: [] }).length > 1, [parsed]);
+
   const weeklyAltCount = useMemo(() => {
     if (!parsed) return 0;
     let n = 0;
@@ -503,6 +507,8 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                   <div className="border-b border-line/60 px-5 py-3">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
                       Day {day.position + 1}
+                      {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
+                      {day.weekIndex == null && rotates && ' · Every week'}
                     </div>
                     <div className="mt-0.5 text-base font-semibold text-ink">
                       {day.name}
@@ -756,6 +762,18 @@ function ExerciseReviewRow({
           {restSeconds != null && <div>{restLabel(restSeconds)} rest</div>}
         </div>
       </div>
+
+      {(exercise.supersetPartnerNames ?? []).length === 0 &&
+        (exercise.supersetWith ?? []).length > 0 && (
+          <div className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs text-ink/80">
+            The notes superset this with{' '}
+            <span className="font-semibold text-ink">
+              {formatNameList(exercise.supersetWith ?? [])}
+            </span>
+            , which isn't a row in this day — so it stays as a coach note rather
+            than a tracked pairing.
+          </div>
+        )}
 
       {(exercise.supersetPartnerNames ?? []).length > 0 && (
         <div className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs text-ink/80">

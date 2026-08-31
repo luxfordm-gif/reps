@@ -3,6 +3,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { reorderPlanExercises, type FullPlan, type PlanExerciseRow } from '../lib/plansApi';
 import { hapticBuzz } from '../lib/haptics';
+import { baseDayName } from '../lib/daySlots';
 import {
   formatNameList,
   groupedSetLabel,
@@ -23,6 +24,12 @@ type TrainingDay = FullPlan['training_days'][number];
 
 interface Props {
   day: TrainingDay;
+  /**
+   * The other week's version of this day type, when the plan rotates. Its
+   * presence turns on the week line under the header with a switch to it.
+   */
+  siblingDay?: TrainingDay | null;
+  onSwitchToSibling?: () => void;
   onBack: () => void;
   onTapExercise?: (exercise: PlanExerciseRow, existingSessionId?: string) => void;
   /**
@@ -67,7 +74,17 @@ function estimatedMinutes(setsCount: number): number {
   return Math.max(15, Math.round(m / 5) * 5);
 }
 
-export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
+export function DayView({
+  day,
+  siblingDay,
+  onSwitchToSibling,
+  onBack,
+  onTapExercise,
+  onDayUpdate,
+}: Props) {
+  // A workout listed for reference — done at home, in your own time, with no
+  // session to start and no sets to log.
+  const referenceOnly = day.reference_only === true;
   // Memoised so the effects below key off the day's exercises, not a fresh
   // empty array on every render.
   const exercises = useMemo(() => day.plan_exercises ?? [], [day.plan_exercises]);
@@ -260,9 +277,15 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
   return (
     <div className="min-h-screen bg-paper pb-28">
       <div className="mx-auto max-w-md px-5 pt-3">
-        <PageHeader title={day.name} onBack={onBack} />
+        <PageHeader title={baseDayName(day.name)} onBack={onBack} />
 
         <div className="mt-3 flex items-center gap-3 text-sm text-muted">
+          {day.week_index != null && !siblingDay && (
+            <>
+              <span>Week {day.week_index}</span>
+              <span className="h-1 w-1 rounded-full bg-muted/50" />
+            </>
+          )}
           <span>{exercises.length} exercises</span>
           <span className="h-1 w-1 rounded-full bg-muted/50" />
           <span>{totalSets} working sets</span>
@@ -270,7 +293,33 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
           <span>~{estimatedMinutes(totalSets)} min</span>
         </div>
 
-        {missingWarmth > 0 && reachable && (
+        {siblingDay && day.week_index != null && onSwitchToSibling && (
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+              Rotation
+            </span>
+            <div className="flex rounded-pill bg-line/60 p-0.5">
+              {[day, siblingDay]
+                .sort((a, b) => (a.week_index ?? 0) - (b.week_index ?? 0))
+                .map((variant) => {
+                  const active = variant.id === day.id;
+                  return (
+                    <button
+                      key={variant.id}
+                      onClick={active ? undefined : onSwitchToSibling}
+                      className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 active:scale-[0.97] ${
+                        active ? 'bg-ink text-white shadow-card' : 'text-muted'
+                      }`}
+                    >
+                      Week {variant.week_index}
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
+        {missingWarmth > 0 && reachable && !referenceOnly && (
           <button
             onClick={handleWarmNow}
             disabled={warming}
@@ -287,6 +336,18 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
           </button>
         )}
 
+        {referenceOnly && (
+          <div className="mt-6 rounded-card bg-paper-card px-5 py-4 text-center shadow-card">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+              Reference
+            </div>
+            <div className="mt-1 text-sm text-ink">
+              Do this one at home in your own time — it isn't tracked set by set.
+            </div>
+          </div>
+        )}
+
+        {!referenceOnly && (
         <button
           className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
           disabled={loadingSession}
@@ -303,6 +364,7 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
         >
           {loadingSession ? 'Loading…' : inProgress ? 'Continue workout' : 'Start workout'}
         </button>
+        )}
         {inProgress && (
           <div className="mt-2 flex items-center justify-center gap-2 text-xs text-muted">
             <span>{inProgress.setsLogged} sets logged so far</span>
@@ -321,7 +383,7 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
             const isOpen = expanded.has(group.bodyPart);
             const groupKey = group.exercises[0]?.id ?? group.bodyPart;
             const isEditing = editingKey === groupKey;
-            const canReorder = group.exercises.length > 1;
+            const canReorder = group.exercises.length > 1 && !referenceOnly;
             return (
               <div key={groupKey} className="overflow-hidden rounded-card bg-paper-card shadow-card">
                 <div className="flex w-full items-center justify-between px-5 py-4">
@@ -406,8 +468,12 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
                         key={ex.id}
                         exercise={ex}
                         partnerNames={supersetPartnerNames(ex, exercises)}
+                        readOnly={referenceOnly}
                         isLast={i === group.exercises.length - 1}
-                        onTap={() => onTapExercise?.(ex)}
+                        onTap={() => {
+                          if (referenceOnly) return;
+                          onTapExercise?.(ex);
+                        }}
                       />
                     ))}
                   </div>
@@ -435,12 +501,15 @@ function ExerciseRow({
   partnerNames,
   isLast,
   onTap,
+  readOnly,
 }: {
   exercise: PlanExerciseRow;
   // The rest of this exercise's superset / tri-set / giant set, if it's in one.
   partnerNames: string[];
   isLast: boolean;
   onTap: () => void;
+  // Reference days have nothing to open, so the row loses its chevron.
+  readOnly?: boolean;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const hasNotes = !!exercise.notes && exercise.notes.trim().length > 0;
@@ -487,9 +556,11 @@ function ExerciseRow({
             </div>
           )}
         </div>
-        <button onClick={onTap} className="mt-0.5 text-muted" aria-label="Open exercise">
-          <ChevronSmall />
-        </button>
+        {!readOnly && (
+          <button onClick={onTap} className="mt-0.5 text-muted" aria-label="Open exercise">
+            <ChevronSmall />
+          </button>
+        )}
       </div>
 
       {hasNotes && (

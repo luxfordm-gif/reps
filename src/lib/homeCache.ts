@@ -5,6 +5,7 @@ import {
   getRecentSessionPositions,
   getThisWeekSummary,
   getCompletedDayNamesThisWeek,
+  getLastCompletedAtByTrainingDay,
   type ActiveSessionContext,
   type WeekSummary,
 } from './sessionsApi';
@@ -20,6 +21,10 @@ export interface HomeData {
   weekSummary: WeekSummary;
   completedThisWeek: string[];
   recentPositions: number[];
+  // Latest completion per training-day id, for the per-day week rotation. A
+  // plain object rather than a Map so it survives the JSON round trip to disk;
+  // optional so copies persisted before it existed still load.
+  lastCompletedByDay?: Record<string, string>;
 }
 
 const PERSISTED_KEY = 'home';
@@ -64,16 +69,18 @@ export async function loadHomeData(): Promise<HomeData> {
   inflight = (async () => {
     try {
       const p = await getActivePlan();
+      const allDayIds = (p?.training_days ?? []).map((d) => d.id);
       const mainDayIds = (p?.training_days ?? [])
         .filter((d) => d.name !== 'Abs')
         .map((d) => d.id);
-      const [lc, w, a, ws, dn, rp] = await Promise.all([
+      const [lc, w, a, ws, dn, rp, lcbd] = await Promise.all([
         getLastCompletedTrainingDayName(p?.activated_at ?? null),
         getTodayWaterCount(),
         getAnyActiveSession(),
         getThisWeekSummary(),
         getCompletedDayNamesThisWeek(),
         getRecentSessionPositions(mainDayIds, 6),
+        getLastCompletedAtByTrainingDay(allDayIds),
       ]);
       const data: HomeData = {
         plan: p,
@@ -83,6 +90,7 @@ export async function loadHomeData(): Promise<HomeData> {
         weekSummary: ws,
         completedThisWeek: dn,
         recentPositions: rp,
+        lastCompletedByDay: lcbd,
       };
       cached = data;
       writeCache(currentUserIdSync(), PERSISTED_KEY, data);

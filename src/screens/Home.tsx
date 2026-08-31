@@ -3,6 +3,13 @@ import { TrainingDayCard } from '../components/TrainingDayCard';
 import { WeeklyProgress } from '../components/WeeklyProgress';
 import { weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import {
+  baseDayName,
+  buildDaySlots,
+  dueVariant,
+  siblingVariant,
+  type DaySlot,
+} from '../lib/daySlots';
+import {
   type ActiveSessionContext,
   type WeekSummary,
 } from '../lib/sessionsApi';
@@ -19,7 +26,12 @@ type Day = FullPlan['training_days'][number];
 interface Props {
   onUploadPlan: () => void;
   onLogBodyWeight: () => void;
-  onTapDay: (day: Day) => void;
+  // Opens a training day. `sibling` is the other week's version of the same day
+  // type, when the plan rotates — DayView offers a switch to it.
+  onTapDay: (day: Day, sibling?: Day | null) => void;
+  // Starts the day's workout directly on its first exercise (the hero card's
+  // Start pill), skipping the overview.
+  onStartDay?: (day: Day, sibling?: Day | null) => void;
   profile?: Profile | null;
   onResumeOnboarding?: () => void;
   onResumeWorkout?: (params: {
@@ -42,6 +54,13 @@ const ACCENTS: Record<string, string> = {
 };
 
 const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
+
+/** Accent for a day, ignoring any rotation number: "Legs 2" reads as Legs. */
+function accentFor(dayName: string): string {
+  return (
+    ACCENTS[dayName] ?? ACCENTS[dayName.replace(/\s+\d+$/, '')] ?? FALLBACK_ACCENT
+  );
+}
 const FIRST_NAME = 'Matt';
 
 function bodyPartsForDay(exercises: { body_part: string | null }[]): string {
@@ -101,6 +120,7 @@ export function Home({
   onUploadPlan,
   onLogBodyWeight,
   onTapDay,
+  onStartDay,
   onResumeWorkout,
   profile,
   onResumeOnboarding,
@@ -150,6 +170,10 @@ export function Home({
   const [recentPositions, setRecentPositions] = useState<number[]>(
     initial?.recentPositions ?? []
   );
+  const [lastCompletedByDay, setLastCompletedByDay] = useState<Record<string, string>>(
+    initial?.lastCompletedByDay ?? {}
+  );
+
 
   useEffect(() => {
     let mounted = true;
@@ -166,6 +190,7 @@ export function Home({
         setWeekSummary(data.weekSummary);
         setCompletedThisWeek(data.completedThisWeek);
         setRecentPositions(data.recentPositions);
+        setLastCompletedByDay(data.lastCompletedByDay ?? {});
         // Home is the screen that gets opened on wifi. Pull every exercise's
         // last weights onto the phone now, so a workout started in a basement
         // gym still pre-fills.
@@ -259,19 +284,57 @@ export function Home({
     );
   }
 
-  const days = plan.training_days ?? [];
-  const mainDays = days.filter((d) => d.name !== 'Abs');
-  const absDay = days.find((d) => d.name === 'Abs');
-  const nextDayName = getNextDayName(mainDays, lastCompleted, completedThisWeek);
-  const nextDay = nextDayName ? mainDays.find((d) => d.name === nextDayName) : undefined;
-  const showNextDay = shouldShowUpNext(recentPositions, mainDays.length);
-  // List order: each main day in plan order, with Abs inserted after Pull and after Arms.
-  const listDays: { day: Day; slot: 'main' | 'abs' }[] = [];
-  for (const d of mainDays) {
-    listDays.push({ day: d, slot: 'main' });
-    if (absDay && (d.name === 'Pull' || d.name === 'Arms')) {
-      listDays.push({ day: absDay, slot: 'abs' });
+  // One card per day type. A rotating plan's "Legs 1" and "Legs 2" fold into a
+  // single Legs slot whose card opens whichever version was completed longest
+  // ago — each day alternates on its own, like a weekly exercise alternative.
+  // Plans without a rotation come out as one slot per day, unchanged.
+  const completedByDay = new Map(Object.entries(lastCompletedByDay));
+  const slots = buildDaySlots(plan.training_days ?? []);
+  const dueBySlot = new Map(slots.map((s) => [s.name, dueVariant(s, completedByDay)]));
+  const mainSlots = slots.filter(
+    (s) => s.name !== 'Abs' && !s.variants.every((v) => v.reference_only === true)
+  );
+  // Completed-this-week names are variant names ("Legs 1"); the cards and the
+  // up-next cycle work in day types, so fold them down.
+  const completedSlotNames = completedThisWeek.map(baseDayName);
+  const nextSlotName = getNextDayName(mainSlots, lastCompleted ? baseDayName(lastCompleted) : null, completedSlotNames);
+  const nextSlot = nextSlotName ? mainSlots.find((s) => s.name === nextSlotName) : undefined;
+  const nextDay = nextSlot ? dueBySlot.get(nextSlot.name) : undefined;
+  // Recent-session positions are the variant days' plan positions (0–7 on a
+  // two-week plan); the in-order check runs over the four slots, so translate.
+  // Doing Legs 1 → Push 1 → … → Legs 2 is plan order, not jumping around.
+  const slotIndexByDayPosition = new Map<number, number>();
+  mainSlots.forEach((slot, i) => {
+    for (const v of slot.variants) slotIndexByDayPosition.set(v.position, i);
+  });
+  const recentSlotPositions = recentPositions
+    .map((p) => slotIndexByDayPosition.get(p))
+    .filter((i): i is number => i != null);
+  const showNextDay = shouldShowUpNext(recentSlotPositions, mainSlots.length);
+
+  function openSlot(slot: DaySlot) {
+    const due = dueBySlot.get(slot.name);
+    if (due) onTapDay(due, siblingVariant(slot, due));
+  }
+
+  function isReferenceSlot(slot: DaySlot): boolean {
+    return slot.variants.every((v) => v.reference_only === true);
+  }
+
+  function slotSubtitle(slot: DaySlot): string {
+    const due = dueBySlot.get(slot.name);
+    const parts = bodyPartsForDay(due?.plan_exercises ?? []);
+    return isReferenceSlot(slot) ? `${parts} · in your own time` : parts;
+  }
+
+  /** The card's pill: which week's version is due, or Home for the abs card. */
+  function slotTag(slot: DaySlot): string | null {
+    if (isReferenceSlot(slot)) return 'Home';
+    const due = dueBySlot.get(slot.name);
+    if (slot.variants.length > 1 && due?.week_index != null) {
+      return `Week ${due.week_index}`;
     }
+    return null;
   }
 
   return (
@@ -327,24 +390,30 @@ export function Home({
         <div className="mt-6">
           <WeeklyProgress
             workoutsDone={weekSummary.workoutsDone}
-            workoutsTarget={days.length}
+            workoutsTarget={mainSlots.length}
             bars={weekSummary.bars}
             dayDetails={weekSummary.dayDetails}
             planWeek={plan ? weeksOnPlan(plan.activated_at) : null}
           />
         </div>
 
-        {nextDay && !active && showNextDay && (
+        {nextSlot && nextDay && !active && showNextDay && (
           <div className="mt-7">
             <SectionLabel>Today's workout</SectionLabel>
             <div className="mt-3">
               <TrainingDayCard
-                name={nextDay.name}
-                bodyParts={bodyPartsForDay(nextDay.plan_exercises ?? [])}
+                name={nextSlot.name}
+                bodyParts={slotSubtitle(nextSlot)}
                 exerciseCount={(nextDay.plan_exercises ?? []).length}
-                accent={ACCENTS[nextDay.name] ?? FALLBACK_ACCENT}
+                accent={accentFor(nextSlot.name)}
+                tag={slotTag(nextSlot)}
                 isNext
-                onClick={() => onTapDay(nextDay)}
+                onClick={() => openSlot(nextSlot)}
+                onStart={
+                  onStartDay
+                    ? () => onStartDay(nextDay, siblingVariant(nextSlot, nextDay))
+                    : undefined
+                }
               />
             </div>
           </div>
@@ -378,15 +447,16 @@ export function Home({
         <div className="mt-7">
           <SectionLabel>All workouts</SectionLabel>
           <div className="mt-3 space-y-3">
-            {listDays.map(({ day }, i) => (
+            {slots.map((slot) => (
               <TrainingDayCard
-                key={`${day.id}-${i}`}
-                name={day.name}
-                bodyParts={bodyPartsForDay(day.plan_exercises ?? [])}
-                exerciseCount={(day.plan_exercises ?? []).length}
-                accent={ACCENTS[day.name] ?? FALLBACK_ACCENT}
-                done={completedThisWeek.includes(day.name)}
-                onClick={() => onTapDay(day)}
+                key={slot.name}
+                name={slot.name}
+                bodyParts={slotSubtitle(slot)}
+                exerciseCount={(dueBySlot.get(slot.name)?.plan_exercises ?? []).length}
+                accent={accentFor(slot.name)}
+                tag={slotTag(slot)}
+                done={completedSlotNames.includes(slot.name)}
+                onClick={() => openSlot(slot)}
               />
             ))}
           </div>

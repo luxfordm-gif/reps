@@ -55,7 +55,7 @@ export function WeeklyProgress({
         </div>
         {planWeek != null && (
           <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
-            Week {planWeek}
+            Plan week {planWeek}
           </div>
         )}
       </div>

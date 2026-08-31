@@ -22,6 +22,10 @@ export interface TrainingDayRow {
   plan_id: string;
   name: string;
   position: number;
+  // Which week of a rotating plan this day belongs to; null runs every week.
+  week_index: number | null;
+  // Listed for reference rather than logged — a workout done at home.
+  reference_only: boolean;
 }
 
 export interface PlanExerciseRow {
@@ -290,6 +294,8 @@ export async function savePlan(
         user_id: userId,
         name: day.name,
         position: day.position,
+        week_index: day.weekIndex ?? null,
+        reference_only: day.referenceOnly,
       })
       .select()
       .single();
@@ -509,4 +515,13 @@ export function weeksOnPlan(activatedAt: string | null): number {
   const ms = Date.now() - new Date(activatedAt).getTime();
   if (ms < 0) return 1;
   return Math.floor(ms / (7 * 24 * 60 * 60 * 1000)) + 1;
+}
+
+/** The distinct rotation weeks a parsed plan uses, ascending. Empty if it doesn't rotate. */
+export function rotationWeeks(parsed: ParsedPlan): number[] {
+  const weeks = new Set<number>();
+  for (const day of parsed.days) {
+    if (day.weekIndex != null) weeks.add(day.weekIndex);
+  }
+  return [...weeks].sort((a, b) => a - b);
 }

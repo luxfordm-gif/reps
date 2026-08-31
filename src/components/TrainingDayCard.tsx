@@ -3,9 +3,18 @@ interface Props {
   bodyParts: string;
   exerciseCount: number;
   accent: string;
+  // Small pill after the title — "Week 2" on a rotating day, "Home" on the abs
+  // reference card.
+  tag?: string | null;
   isNext?: boolean;
   done?: boolean;
   onClick?: () => void;
+  /**
+   * Start the workout directly, skipping the day overview. Renders a Start
+   * pill under the content row — only the Home hero passes this. Buttons can't
+   * nest, so its presence turns the card root into a div.
+   */
+  onStart?: () => void;
 }
 
 export function TrainingDayCard({
@@ -13,24 +22,24 @@ export function TrainingDayCard({
   bodyParts,
   exerciseCount,
   accent,
+  tag,
   isNext,
   done,
   onClick,
+  onStart,
 }: Props) {
-  return (
-    <button
-      onClick={onClick}
-      className={`group relative flex w-full items-center gap-4 rounded-card p-5 text-left transition-transform active:scale-[0.99] ${
-        isNext
-          ? 'bg-ink text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]'
-          : 'bg-paper-card text-ink shadow-card'
-      } ${done && !isNext ? 'opacity-70' : ''}`}
-    >
-      {isNext && (
-        <span className="absolute -top-2 left-5 rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink shadow-card">
-          Up next
-        </span>
-      )}
+  const surface = isNext
+    ? 'bg-ink text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]'
+    : 'bg-paper-card text-ink shadow-card';
+
+  const badge = isNext ? (
+    <span className="absolute -top-2 left-5 rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink shadow-card">
+      Up next
+    </span>
+  ) : null;
+
+  const row = (
+    <>
       <div
         className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${
           isNext ? 'bg-white/15' : accent
@@ -45,7 +54,18 @@ export function TrainingDayCard({
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-xl font-bold tracking-tight">{name}</div>
+        <div className="flex items-center gap-2">
+          <span className="text-xl font-bold tracking-tight">{name}</span>
+          {tag && (
+            <span
+              className={`rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                isNext ? 'bg-white/15 text-white/90' : 'bg-line text-muted'
+              }`}
+            >
+              {tag}
+            </span>
+          )}
+        </div>
         <div
           className={`mt-0.5 truncate text-sm ${
             isNext ? 'text-white/65' : 'text-muted'
@@ -70,6 +90,42 @@ export function TrainingDayCard({
           />
         </svg>
       </div>
+    </>
+  );
+
+  // Buttons can't nest, so a card with a Start pill hosts two separate ones:
+  // the row (overview) and the pill (straight into the first exercise).
+  if (onStart) {
+    return (
+      <div className={`relative rounded-card p-5 ${surface}`}>
+        {badge}
+        <button
+          onClick={onClick}
+          className="group flex w-full items-center gap-4 text-left transition-transform duration-150 active:scale-[0.99]"
+        >
+          {row}
+        </button>
+        <button
+          onClick={onStart}
+          className={`mt-4 w-full rounded-pill py-3 text-sm font-semibold transition-transform duration-150 active:scale-[0.97] ${
+            isNext ? 'bg-white text-ink' : 'bg-ink text-white'
+          }`}
+        >
+          Start workout
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      className={`group relative flex w-full items-center gap-4 rounded-card p-5 text-left transition-transform active:scale-[0.99] ${surface} ${
+        done && !isNext ? 'opacity-70' : ''
+      }`}
+    >
+      {badge}
+      {row}
     </button>
   );
 }

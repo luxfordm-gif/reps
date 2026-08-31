@@ -894,6 +894,9 @@ export function ExerciseLogger({
   const roundNames = supersetPartnerNames ?? [];
   const inRound = supersetNext != null && roundNames.length > 0;
 
+  const weightless = isWeightless(exercise);
+  const timed = isTimed(exercise);
+
   const targetSets = exercise.total_sets ?? sets.length;
   const allDone = sets.length > 0 && sets.every((s) => s.completed);
 
@@ -1019,15 +1022,27 @@ export function ExerciseLogger({
     const set = sets[idx];
     const weightStr = set.weight.trim();
     const repsStr = set.reps.trim();
-    const weightNum = weightStr === '' ? NaN : parseFloat(weightStr);
+    // Weightless exercises have no weight field at all, so they log as 0.
+    const weightNum = weightless ? 0 : weightStr === '' ? NaN : parseFloat(weightStr);
     const repsNum = repsStr === '' ? NaN : parseInt(repsStr, 10);
-    if (weightStr === '' || repsStr === '' || Number.isNaN(weightNum) || Number.isNaN(repsNum)) {
+    if (repsStr === '' || Number.isNaN(repsNum)) {
+      setError(timed ? 'Enter how long you held it, in seconds' : 'Enter your reps');
+      triggerShake(idx);
+      return;
+    }
+    if (!weightless && (weightStr === '' || Number.isNaN(weightNum))) {
       setError(`Enter both weight and reps (use 0 ${unit} for body weight)`);
       triggerShake(idx);
       return;
     }
-    if (repsNum > 100) {
-      setError('Reps capped at 100 — check the number');
+    // A timed hold is counted in seconds, which run well past a rep count.
+    const cap = timed ? 3600 : 100;
+    if (repsNum > cap) {
+      setError(
+        timed
+          ? 'Held for over an hour? Check the number'
+          : 'Reps capped at 100 — check the number'
+      );
       triggerShake(idx);
       return;
     }
@@ -1225,6 +1240,8 @@ export function ExerciseLogger({
                 shakeIdx={shakeIdx}
                 unit={unit}
                 unitIsOverride={unitIsOverride}
+                weightless={weightless}
+                timed={timed}
                 onChange={update}
                 onComplete={handleComplete}
                 onEdit={handleEdit}
@@ -2540,6 +2557,8 @@ function SetGroup({
   shakeIdx,
   unit,
   unitIsOverride,
+  weightless,
+  timed,
   onChange,
   onComplete,
   onEdit,
@@ -2553,6 +2572,10 @@ function SetGroup({
   // Emphasises the in-field unit suffix when this machine isn't logging in the
   // user's default unit.
   unitIsOverride: boolean;
+  // Bodyweight work: no weight field, and no barbell calculator to open.
+  weightless: boolean;
+  // Counted in seconds rather than reps.
+  timed: boolean;
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
@@ -2596,41 +2619,46 @@ function SetGroup({
               <div className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
                 {isMain ? `Set ${setIndex}` : 'Drop'}
               </div>
-            <div className="relative min-w-[76px] max-w-[112px] flex-1">
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.5"
-                value={row.weight}
-                disabled={row.completed}
-                onChange={(e) => onChange(idx, { weight: e.target.value })}
-                onFocus={(e) => {
-                  if (row.weight === row.weightSuggested && row.weightSuggested !== '') {
-                    onChange(idx, { weight: '' });
-                  }
-                  e.target.select();
-                }}
-                aria-label={`Weight in ${unit}`}
-                className={`no-spinner w-full rounded-xl border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
-                  row.weight === row.weightSuggested && row.weightSuggested !== ''
-                    ? 'text-ink/40'
-                    : 'text-ink'
-                }`}
-              />
-              <span
-                aria-hidden
-                className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
-                  unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
-                }`}
-              >
-                {unitSuffix(unit)}
-              </span>
-            </div>
-            <span className="shrink-0 text-xs text-muted">×</span>
+            {!weightless && (
+              <>
+                <div className="relative min-w-[76px] max-w-[112px] flex-1">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.5"
+                    value={row.weight}
+                    disabled={row.completed}
+                    onChange={(e) => onChange(idx, { weight: e.target.value })}
+                    onFocus={(e) => {
+                      if (row.weight === row.weightSuggested && row.weightSuggested !== '') {
+                        onChange(idx, { weight: '' });
+                      }
+                      e.target.select();
+                    }}
+                    aria-label={`Weight in ${unit}`}
+                    className={`no-spinner w-full rounded-xl border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+                      row.weight === row.weightSuggested && row.weightSuggested !== ''
+                        ? 'text-ink/40'
+                        : 'text-ink'
+                    }`}
+                  />
+                  <span
+                    aria-hidden
+                    className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
+                      unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
+                    }`}
+                  >
+                    {unitSuffix(unit)}
+                  </span>
+                </div>
+                <span className="shrink-0 text-xs text-muted">×</span>
+              </>
+            )}
             <input
               type="number"
               inputMode="numeric"
-              max={100}
+              max={timed ? 3600 : 100}
+              aria-label={timed ? 'Seconds held' : 'Reps'}
               value={row.reps}
               disabled={row.completed}
               onChange={(e) => onChange(idx, { reps: e.target.value })}
@@ -2640,15 +2668,17 @@ function SetGroup({
                 }
                 e.target.select();
               }}
-              placeholder="reps"
-              className={`w-16 shrink-0 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+              placeholder={timed ? 'secs' : 'reps'}
+              className={`${
+                weightless ? 'min-w-[76px] flex-1' : 'w-16 shrink-0'
+              } rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
                 row.reps === row.repsSuggested && row.repsSuggested !== ''
                   ? 'text-ink/40'
                   : 'text-ink'
               }`}
             />
             <div className="ml-auto flex shrink-0 items-center gap-3">
-              {row.completed ? (
+              {row.completed || weightless ? (
                 // Keeps the calculator's slot so the tick sits in the same
                 // column as every other row's.
                 <div className="h-9 w-9" aria-hidden />
@@ -3072,6 +3102,23 @@ function WorkoutProgressBar({ value }: { value: number }) {
 }
 
 const REST_OPTIONS = [30, 60, 90, 120, 180];
+
+/**
+ * Exercises logged on reps or time alone, with no weight field.
+ *
+ * Abs are bodyweight work — even the ones the plan writes as "weighted crunches
+ * 5kg", where the load never changes and isn't the thing being progressed. Holds
+ * and timed work have nothing to weigh either.
+ */
+function isWeightless(exercise: PlanExerciseRow): boolean {
+  if ((exercise.body_part ?? '').toLowerCase() === 'abdominals') return true;
+  return /^max\s+(hold|time)$/i.test((exercise.rep_range ?? '').trim());
+}
+
+/** Reps for most things; seconds for a hold or a timed set. */
+function isTimed(exercise: PlanExerciseRow): boolean {
+  return /^max\s+(hold|time)$/i.test((exercise.rep_range ?? '').trim());
+}
 
 function restChoices(value: number): number[] {
   // 0 is always offered (drop sets run straight through), and a value the plan

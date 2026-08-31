@@ -97,6 +97,11 @@ function Root() {
   const [modal, setModal] = useState<Modal>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeDay, setActiveDay] = useState<FullPlan['training_days'][number] | null>(null);
+  // The other week's version of the active day, when the plan rotates — DayView
+  // shows a switch to it. Cleared with activeDay.
+  const [activeDaySibling, setActiveDaySibling] = useState<
+    FullPlan['training_days'][number] | null
+  >(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [exerciseIdx, setExerciseIdx] = useState<number | null>(null);
@@ -341,8 +346,21 @@ function Root() {
     body = (
       <DayView
         day={activeDay}
+        siblingDay={activeDaySibling}
+        onSwitchToSibling={
+          activeDaySibling
+            ? () => {
+                // Swap which week's version is open; the old day becomes the
+                // sibling so you can switch straight back.
+                const current = activeDay;
+                setActiveDay(activeDaySibling);
+                setActiveDaySibling(current);
+              }
+            : undefined
+        }
         onBack={() => {
           setActiveDay(null);
+          setActiveDaySibling(null);
           setSessionId(null);
           setSessionStartedAt(null);
         }}
@@ -364,7 +382,11 @@ function Root() {
             key={refreshKey}
             onUploadPlan={() => setModal('upload')}
             onLogBodyWeight={() => setModal('bodyWeight')}
-            onTapDay={setActiveDay}
+            onTapDay={(day, sibling) => {
+              setActiveDay(day);
+              setActiveDaySibling(sibling ?? null);
+            }}
+            onStartDay={startDayFromHome}
             profile={profile}
             onResumeOnboarding={() => setModal('onboarding')}
             onResumeWorkout={({ day, exerciseIdx, sessionId: sid, startedAt }) => {
@@ -410,6 +432,29 @@ function Root() {
       <Splash visible={splashVisible} />
     </>
   );
+
+  /**
+   * One-tap start from Home's hero card: open the day and land on its first
+   * exercise with a fresh session. Not startExercise — that reads activeDay
+   * from state, which is still the old value in the tick that sets it.
+   */
+  async function startDayFromHome(
+    day: FullPlan['training_days'][number],
+    sibling?: FullPlan['training_days'][number] | null
+  ) {
+    setActiveDay(day);
+    setActiveDaySibling(sibling ?? null);
+    try {
+      const sess = await createSession(day.id);
+      setSessionId(sess.id);
+      setSessionStartedAt(sess.started_at);
+      setExerciseIdx(0);
+    } catch (e) {
+      console.error(e);
+      // No session — fall back to the day overview, which can retry.
+      setExerciseIdx(null);
+    }
+  }
 
   async function startExercise(exercise: PlanExerciseRow, existingSessionId?: string) {
     if (!activeDay) return;

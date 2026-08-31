@@ -11,6 +11,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-02',
+    emoji: '🔄',
+    title: "What's new",
+    bullets: [
+      'Two-week rotating plans are supported — Home shows one card per day, and each opens whichever week\'s version you\'re due, swapping automatically once you\'ve done the other (just like the weekly machine alternatives)',
+      'A Week 1 | Week 2 switch on the day screen if you want the other version, and the finish screen tells you which week that day runs next time',
+      'Start a workout in one tap — the "Today\'s workout" card now has a Start button that drops you straight into the first exercise',
+      'Days titled "LEGS 1" or "PUSH 2" are now recognised — plans written that way used to import as nothing at all',
+      'Home ab workouts import as a reference card — the movements listed to read, available every week, with no session to start and no sets to log',
+      '"Failure", "Max Time" and "Max Hold" rep ranges are understood, and giant sets written down the sets column come in as one group',
+      'Anything logged on time or bodyweight — a plank, a max hold — now asks for seconds instead of a weight, and is not capped at 100 like reps',
+      'A rest written inside a set — "cluster set 5 sets 5 reps 1 min rest" — no longer gets mistaken for the rest between sets',
+    ],
+  },
+  {
     version: '2026-09-01',
     emoji: '🔁',
     title: "What's new",
