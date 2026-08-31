@@ -2688,7 +2688,7 @@ function SetGroup({
                   aria-label="Open barbell calculator"
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
                 >
-                  <PlateIcon />
+                  <CalculatorIcon />
                 </button>
               )}
               {/* Outline tick that fills in once the set is logged — the same
@@ -3187,12 +3187,44 @@ function Improvements({
   );
 }
 
-function PlateIcon() {
+function CalculatorIcon() {
+  const keys = [];
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      keys.push(
+        <rect
+          key={`${row}-${col}`}
+          x={7.45 + col * 3.4}
+          y={10.75 + row * 3.3}
+          width="2.3"
+          height="2.3"
+          rx="0.7"
+          fill="currentColor"
+        />
+      );
+    }
+  }
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <rect x="2" y="11" width="20" height="2" fill="currentColor" />
-      <rect x="6" y="6" width="2.5" height="12" rx="0.5" fill="currentColor" />
-      <rect x="15.5" y="6" width="2.5" height="12" rx="0.5" fill="currentColor" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect
+        x="4.9"
+        y="2.4"
+        width="14.2"
+        height="19.2"
+        rx="2.6"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <rect
+        x="7.45"
+        y="5.05"
+        width="9.1"
+        height="3.9"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      {keys}
     </svg>
   );
 }
