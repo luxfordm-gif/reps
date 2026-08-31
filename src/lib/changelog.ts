@@ -15,6 +15,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     emoji: '🔄',
     title: "What's new",
     bullets: [
+      'The upload review is quieter: your bulk keep-or-reset choice stands on its own, with an "Adjust machine by machine" link when you want exceptions — and the per-machine control is now a clear Carry over | Start fresh switch instead of a checkbox',
       'Two-week rotating plans are supported — Home shows one card per day, and each opens whichever week\'s version you\'re due, swapping automatically once you\'ve done the other (just like the weekly machine alternatives)',
       'A Week 1 | Week 2 switch on the day screen if you want the other version, and the finish screen tells you which week that day runs next time',
       'Start a workout in one tap — the "Today\'s workout" card now has a Start button that drops you straight into the first exercise',
