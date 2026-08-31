@@ -64,6 +64,8 @@ check('every day found', result.days.map((d) => d.name), [
 check('week 1 days', [day('Legs 1').weekIndex, day('Push 1').weekIndex], [1, 1]);
 check('week 2 days', day('Legs 2').weekIndex, 2);
 check('home abs runs every week', day('Abs').weekIndex, null);
+check('home abs is a reference card, not a tracked session', day('Abs').referenceOnly, true);
+check('gym days are still tracked', day('Legs 1').referenceOnly, false);
 check('no warnings', result.warnings, []);
 check('nothing unparsed', result.unparsedLines, []);
 check(

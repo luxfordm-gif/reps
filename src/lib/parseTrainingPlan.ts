@@ -72,6 +72,9 @@ export interface ParsedTrainingDay {
   // null means it runs every week — the home abs workout, or any plan with no
   // rotation at all.
   weekIndex: number | null;
+  // A day to read rather than log. A workout done at home isn't tracked set by
+  // set, so it shows as a reference card listing the movements.
+  referenceOnly: boolean;
 }
 
 export interface ParsedPlan {
@@ -440,6 +443,11 @@ function looksLikeTableHeader(line: string): boolean {
   return words.every((w) => TABLE_HEADER_WORDS.has(w));
 }
 
+// A workout the plan says to do at home — listed for reference, not logged.
+function isHomeWorkout(line: string): boolean {
+  return /\bHome\s+Workout\b/i.test(line.trim());
+}
+
 function isDayHeader(line: string): string | null {
   const trimmed = line.trim();
   const upper = trimmed.toUpperCase();
@@ -549,6 +557,7 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
         // The home abs workout sits outside the rotation — it's done every week
         // whichever week the gym days are on.
         weekIndex: dayName === 'Abs' ? null : currentWeek,
+        referenceOnly: isHomeWorkout(line),
       };
       days.push(currentDay);
       exercisePosition = 0;

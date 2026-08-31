@@ -68,6 +68,9 @@ function estimatedMinutes(setsCount: number): number {
 }
 
 export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
+  // A workout listed for reference — done at home, in your own time, with no
+  // session to start and no sets to log.
+  const referenceOnly = day.reference_only === true;
   // Memoised so the effects below key off the day's exercises, not a fresh
   // empty array on every render.
   const exercises = useMemo(() => day.plan_exercises ?? [], [day.plan_exercises]);
@@ -287,6 +290,18 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
           </button>
         )}
 
+        {referenceOnly && (
+          <div className="mt-6 rounded-card bg-paper-card px-5 py-4 text-center shadow-card">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+              Reference
+            </div>
+            <div className="mt-1 text-sm text-ink">
+              Do this one at home in your own time — it isn't tracked set by set.
+            </div>
+          </div>
+        )}
+
+        {!referenceOnly && (
         <button
           className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
           disabled={loadingSession}
@@ -303,6 +318,7 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
         >
           {loadingSession ? 'Loading…' : inProgress ? 'Continue workout' : 'Start workout'}
         </button>
+        )}
         {inProgress && (
           <div className="mt-2 flex items-center justify-center gap-2 text-xs text-muted">
             <span>{inProgress.setsLogged} sets logged so far</span>
@@ -406,8 +422,12 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
                         key={ex.id}
                         exercise={ex}
                         partnerNames={supersetPartnerNames(ex, exercises)}
+                        readOnly={referenceOnly}
                         isLast={i === group.exercises.length - 1}
-                        onTap={() => onTapExercise?.(ex)}
+                        onTap={() => {
+                          if (referenceOnly) return;
+                          onTapExercise?.(ex);
+                        }}
                       />
                     ))}
                   </div>
@@ -435,12 +455,15 @@ function ExerciseRow({
   partnerNames,
   isLast,
   onTap,
+  readOnly,
 }: {
   exercise: PlanExerciseRow;
   // The rest of this exercise's superset / tri-set / giant set, if it's in one.
   partnerNames: string[];
   isLast: boolean;
   onTap: () => void;
+  // Reference days have nothing to open, so the row loses its chevron.
+  readOnly?: boolean;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const hasNotes = !!exercise.notes && exercise.notes.trim().length > 0;
@@ -487,9 +510,11 @@ function ExerciseRow({
             </div>
           )}
         </div>
-        <button onClick={onTap} className="mt-0.5 text-muted" aria-label="Open exercise">
-          <ChevronSmall />
-        </button>
+        {!readOnly && (
+          <button onClick={onTap} className="mt-0.5 text-muted" aria-label="Open exercise">
+            <ChevronSmall />
+          </button>
+        )}
       </div>
 
       {hasNotes && (

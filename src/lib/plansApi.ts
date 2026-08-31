@@ -28,6 +28,8 @@ export interface TrainingDayRow {
   position: number;
   // Which week of a rotating plan this day belongs to; null runs every week.
   week_index: number | null;
+  // Listed for reference rather than logged — a workout done at home.
+  reference_only: boolean;
 }
 
 export interface PlanExerciseRow {
@@ -302,6 +304,7 @@ export async function savePlan(
         name: day.name,
         position: day.position,
         week_index: day.weekIndex ?? null,
+        reference_only: day.referenceOnly,
       })
       .select()
       .single();

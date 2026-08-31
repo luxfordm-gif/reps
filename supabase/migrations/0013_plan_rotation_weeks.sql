@@ -12,7 +12,10 @@
 -- Run this in the Supabase SQL Editor.
 
 alter table public.training_days
-  add column if not exists week_index integer;
+  add column if not exists week_index integer,
+  -- A day you read rather than log: the home abs workout is a reference card,
+  -- not a tracked session.
+  add column if not exists reference_only boolean not null default false;
 
 alter table public.plans
   add column if not exists rotation_week integer,
