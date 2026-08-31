@@ -602,36 +602,45 @@ function BarVisualisation({
             />
           ))}
           {/* Collar the plates butt up against. */}
-          <rect x={gripW} y={cy - 15} width={collarW} height={30} rx={1.5} fill="url(#bc-sleeve)" />
+          <rect x={gripW} y={cy - 13} width={collarW} height={26} rx={1.5} fill="url(#bc-sleeve)" />
           <rect
             x={gripW}
-            y={cy - 15}
+            y={cy - 13}
             width={collarW}
-            height={30}
+            height={26}
             rx={1.5}
             fill="none"
             stroke="#6E6E73"
             strokeWidth={0.6}
           />
-          {/* Sleeve the plates sit on, then the end cap. */}
-          <rect x={sleeveStart} y={cy - 7} width={sleeveW} height={14} rx={2} fill="url(#bc-sleeve)" />
+          {/* One sleeve at a single diameter from collar to end — a real bar
+              doesn't fatten out at the tip, and a wider cap read as a bolt
+              head. The end is only a seam line and a soft highlight. */}
           <rect
-            x={VIEW_W - endCapW}
-            y={cy - 11}
-            width={endCapW}
-            height={22}
-            rx={3}
+            x={sleeveStart}
+            y={cy - 7}
+            width={sleeveW + endCapW}
+            height={14}
+            rx={2.5}
             fill="url(#bc-sleeve)"
           />
-          <rect
-            x={VIEW_W - endCapW}
-            y={cy - 11}
-            width={endCapW}
-            height={22}
-            rx={3}
-            fill="none"
+          <line
+            x1={VIEW_W - endCapW}
+            y1={cy - 6}
+            x2={VIEW_W - endCapW}
+            y2={cy + 6}
             stroke="#6E6E73"
-            strokeWidth={0.6}
+            strokeWidth={0.7}
+            opacity={0.7}
+          />
+          <rect
+            x={VIEW_W - endCapW + 1}
+            y={cy - 5}
+            width={endCapW - 3}
+            height={2}
+            rx={1}
+            fill="#FFFFFF"
+            opacity={0.35}
           />
         </>
       )}
