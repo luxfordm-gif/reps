@@ -1,6 +1,6 @@
 // Tests for the barbell calculator's maths: what a loaded bar weighs, and what
 // tapping a plate, a chip, or a plate already on the bar does to the stack.
-// Usage: node --experimental-strip-types scripts/test-barbell.mjs
+// Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-barbell.mjs
 import {
   addPlate,
   groupPlates,

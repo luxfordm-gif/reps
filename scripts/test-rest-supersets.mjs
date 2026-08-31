@@ -1,6 +1,6 @@
 // Tests for rest-period defaults and for grouping exercises the plan says to run
 // back to back (supersets, tri-sets, giant sets).
-// Usage: node --experimental-strip-types scripts/test-rest-supersets.mjs
+// Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-rest-supersets.mjs
 import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
 import {
   defaultRestSeconds,

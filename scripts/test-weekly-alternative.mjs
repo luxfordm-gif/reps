@@ -1,6 +1,6 @@
 // Tests for weekly-alternation detection ("alternate weeks with X" and the
 // "alternative" keyword family), and that the parser attaches the partner to the
-// right exercise. Usage: node --experimental-strip-types scripts/test-weekly-alternative.mjs
+// right exercise. Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-weekly-alternative.mjs
 import {
   detectWeeklyAlternative,
   parseTrainingPlan,

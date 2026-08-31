@@ -1,7 +1,7 @@
 // Tests for rotating plans: numbered day headers ("LEGS 1"), ROTATION WEEK
 // markers, a home abs workout outside the rotation, and the row shapes a
 // merged-cell abs table produces.
-// Usage: node --experimental-strip-types scripts/test-rotation-plan.mjs
+// Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-rotation-plan.mjs
 import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
 import { restSecondsFromNotes } from '../src/lib/restDefaults.ts';
 

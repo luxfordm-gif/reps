@@ -1,6 +1,6 @@
 // Tests for the per-day rotation: grouping "Legs 1"/"Legs 2" into one Legs
 // slot, card order, and which week's version a slot opens.
-// Usage: node --experimental-strip-types scripts/test-day-slots.mjs
+// Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-day-slots.mjs
 import {
   baseDayName,
   buildDaySlots,

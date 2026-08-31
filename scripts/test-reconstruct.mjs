@@ -1,5 +1,5 @@
 // Test harness for the PDF table-row reconstruction.
-// Usage: node --experimental-strip-types scripts/test-reconstruct.mjs
+// Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-reconstruct.mjs
 //
 // Uses a synthetic set of positioned text items (mimicking pdf.js output, whose
 // origin is bottom-left so a larger Y is higher up the page) to check that
