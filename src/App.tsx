@@ -31,6 +31,7 @@ import { subscribeNet, isReachable } from './lib/offline/net';
 import { reconcileRecentWorkouts } from './lib/offline/reconcile';
 import { warmLastSetsForPlan } from './lib/sessionsApi';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
+import { supersetMembers } from './lib/supersets';
 import { getMyProfile, type Profile as ProfileData } from './lib/profileApi';
 
 type Modal =
@@ -185,6 +186,16 @@ function Root() {
   const exercises = activeDay?.plan_exercises ?? [];
   const activeExercise: PlanExerciseRow | null =
     exerciseIdx != null && exercises[exerciseIdx] ? exercises[exerciseIdx] : null;
+  // Exercises the plan says to run back to back — a superset, tri-set or giant
+  // set. The logger cycles through them instead of resting between them, so it
+  // needs the one to hand over to and whether this is the round's last.
+  const roundMembers = activeExercise ? supersetMembers(activeExercise, exercises) : [];
+  const memberIdx = roundMembers.findIndex((e) => e.id === activeExercise?.id);
+  const supersetNext: PlanExerciseRow | null =
+    memberIdx >= 0 ? roundMembers[(memberIdx + 1) % roundMembers.length] : null;
+  const supersetNextIdx = supersetNext
+    ? exercises.findIndex((e) => e.id === supersetNext.id)
+    : -1;
 
   const navVisible =
     screenKey === 'tab:home' ||
@@ -272,6 +283,14 @@ function Root() {
           sessionStartedAt={sessionStartedAt}
           dayName={activeDay.name}
           exercise={activeExercise}
+          supersetNext={supersetNext}
+          supersetPartnerNames={roundMembers
+            .filter((e) => e.id !== activeExercise.id)
+            .map((e) => e.name)}
+          supersetLastOfRound={memberIdx === roundMembers.length - 1}
+          onGoToSupersetNext={
+            supersetNextIdx >= 0 ? () => setExerciseIdx(supersetNextIdx) : undefined
+          }
           hasNext={exerciseIdx < exercises.length - 1}
           hasPrev={exerciseIdx > 0}
           totalExercises={exercises.length}

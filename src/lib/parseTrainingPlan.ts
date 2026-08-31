@@ -1,5 +1,6 @@
 import { toSentenceCase } from './textCase';
 import { normalizeExerciseName as normalizeName } from './normalizeExerciseName';
+import { levenshtein } from './stringSimilarity';
 
 // Parses the raw text of a trainer's training plan PDF into a structured plan with
 // days, exercises, prescribed sets/reps/tempo and notes.
@@ -48,6 +49,15 @@ export interface ParsedExercise {
   tempoUncertain?: boolean;
   // Detected "alternate weeks with X" partner movement, if the coach notes name one.
   weeklyAlternative?: WeeklyAlternative | null;
+  // Raw text naming the movement(s) this one is supersetted with, straight from
+  // the notes and not yet resolved to exercises in the day.
+  supersetWith?: string[] | null;
+  // Exercises sharing a group number are performed together — a superset, tri-set
+  // or giant set: you cycle through them and only rest once the round is done.
+  // Assigned per day after all its rows are parsed, null for everything else.
+  supersetGroup?: number | null;
+  // The other members' display names, for showing the pairing on the review screen.
+  supersetPartnerNames?: string[] | null;
 }
 
 export interface ParsedTrainingDay {
@@ -127,6 +137,140 @@ export function detectWeeklyAlternative(notes: string): WeeklyAlternative | null
   return null;
 }
 
+// The terms trainers use for "do these back to back": a superset is two
+// movements, a tri-set three, a giant set four or more. A compound set is the
+// same idea under another name. They all behave identically here — you cycle
+// through the group and rest once at the end of the round.
+const SUPERSET_KEYWORDS =
+  /SUPERSETT?E?D?|TRI[\s-]?SET|GIANT\s?SET|COMPOUND\s?SET/;
+
+// How many further rows a bare marker pulls in when it names no partner: a
+// superset takes the next row, a tri-set the next two, a giant set the next
+// three. Ordered longest-keyword-first so "tri-set" isn't read as "set".
+const BARE_CHAIN_LENGTHS: { re: RegExp; others: number }[] = [
+  { re: /\bGIANT\s?SET\b/i, others: 3 },
+  { re: /\bTRI[\s-]?SET\b/i, others: 2 },
+  { re: /\bCOMPOUND\s?SET\b/i, others: 1 },
+  { re: /\bSUPERSETT?E?D?\b/i, others: 1 },
+];
+
+// A grouped set names its partners a few ways: "superset with X", "tri-set: X
+// and Y", "supersetted into X". We capture the raw text and resolve it against
+// the day's other exercises later — the same phrasing also describes a variation
+// of the SAME movement ("dropset superset with reverse grip"), which must NOT
+// become a group, and only a successful match tells the two apart.
+const SUPERSET_PARTNER_PATTERNS: RegExp[] = [
+  /(?:SUPERSETT?E?D?|TRI[\s-]?SET|GIANT\s?SET|COMPOUND\s?SET)\s+(?:WITH|INTO)\s+([^.;]+)/i,
+  /(?:SUPERSETT?E?D?|TRI[\s-]?SET|GIANT\s?SET|COMPOUND\s?SET)\s*(?::|-|\u2013|\u2014)\s*([^.;]+)/i,
+  /\bPAIRED\s+WITH\s+([^.;]+)/i,
+];
+
+/**
+ * The movements a row says to pair with, in the order they're named.
+ *
+ * "Tri-set with leg extensions and leg curls" gives two; a plain superset gives
+ * one. Returns an empty array when the notes name nobody.
+ */
+export function detectSupersetPartners(notes: string): string[] {
+  if (!notes) return [];
+  for (const pattern of SUPERSET_PARTNER_PATTERNS) {
+    const m = notes.match(pattern);
+    if (!m) continue;
+    const names = m[1]
+      .split(/\s*(?:,|\+|\band\b|\bthen\b|\binto\b)\s*/i)
+      .map((part) =>
+        part.trim().replace(/^[:\-\u2013\u2014\s]+/, '').replace(/[.;,]+$/, '').trim()
+      )
+      .filter((part) => part.length >= 2);
+    if (names.length > 0) return names;
+  }
+  return [];
+}
+
+// How close a note's partner text has to be to an exercise name in the same day
+// before we treat them as the same movement.
+const PARTNER_MAX_EDIT_DISTANCE = 2;
+const PARTNER_MIN_SUBSTRING = 5;
+
+function matchesExerciseName(partnerText: string, exercise: ParsedExercise): boolean {
+  const t = normalizeName(partnerText);
+  const n = exercise.normalizedName;
+  if (!t || !n) return false;
+  if (t === n) return true;
+  if (
+    Math.min(t.length, n.length) >= PARTNER_MIN_SUBSTRING &&
+    (t.includes(n) || n.includes(t))
+  ) {
+    return true;
+  }
+  return levenshtein(t, n) <= PARTNER_MAX_EDIT_DISTANCE;
+}
+
+/** How many rows a bare marker (no partner named) chains in after itself. */
+function bareChainLength(notes: string): number {
+  for (const { re, others } of BARE_CHAIN_LENGTHS) {
+    if (re.test(notes)) return others;
+  }
+  return 0;
+}
+
+/**
+ * Group up the day's supersets, tri-sets and giant sets.
+ *
+ * A row that names its partners is grouped with whichever rows in the day those
+ * names match. A row carrying a bare marker ("SUPERSET", "TRI-SET") groups with
+ * the rows directly beneath it, which is how plans lay them out. A row whose
+ * partner text matches nothing — "superset with reverse grip", i.e. a variation
+ * of the same movement rather than a second exercise — is left ungrouped on
+ * purpose, and its drop/rep handling in parseSetMods covers it instead.
+ */
+function resolveSupersets(day: ParsedTrainingDay): void {
+  let nextGroup = 1;
+  const group = (members: ParsedExercise[]) => {
+    if (members.length < 2) return;
+    const id = nextGroup++;
+    for (const m of members) {
+      m.supersetGroup = id;
+      m.supersetPartnerNames = members.filter((o) => o !== m).map((o) => o.name);
+      // The trailing rows usually carry no superset wording of their own, so tag
+      // them too — but never overwrite a more specific scheme they already have.
+      if (m.setScheme === 'standard') m.setScheme = 'superset';
+    }
+  };
+
+  for (let i = 0; i < day.exercises.length; i++) {
+    const ex = day.exercises[i];
+    if (ex.supersetGroup != null) continue;
+    const named = ex.supersetWith ?? [];
+    if (named.length > 0) {
+      const partners: ParsedExercise[] = [];
+      for (const name of named) {
+        const found = day.exercises.find(
+          (other, j) =>
+            j !== i &&
+            other.supersetGroup == null &&
+            !partners.includes(other) &&
+            matchesExerciseName(name, other)
+        );
+        if (found) partners.push(found);
+      }
+      group([ex, ...partners]);
+      continue;
+    }
+    // A bare marker with nothing named: the rows beneath it are the other halves.
+    const chain = ex.setScheme === 'superset' ? bareChainLength(ex.notes) : 0;
+    if (chain > 0) {
+      const members = [ex];
+      for (let k = 1; k <= chain; k++) {
+        const next = day.exercises[i + k];
+        if (!next || next.supersetGroup != null) break;
+        members.push(next);
+      }
+      group(members);
+    }
+  }
+}
+
 export function detectSetScheme(notes: string, repRange: string): SetScheme {
   const upper = notes.toUpperCase();
   if (/MAX HOLD/i.test(repRange) || /HOLD/.test(upper)) {
@@ -138,7 +282,7 @@ export function detectSetScheme(notes: string, repRange: string): SetScheme {
   if (/MUSCLE ROUND/.test(upper)) return 'muscle_round';
   if (/REST.?PAUSE/.test(upper)) return 'rest_pause';
   if (/DROP\s?SET|DROPSET/.test(upper)) return 'dropset';
-  if (/SUPERSET/.test(upper)) return 'superset';
+  if (SUPERSET_KEYWORDS.test(upper)) return 'superset';
   if (/MAX HOLD/i.test(repRange)) return 'hold';
   return 'standard';
 }
@@ -295,6 +439,8 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
         repRangeUncertain,
         tempoUncertain,
         weeklyAlternative: detectWeeklyAlternative(cleanedNotes),
+        supersetWith: detectSupersetPartners(cleanedNotes),
+        supersetGroup: null,
       };
       currentDay.exercises.push(exercise);
       lastExercise = exercise;
@@ -326,11 +472,19 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
       if (!lastExercise.weeklyAlternative) {
         lastExercise.weeklyAlternative = detectWeeklyAlternative(line);
       }
+      if ((lastExercise.supersetWith ?? []).length === 0) {
+        lastExercise.supersetWith = detectSupersetPartners(line);
+      }
       continue;
     }
 
     currentDay.inlineNotes.push(line);
     unparsedLines.push(`[${currentDay.name}] ${line}`);
+  }
+
+  // Pairing needs every row in the day, so it runs once parsing is finished.
+  for (const d of days) {
+    resolveSupersets(d);
   }
 
   if (days.length === 0) {

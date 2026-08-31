@@ -11,6 +11,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-08-31',
+    emoji: '⏱️',
+    title: "What's new",
+    bullets: [
+      'New plans now set their own rest periods: drop sets run straight through with no timer, deadlifts, squats and leg presses get 2 minutes, and everything else starts at 1 minute',
+      'A rest your coach writes into the notes wins — "45 seconds max rest", "minimal rest" and "full recovery" are all read off the PDF',
+      'Supersets, tri-sets and giant sets are now paired up properly: log a set and Reps takes you straight to the next movement, then rests once the round is done',
+      'The day overview and the upload review both show what each exercise alternates with, and what rest it will start with',
+      'The rest pills now include None, so an exercise can be set to run straight through',
+    ],
+  },
+  {
     version: '2026-08-17',
     emoji: '📶',
     title: "What's new",

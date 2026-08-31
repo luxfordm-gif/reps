@@ -4,6 +4,11 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { reorderPlanExercises, type FullPlan, type PlanExerciseRow } from '../lib/plansApi';
 import { hapticBuzz } from '../lib/haptics';
 import {
+  formatNameList,
+  groupedSetLabel,
+  supersetPartnerNames,
+} from '../lib/supersets';
+import {
   getActiveSessionForDay,
   getSessionStats,
   deleteSession,
@@ -400,6 +405,7 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
                       <ExerciseRow
                         key={ex.id}
                         exercise={ex}
+                        partnerNames={supersetPartnerNames(ex, exercises)}
                         isLast={i === group.exercises.length - 1}
                         onTap={() => onTapExercise?.(ex)}
                       />
@@ -426,16 +432,22 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
 
 function ExerciseRow({
   exercise,
+  partnerNames,
   isLast,
   onTap,
 }: {
   exercise: PlanExerciseRow;
+  // The rest of this exercise's superset / tri-set / giant set, if it's in one.
+  partnerNames: string[];
   isLast: boolean;
   onTap: () => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const hasNotes = !!exercise.notes && exercise.notes.trim().length > 0;
-  const schemeLabel = schemeToLabel(exercise.set_scheme);
+  const schemeLabel =
+    partnerNames.length > 0
+      ? groupedSetLabel(partnerNames.length + 1)
+      : schemeToLabel(exercise.set_scheme);
 
   function openImages(e: React.MouseEvent) {
     e.stopPropagation();
@@ -466,6 +478,14 @@ function ExerciseRow({
               </span>
             )}
           </div>
+          {partnerNames.length > 0 && (
+            <div onClick={onTap} className="mt-1 cursor-pointer text-xs text-muted">
+              Alternates with{' '}
+              <span className="font-medium text-ink">
+                {formatNameList(partnerNames)}
+              </span>
+            </div>
+          )}
         </div>
         <button onClick={onTap} className="mt-0.5 text-muted" aria-label="Open exercise">
           <ChevronSmall />
