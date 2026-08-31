@@ -296,7 +296,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
 
         <div className="border-t border-line/60 mt-3" />
 
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-5">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Build your load (one side)
           </div>
@@ -305,7 +305,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
 
           <div
-            className={`mt-2 grid items-center gap-3 ${
+            className={`mt-4 grid items-center gap-3 ${
               plates.length === 0 ? 'grid-cols-1' : 'grid-cols-[1fr_140px]'
             }`}
           >
@@ -318,13 +318,13 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-5">
           <div className="grid grid-cols-5 gap-2">
             {HEAVY_PLATES.map((kg) => (
               <PlateButton key={kg} kg={kg} variant="heavy" onClick={() => addPlate(kg)} />
             ))}
           </div>
-          <div className="mt-2 grid grid-cols-5 gap-2">
+          <div className="mt-3 grid grid-cols-5 gap-2">
             {LIGHT_PLATES.map((kg) => (
               <PlateButton key={kg} kg={kg} variant="light" onClick={() => addPlate(kg)} />
             ))}
@@ -344,7 +344,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-5">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Tap to choose what to log
           </div>
@@ -554,7 +554,7 @@ function BarVisualisation({
     <svg
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       width="100%"
-      height={132}
+      height={148}
       preserveAspectRatio="xMidYMid meet"
       className="select-none"
     >
