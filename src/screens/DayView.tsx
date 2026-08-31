@@ -3,6 +3,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { reorderPlanExercises, type FullPlan, type PlanExerciseRow } from '../lib/plansApi';
 import { hapticBuzz } from '../lib/haptics';
+import { baseDayName } from '../lib/daySlots';
 import {
   formatNameList,
   groupedSetLabel,
@@ -276,9 +277,15 @@ export function DayView({
   return (
     <div className="min-h-screen bg-paper pb-28">
       <div className="mx-auto max-w-md px-5 pt-3">
-        <PageHeader title={day.name} onBack={onBack} />
+        <PageHeader title={baseDayName(day.name)} onBack={onBack} />
 
         <div className="mt-3 flex items-center gap-3 text-sm text-muted">
+          {day.week_index != null && !siblingDay && (
+            <>
+              <span>Week {day.week_index}</span>
+              <span className="h-1 w-1 rounded-full bg-muted/50" />
+            </>
+          )}
           <span>{exercises.length} exercises</span>
           <span className="h-1 w-1 rounded-full bg-muted/50" />
           <span>{totalSets} working sets</span>
@@ -312,7 +319,7 @@ export function DayView({
           </div>
         )}
 
-        {missingWarmth > 0 && reachable && (
+        {missingWarmth > 0 && reachable && !referenceOnly && (
           <button
             onClick={handleWarmNow}
             disabled={warming}
@@ -376,7 +383,7 @@ export function DayView({
             const isOpen = expanded.has(group.bodyPart);
             const groupKey = group.exercises[0]?.id ?? group.bodyPart;
             const isEditing = editingKey === groupKey;
-            const canReorder = group.exercises.length > 1;
+            const canReorder = group.exercises.length > 1 && !referenceOnly;
             return (
               <div key={groupKey} className="overflow-hidden rounded-card bg-paper-card shadow-card">
                 <div className="flex w-full items-center justify-between px-5 py-4">
