@@ -3189,41 +3189,35 @@ function Improvements({
 
 function CalculatorIcon() {
   const keys = [];
-  for (let row = 0; row < 3; row++) {
-    for (let col = 0; col < 3; col++) {
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 2; col++) {
       keys.push(
         <rect
           key={`${row}-${col}`}
-          x={7.45 + col * 3.4}
-          y={10.75 + row * 3.3}
-          width="2.3"
-          height="2.3"
-          rx="0.7"
+          x={7.6 + col * 5.8}
+          y={10.8 + row * 4.8}
+          width="3"
+          height="3"
+          rx="0.9"
           fill="currentColor"
         />
       );
     }
   }
+  // Four big keys and a solid display rather than a true 3x3 keypad — at 18px
+  // the finer grid collapses into a smudge.
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
       <rect
         x="4.9"
-        y="2.4"
+        y="2.5"
         width="14.2"
-        height="19.2"
-        rx="2.6"
+        height="19"
+        rx="3"
         stroke="currentColor"
-        strokeWidth="1.7"
+        strokeWidth="1.8"
       />
-      <rect
-        x="7.45"
-        y="5.05"
-        width="9.1"
-        height="3.9"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
+      <rect x="7.6" y="5.4" width="8.8" height="2.9" rx="0.9" fill="currentColor" />
       {keys}
     </svg>
   );
