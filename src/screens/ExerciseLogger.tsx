@@ -2691,9 +2691,10 @@ function SetGroup({
                   <CalculatorIcon />
                 </button>
               )}
-              {/* Outline tick that fills in once the set is logged — the same
-                  circle in both states, so the row reads as one control and the
-                  width goes to the weight field instead of a word. */}
+              {/* Grey outline until the set is logged, then a filled black
+                  circle — the same grey as the calculator beside it, so an
+                  unlogged row reads as one set of dormant controls and black
+                  means "done" everywhere on the row. */}
               {row.completed ? (
                 <button
                   onClick={() => onEdit(idx)}
@@ -2707,10 +2708,10 @@ function SetGroup({
                   onClick={() => onComplete(idx)}
                   disabled={savingIdx === idx}
                   aria-label={`Log set ${setIndex} as done`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-ink text-ink active:opacity-60 disabled:opacity-40"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-60 disabled:opacity-40"
                 >
                   {savingIdx === idx ? (
-                    <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-ink/25 border-t-ink" />
+                    <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-line border-t-muted" />
                   ) : (
                     <Check />
                   )}
