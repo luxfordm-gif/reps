@@ -44,7 +44,7 @@ export function TrainingDayCard({
   // square with the day's initial. Completed days dim the photo behind the tick.
   const image = imageForDay(name);
   const tile = image ? (
-    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl">
+    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl">
       <img src={image} alt="" aria-hidden className="h-full w-full object-cover" />
       {done && (
         <span className="absolute inset-0 flex items-center justify-center bg-black/55">
@@ -54,7 +54,7 @@ export function TrainingDayCard({
     </div>
   ) : (
     <div
-      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${
+      className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl ${
         isNext ? 'bg-white/15' : accent
       }`}
     >
