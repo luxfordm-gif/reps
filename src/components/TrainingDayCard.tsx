@@ -1,12 +1,19 @@
+import { imageForDay } from '../lib/dayImages';
+
 interface Props {
   name: string;
-  bodyParts: string;
-  exerciseCount: number;
+  // Usually the day's body parts; the active-workout card passes its timer.
+  bodyParts: React.ReactNode;
+  // Omitted by the active-workout card, which has a timer to show instead.
+  exerciseCount?: number | null;
   accent: string;
   // Small pill after the title — "Week 2" on a rotating day, "Home" on the abs
   // reference card.
   tag?: string | null;
   isNext?: boolean;
+  // Pill above a dark card. Defaults to "Up next"; the active-workout card
+  // labels itself instead.
+  badgeLabel?: string;
   done?: boolean;
   onClick?: () => void;
   /**
@@ -24,6 +31,7 @@ export function TrainingDayCard({
   accent,
   tag,
   isNext,
+  badgeLabel = 'Up next',
   done,
   onClick,
   onStart,
@@ -34,25 +42,41 @@ export function TrainingDayCard({
 
   const badge = isNext ? (
     <span className="absolute -top-2 left-5 rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink shadow-card">
-      Up next
+      {badgeLabel}
     </span>
   ) : null;
 
+  // Days with a photo show it in the square tile; the rest keep the accent
+  // square with the day's initial. Completed days dim the photo behind the tick.
+  const image = imageForDay(name);
+  const tile = image ? (
+    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl">
+      <img src={image} alt="" aria-hidden className="h-full w-full object-cover" />
+      {done && (
+        <span className="absolute inset-0 flex items-center justify-center bg-black/55">
+          <DoneCheck inverted />
+        </span>
+      )}
+    </div>
+  ) : (
+    <div
+      className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl ${
+        isNext ? 'bg-white/15' : accent
+      }`}
+    >
+      {done ? (
+        <DoneCheck inverted={!!isNext} />
+      ) : (
+        <span className={`text-xl font-bold ${isNext ? 'text-white' : 'text-ink'}`}>
+          {name[0]}
+        </span>
+      )}
+    </div>
+  );
+
   const row = (
     <>
-      <div
-        className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${
-          isNext ? 'bg-white/15' : accent
-        }`}
-      >
-        {done ? (
-          <DoneCheck inverted={!!isNext} />
-        ) : (
-          <span className={`text-xl font-bold ${isNext ? 'text-white' : 'text-ink'}`}>
-            {name[0]}
-          </span>
-        )}
-      </div>
+      {tile}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-xl font-bold tracking-tight">{name}</span>
@@ -79,7 +103,9 @@ export function TrainingDayCard({
           isNext ? 'text-white/65' : 'text-muted'
         }`}
       >
-        <span className="font-medium">{exerciseCount}</span>
+        {exerciseCount != null && (
+          <span className="font-medium">{exerciseCount}</span>
+        )}
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path
             d="M6 4L10 8L6 12"

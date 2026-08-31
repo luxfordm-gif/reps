@@ -20,6 +20,42 @@ export function totalKg(barWeightKg: number, platesPerSide: number[]) {
   return { oneSide, total: barWeightKg + oneSide * 2 };
 }
 
+/*
+ * Plate-list operations. One side's plates are a flat array sorted heaviest
+ * first, which is also the order they sit on the bar — so an array index is
+ * the plate you tapped.
+ */
+
+export function addPlate(plates: number[], kg: number): number[] {
+  return [...plates, kg].sort((a, b) => b - a);
+}
+
+/** Removes the plate at a position on the bar, not every plate of that size. */
+export function removePlateAt(plates: number[], index: number): number[] {
+  return plates.filter((_, i) => i !== index);
+}
+
+/** Drops one plate of a size — what tapping its chip does. */
+export function removeOneOfSize(plates: number[], kg: number): number[] {
+  const idx = plates.findIndex((x) => x === kg);
+  if (idx === -1) return plates;
+  return plates.filter((_, i) => i !== idx);
+}
+
+export function setQuantityOfSize(plates: number[], kg: number, count: number): number[] {
+  const next = plates.filter((x) => x !== kg);
+  for (let i = 0; i < count; i++) next.push(kg);
+  return next.sort((a, b) => b - a);
+}
+
+export function groupPlates(plates: number[]): { kg: number; count: number }[] {
+  const map = new Map<number, number>();
+  for (const p of plates) map.set(p, (map.get(p) ?? 0) + 1);
+  return [...map.entries()]
+    .map(([kg, count]) => ({ kg, count }))
+    .sort((a, b) => b.kg - a.kg);
+}
+
 const KEY_LAST_BAR_ID = 'reps.barbell.lastBarId';
 const KEY_CUSTOM_BAR_KG = 'reps.barbell.customBarKg';
 const KEY_CUSTOM_PLATES = 'reps.barbell.customPlates';

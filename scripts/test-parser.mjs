@@ -1,5 +1,5 @@
 // Quick test harness — runs the parser against sample trainer PDF text content.
-// Usage: node --experimental-strip-types scripts/test-parser.mjs
+// Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-parser.mjs
 import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
 
 // Format A — split-keyword day headers (PUSH / PULL / LEGS / UPPER / ARMS + Abdominals).

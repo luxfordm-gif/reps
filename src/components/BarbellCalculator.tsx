@@ -3,6 +3,11 @@ import {
   BARS,
   STANDARD_PLATES_KG,
   totalKg,
+  addPlate as addPlateTo,
+  removePlateAt as removePlateAtIndex,
+  removeOneOfSize as removeOneOfSizeFrom,
+  setQuantityOfSize,
+  groupPlates,
   getLastBarId,
   setLastBarId,
   getCustomBarKg,
@@ -130,21 +135,17 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
   }
 
   function addPlate(kg: number) {
-    setPlates((p) => [...p, kg].sort((a, b) => b - a));
+    setPlates((p) => addPlateTo(p, kg));
     hapticBuzz(12);
   }
 
   function removePlateAt(arrayIndex: number) {
-    setPlates((p) => p.filter((_, i) => i !== arrayIndex));
+    setPlates((p) => removePlateAtIndex(p, arrayIndex));
     hapticBuzz(10);
   }
 
   function removeOneOfSize(kg: number) {
-    setPlates((p) => {
-      const idx = p.findIndex((x) => x === kg);
-      if (idx === -1) return p;
-      return p.filter((_, i) => i !== idx);
-    });
+    setPlates((p) => removeOneOfSizeFrom(p, kg));
     hapticBuzz(10);
   }
 
@@ -154,12 +155,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
     if (raw == null) return;
     const n = Math.max(0, Math.min(20, Math.floor(Number(raw))));
     if (!Number.isFinite(n)) return;
-    setPlates((p) => {
-      const others = p.filter((x) => x !== kg);
-      const next = [...others];
-      for (let i = 0; i < n; i++) next.push(kg);
-      return next.sort((a, b) => b - a);
-    });
+    setPlates((p) => setQuantityOfSize(p, kg, n));
     hapticBuzz(12);
   }
 
@@ -296,7 +292,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
 
         <div className="border-t border-line/60 mt-3" />
 
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-5">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Build your load (one side)
           </div>
@@ -304,7 +300,11 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
             {plates.length === 0 ? 'Tap a plate to add it' : 'Tap a plate on the bar to remove it'}
           </div>
 
-          <div className="mt-2 grid grid-cols-[1fr_140px] items-center gap-3">
+          <div
+            className={`mt-4 grid items-center gap-3 ${
+              plates.length === 0 ? 'grid-cols-1' : 'grid-cols-[1fr_140px]'
+            }`}
+          >
             <BarVisualisation plates={plates} onRemoveAt={removePlateAt} showBar={barId !== 'none'} />
             <ChipStack
               grouped={grouped}
@@ -314,13 +314,13 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-5">
           <div className="grid grid-cols-5 gap-2">
             {HEAVY_PLATES.map((kg) => (
               <PlateButton key={kg} kg={kg} variant="heavy" onClick={() => addPlate(kg)} />
             ))}
           </div>
-          <div className="mt-2 grid grid-cols-5 gap-2">
+          <div className="mt-3 grid grid-cols-5 gap-2">
             {LIGHT_PLATES.map((kg) => (
               <PlateButton key={kg} kg={kg} variant="light" onClick={() => addPlate(kg)} />
             ))}
@@ -340,7 +340,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-5">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Tap to choose what to log
           </div>
@@ -379,14 +379,6 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
       </div>
     </div>
   );
-}
-
-function groupPlates(plates: number[]): { kg: number; count: number }[] {
-  const map = new Map<number, number>();
-  for (const p of plates) map.set(p, (map.get(p) ?? 0) + 1);
-  return [...map.entries()]
-    .map(([kg, count]) => ({ kg, count }))
-    .sort((a, b) => b.kg - a.kg);
 }
 
 function TotalButton({
@@ -454,9 +446,7 @@ function ChipStack({
   onTap: (kg: number) => void;
   onLongPress: (kg: number) => void;
 }) {
-  if (grouped.length === 0) {
-    return <div className="text-xs text-muted">No plates</div>;
-  }
+  if (grouped.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
       {grouped.map(({ kg, count }) => (
@@ -525,63 +515,191 @@ function BarVisualisation({
   showBar?: boolean;
 }) {
   const VIEW_H = 120;
-  const handleX = 0;
-  const handleW = showBar ? 70 : 0;
-  const sleeveStartX = handleW;
-  const collarW = showBar ? 4 : 0;
-  const plateGap = 1;
-  const sleevePadLeft = showBar ? 4 : 0;
-  const sleevePadRight = showBar ? 6 : 0;
-  const emptySleeveW = showBar ? 36 : 14;
+  const cy = VIEW_H / 2;
+  const gripW = showBar ? 74 : 0;
+  const collarW = showBar ? 6 : 0;
+  const endCapW = showBar ? 11 : 0;
+  const plateGap = 1.5;
+  const sleevePadLeft = showBar ? 5 : 0;
+  const sleevePadRight = showBar ? 8 : 0;
 
-  const platesWidth = plates.reduce((sum, kg) => sum + plateWidth(kg), 0) + Math.max(0, plates.length - 1) * plateGap;
+  const platesWidth =
+    plates.reduce((sum, kg) => sum + plateWidth(kg), 0) +
+    Math.max(0, plates.length - 1) * plateGap;
+  // A bare sleeve still needs room for the ghost plates that show where a
+  // tapped plate lands.
+  const emptySleeveW = showBar ? 62 : 20;
   const sleeveW = Math.max(emptySleeveW, platesWidth + sleevePadLeft + sleevePadRight);
-  const VIEW_W = handleW + sleeveW + (showBar ? 6 : 0);
+  const VIEW_W = gripW + collarW + sleeveW + endCapW;
+  const sleeveStart = gripW + collarW;
+  const plateStart = sleeveStart + sleevePadLeft;
+  const empty = plates.length === 0;
 
-  const NO_BAR_SCALE = 2;
   return (
+    // Height is fixed and the viewBox scales to fit inside it. Sizing by width
+    // alone lets a short bar inherit its near-square aspect ratio and reserve a
+    // screenful of empty space.
     <svg
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-      width={showBar ? '100%' : VIEW_W * NO_BAR_SCALE}
-      height={showBar ? undefined : VIEW_H * NO_BAR_SCALE}
+      width="100%"
+      height={148}
       preserveAspectRatio="xMidYMid meet"
       className="select-none"
-      style={!showBar ? { maxWidth: '100%', display: 'block', margin: '0 auto' } : undefined}
     >
+      <defs>
+        {/* Vertical gradients read as a cylinder lit from above. */}
+        <linearGradient id="bc-steel" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#9A9AA0" />
+          <stop offset="28%" stopColor="#EDEDF0" />
+          <stop offset="55%" stopColor="#C4C4CA" />
+          <stop offset="100%" stopColor="#86868B" />
+        </linearGradient>
+        <linearGradient id="bc-sleeve" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#8E8E93" />
+          <stop offset="30%" stopColor="#D8D8DD" />
+          <stop offset="60%" stopColor="#A8A8AE" />
+          <stop offset="100%" stopColor="#6E6E73" />
+        </linearGradient>
+        <linearGradient id="bc-plate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#3A3A3C" />
+          <stop offset="18%" stopColor="#131315" />
+          <stop offset="70%" stopColor="#0A0A0A" />
+          <stop offset="100%" stopColor="#2C2C2E" />
+        </linearGradient>
+        <linearGradient id="bc-plate-light" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="55%" stopColor="#F2F2F5" />
+          <stop offset="100%" stopColor="#DCDCE1" />
+        </linearGradient>
+      </defs>
+
       {showBar && (
         <>
-          <rect x={handleX} y={VIEW_H / 2 - 6} width={handleW + 6} height={12} rx={6} fill="#C7C7CC" />
-          <rect x={sleeveStartX} y={VIEW_H / 2 - 10} width={collarW} height={20} fill="#8E8E93" />
-          <rect x={sleeveStartX + collarW} y={VIEW_H / 2 - 6} width={sleeveW - collarW} height={12} rx={2} fill="#8E8E93" />
+          {/* Grip, knurled so it reads as the end you hold. */}
+          <rect x={0} y={cy - 5} width={gripW + 4} height={10} rx={5} fill="url(#bc-steel)" />
+          {Array.from({ length: 9 }, (_, i) => (
+            <line
+              key={i}
+              x1={14 + i * 5}
+              y1={cy - 3.4}
+              x2={14 + i * 5}
+              y2={cy + 3.4}
+              stroke="#6E6E73"
+              strokeWidth={0.8}
+              opacity={0.45}
+            />
+          ))}
+          {/* Collar the plates butt up against. */}
+          <rect x={gripW} y={cy - 13} width={collarW} height={26} rx={1.5} fill="url(#bc-sleeve)" />
+          <rect
+            x={gripW}
+            y={cy - 13}
+            width={collarW}
+            height={26}
+            rx={1.5}
+            fill="none"
+            stroke="#6E6E73"
+            strokeWidth={0.6}
+          />
+          {/* One sleeve at a single diameter from collar to end — a real bar
+              doesn't fatten out at the tip, and a wider cap read as a bolt
+              head. The end is only a seam line and a soft highlight. */}
+          <rect
+            x={sleeveStart}
+            y={cy - 7}
+            width={sleeveW + endCapW}
+            height={14}
+            rx={2.5}
+            fill="url(#bc-sleeve)"
+          />
+          <line
+            x1={VIEW_W - endCapW}
+            y1={cy - 6}
+            x2={VIEW_W - endCapW}
+            y2={cy + 6}
+            stroke="#6E6E73"
+            strokeWidth={0.7}
+            opacity={0.7}
+          />
+          <rect
+            x={VIEW_W - endCapW + 1}
+            y={cy - 5}
+            width={endCapW - 3}
+            height={2}
+            rx={1}
+            fill="#FFFFFF"
+            opacity={0.35}
+          />
         </>
       )}
 
+      {/* Where the next plates will land — only worth showing on a bare sleeve. */}
+      {showBar && empty && (
+        <g opacity={0.55}>
+          {[25, 15, 5].map((kg, i) => {
+            const w = plateWidth(kg);
+            const h = plateHeight(kg);
+            return (
+              <rect
+                key={kg}
+                x={plateStart + i * (w + 3)}
+                y={cy - h / 2}
+                width={w}
+                height={h}
+                rx={4}
+                fill="none"
+                stroke="#C7C7CC"
+                strokeWidth={1.2}
+                strokeDasharray="5 4"
+              />
+            );
+          })}
+        </g>
+      )}
+
       {(() => {
-        let x = sleeveStartX + sleevePadLeft + collarW;
+        let x = plateStart;
         return plates.map((kg, i) => {
           const w = plateWidth(kg);
           const h = plateHeight(kg);
-          const y = VIEW_H / 2 - h / 2;
+          const y = cy - h / 2;
+          const heavy = kg >= 5;
           const node = (
-            <g key={`${i}-${kg}`} className="cursor-pointer" onClick={() => onRemoveAt(i)}>
+            <g
+              key={`${i}-${kg}`}
+              className="cursor-pointer"
+              onClick={() => onRemoveAt(i)}
+              role="button"
+              aria-label={`Remove ${formatKg(kg)}kg plate`}
+            >
               <rect
                 x={x}
                 y={y}
                 width={w}
                 height={h}
-                rx={3}
-                fill={kg >= 5 ? '#0A0A0A' : '#FAFAFA'}
-                stroke={kg >= 5 ? '#0A0A0A' : '#0A0A0A'}
-                strokeWidth={kg >= 5 ? 0 : 1.25}
+                rx={4}
+                fill={heavy ? 'url(#bc-plate)' : 'url(#bc-plate-light)'}
+                stroke={heavy ? '#000000' : '#B8B8BE'}
+                strokeWidth={heavy ? 0.75 : 1}
               />
-              {kg >= 10 && (
+              {/* Rim highlight, so touching plates stay separable. */}
+              <line
+                x1={x + 1}
+                y1={y + 4}
+                x2={x + 1}
+                y2={y + h - 4}
+                stroke="#FFFFFF"
+                strokeWidth={0.8}
+                opacity={heavy ? 0.22 : 0.9}
+              />
+              {w >= 9 && (
                 <text
                   x={x + w / 2}
-                  y={VIEW_H / 2 + 3}
+                  y={cy + 3.5}
                   textAnchor="middle"
-                  fontSize={9}
+                  fontSize={w >= 13 ? 10 : 8.5}
                   fontWeight={700}
-                  fill="white"
+                  fill={heavy ? '#FFFFFF' : '#0A0A0A'}
                 >
                   {formatKg(kg)}
                 </text>
@@ -597,14 +715,14 @@ function BarVisualisation({
 }
 
 function plateWidth(kg: number): number {
-  if (kg >= 25) return 14;
-  if (kg >= 20) return 13;
-  if (kg >= 15) return 12;
-  if (kg >= 10) return 11;
-  if (kg >= 5) return 9;
-  if (kg >= 2.5) return 6;
-  if (kg >= 1.25) return 5;
-  return 4;
+  if (kg >= 25) return 19;
+  if (kg >= 20) return 18;
+  if (kg >= 15) return 16;
+  if (kg >= 10) return 14;
+  if (kg >= 5) return 11;
+  if (kg >= 2.5) return 8;
+  if (kg >= 1.25) return 6;
+  return 5;
 }
 
 function plateHeight(kg: number): number {

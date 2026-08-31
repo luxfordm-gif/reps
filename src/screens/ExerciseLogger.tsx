@@ -2688,12 +2688,13 @@ function SetGroup({
                   aria-label="Open barbell calculator"
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
                 >
-                  <PlateIcon />
+                  <CalculatorIcon />
                 </button>
               )}
-              {/* Outline tick that fills in once the set is logged — the same
-                  circle in both states, so the row reads as one control and the
-                  width goes to the weight field instead of a word. */}
+              {/* Grey outline until the set is logged, then a filled black
+                  circle — the same grey as the calculator beside it, so an
+                  unlogged row reads as one set of dormant controls and black
+                  means "done" everywhere on the row. */}
               {row.completed ? (
                 <button
                   onClick={() => onEdit(idx)}
@@ -2707,10 +2708,10 @@ function SetGroup({
                   onClick={() => onComplete(idx)}
                   disabled={savingIdx === idx}
                   aria-label={`Log set ${setIndex} as done`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-ink text-ink active:opacity-60 disabled:opacity-40"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-60 disabled:opacity-40"
                 >
                   {savingIdx === idx ? (
-                    <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-ink/25 border-t-ink" />
+                    <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-line border-t-muted" />
                   ) : (
                     <Check />
                   )}
@@ -3187,12 +3188,38 @@ function Improvements({
   );
 }
 
-function PlateIcon() {
+function CalculatorIcon() {
+  const keys = [];
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 2; col++) {
+      keys.push(
+        <rect
+          key={`${row}-${col}`}
+          x={7.6 + col * 5.8}
+          y={10.8 + row * 4.8}
+          width="3"
+          height="3"
+          rx="0.9"
+          fill="currentColor"
+        />
+      );
+    }
+  }
+  // Four big keys and a solid display rather than a true 3x3 keypad — at 18px
+  // the finer grid collapses into a smudge.
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <rect x="2" y="11" width="20" height="2" fill="currentColor" />
-      <rect x="6" y="6" width="2.5" height="12" rx="0.5" fill="currentColor" />
-      <rect x="15.5" y="6" width="2.5" height="12" rx="0.5" fill="currentColor" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect
+        x="4.9"
+        y="2.5"
+        width="14.2"
+        height="19"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <rect x="7.6" y="5.4" width="8.8" height="2.9" rx="0.9" fill="currentColor" />
+      {keys}
     </svg>
   );
 }
