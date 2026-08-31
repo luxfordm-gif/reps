@@ -386,6 +386,7 @@ function Root() {
               setActiveDay(day);
               setActiveDaySibling(sibling ?? null);
             }}
+            onStartDay={startDayFromHome}
             profile={profile}
             onResumeOnboarding={() => setModal('onboarding')}
             onResumeWorkout={({ day, exerciseIdx, sessionId: sid, startedAt }) => {
@@ -431,6 +432,29 @@ function Root() {
       <Splash visible={splashVisible} />
     </>
   );
+
+  /**
+   * One-tap start from Home's hero card: open the day and land on its first
+   * exercise with a fresh session. Not startExercise — that reads activeDay
+   * from state, which is still the old value in the tick that sets it.
+   */
+  async function startDayFromHome(
+    day: FullPlan['training_days'][number],
+    sibling?: FullPlan['training_days'][number] | null
+  ) {
+    setActiveDay(day);
+    setActiveDaySibling(sibling ?? null);
+    try {
+      const sess = await createSession(day.id);
+      setSessionId(sess.id);
+      setSessionStartedAt(sess.started_at);
+      setExerciseIdx(0);
+    } catch (e) {
+      console.error(e);
+      // No session — fall back to the day overview, which can retry.
+      setExerciseIdx(null);
+    }
+  }
 
   async function startExercise(exercise: PlanExerciseRow, existingSessionId?: string) {
     if (!activeDay) return;

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getSessionRecap, type SessionRecap, type RecapMedal } from '../lib/sessionsApi';
+import { getActivePlan } from '../lib/plansApi';
+import { baseDayName, buildDaySlots, siblingVariant } from '../lib/daySlots';
 import { getLiftWeightUnit } from '../lib/units';
 import { NotesAccordion } from '../components/NotesAccordion';
 import { SyncStatus } from '../components/SyncStatus';
@@ -12,7 +14,33 @@ interface Props {
 
 export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
   const [recap, setRecap] = useState<SessionRecap | null>(null);
+  // On a rotating plan, which week the just-finished day type runs next time.
+  // Computed from the plan rather than passed in, so it also works for
+  // workouts resumed after an app restart. Best-effort: null renders nothing.
+  const [nextWeek, setNextWeek] = useState<number | null>(null);
   const unit = getLiftWeightUnit();
+
+  useEffect(() => {
+    let cancelled = false;
+    getActivePlan()
+      .then((plan) => {
+        if (cancelled || !plan) return;
+        const days = plan.training_days ?? [];
+        const done = days.find((d) => d.name === dayName);
+        if (!done) return;
+        const slot = buildDaySlots(days).find((sl) =>
+          sl.variants.some((v) => v.id === done.id)
+        );
+        const sibling = slot ? siblingVariant(slot, done) : null;
+        if (sibling?.week_index != null) setNextWeek(sibling.week_index);
+      })
+      .catch(() => {
+        // The celebration stands on its own.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dayName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +98,14 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
           </p>
         ) : (
           <p className="mt-6 text-sm text-muted">Crunching numbers…</p>
+        )}
+
+        {nextWeek != null && (
+          <p className="mt-3 text-sm text-muted">
+            Next time,{' '}
+            <span className="font-semibold text-ink">{baseDayName(dayName)}</span> runs{' '}
+            <span className="font-semibold text-ink">Week {nextWeek}</span>.
+          </p>
         )}
 
         {recap && recap.bestSets.length > 0 && (
