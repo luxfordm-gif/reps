@@ -3,6 +3,9 @@ interface Props {
   bodyParts: string;
   exerciseCount: number;
   accent: string;
+  // Small pill after the title — "Week 2" on a rotating day, "Home" on the abs
+  // reference card.
+  tag?: string | null;
   isNext?: boolean;
   done?: boolean;
   onClick?: () => void;
@@ -13,6 +16,7 @@ export function TrainingDayCard({
   bodyParts,
   exerciseCount,
   accent,
+  tag,
   isNext,
   done,
   onClick,
@@ -45,7 +49,18 @@ export function TrainingDayCard({
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-xl font-bold tracking-tight">{name}</div>
+        <div className="flex items-center gap-2">
+          <span className="text-xl font-bold tracking-tight">{name}</span>
+          {tag && (
+            <span
+              className={`rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                isNext ? 'bg-white/15 text-white/90' : 'bg-line text-muted'
+              }`}
+            >
+              {tag}
+            </span>
+          )}
+        </div>
         <div
           className={`mt-0.5 truncate text-sm ${
             isNext ? 'text-white/65' : 'text-muted'

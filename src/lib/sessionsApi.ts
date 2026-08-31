@@ -2065,3 +2065,40 @@ export function lastSetsWarmth(
   }
   return { covered, total };
 }
+
+/**
+ * When each of these training days was last completed, keyed by day id.
+ *
+ * Feeds the per-day rotation: the Home cards open whichever week's version of a
+ * day was completed longest ago. Empty on failure — a wrong week suggested
+ * beats a Home screen that won't render.
+ */
+export async function getLastCompletedAtByTrainingDay(
+  dayIds: string[]
+): Promise<Record<string, string>> {
+  const userId = await currentUserId();
+  if (!userId || dayIds.length === 0) return {};
+  try {
+    const data = await query(
+      supabase
+        .from('sessions')
+        .select('training_day_id, completed_at')
+        .eq('user_id', userId)
+        .not('completed_at', 'is', null)
+        .in('training_day_id', dayIds)
+        .order('completed_at', { ascending: false }),
+      { label: 'getLastCompletedAtByTrainingDay' }
+    );
+    const rows = (data as { training_day_id: string | null; completed_at: string }[]) ?? [];
+    const out: Record<string, string> = {};
+    for (const r of rows) {
+      // Newest first, so the first sighting of a day is its latest completion.
+      if (r.training_day_id && !(r.training_day_id in out)) {
+        out[r.training_day_id] = r.completed_at;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}

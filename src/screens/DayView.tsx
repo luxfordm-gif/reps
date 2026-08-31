@@ -23,6 +23,12 @@ type TrainingDay = FullPlan['training_days'][number];
 
 interface Props {
   day: TrainingDay;
+  /**
+   * The other week's version of this day type, when the plan rotates. Its
+   * presence turns on the week line under the header with a switch to it.
+   */
+  siblingDay?: TrainingDay | null;
+  onSwitchToSibling?: () => void;
   onBack: () => void;
   onTapExercise?: (exercise: PlanExerciseRow, existingSessionId?: string) => void;
   /**
@@ -67,7 +73,14 @@ function estimatedMinutes(setsCount: number): number {
   return Math.max(15, Math.round(m / 5) * 5);
 }
 
-export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
+export function DayView({
+  day,
+  siblingDay,
+  onSwitchToSibling,
+  onBack,
+  onTapExercise,
+  onDayUpdate,
+}: Props) {
   // A workout listed for reference — done at home, in your own time, with no
   // session to start and no sets to log.
   const referenceOnly = day.reference_only === true;
@@ -272,6 +285,32 @@ export function DayView({ day, onBack, onTapExercise, onDayUpdate }: Props) {
           <span className="h-1 w-1 rounded-full bg-muted/50" />
           <span>~{estimatedMinutes(totalSets)} min</span>
         </div>
+
+        {siblingDay && day.week_index != null && onSwitchToSibling && (
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+              Rotation
+            </span>
+            <div className="flex rounded-pill bg-line/60 p-0.5">
+              {[day, siblingDay]
+                .sort((a, b) => (a.week_index ?? 0) - (b.week_index ?? 0))
+                .map((variant) => {
+                  const active = variant.id === day.id;
+                  return (
+                    <button
+                      key={variant.id}
+                      onClick={active ? undefined : onSwitchToSibling}
+                      className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 active:scale-[0.97] ${
+                        active ? 'bg-ink text-white shadow-card' : 'text-muted'
+                      }`}
+                    >
+                      Week {variant.week_index}
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
         {missingWarmth > 0 && reachable && (
           <button

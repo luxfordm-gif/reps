@@ -31,7 +31,6 @@ import { subscribeNet, isReachable } from './lib/offline/net';
 import { reconcileRecentWorkouts } from './lib/offline/reconcile';
 import { warmLastSetsForPlan } from './lib/sessionsApi';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
-import { advanceRotationIfWeekComplete } from './lib/plansApi';
 import { supersetMembers } from './lib/supersets';
 import { getMyProfile, type Profile as ProfileData } from './lib/profileApi';
 
@@ -98,6 +97,11 @@ function Root() {
   const [modal, setModal] = useState<Modal>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeDay, setActiveDay] = useState<FullPlan['training_days'][number] | null>(null);
+  // The other week's version of the active day, when the plan rotates — DayView
+  // shows a switch to it. Cleared with activeDay.
+  const [activeDaySibling, setActiveDaySibling] = useState<
+    FullPlan['training_days'][number] | null
+  >(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [exerciseIdx, setExerciseIdx] = useState<number | null>(null);
@@ -317,11 +321,6 @@ function Root() {
               // Everything logged during the workout goes up now, if it can.
               requestFlush();
               afterWorkoutSync();
-              // A rotating plan moves to its next week once every day of the
-              // current one has been trained. Best-effort: a rotation that
-              // doesn't advance is a wrong day suggested, not a lost workout,
-              // and the Week switch on Home fixes it either way.
-              advanceRotationIfWeekComplete().catch(() => {});
             }
             setExerciseIdx(null);
             setSessionId(null);
@@ -347,8 +346,21 @@ function Root() {
     body = (
       <DayView
         day={activeDay}
+        siblingDay={activeDaySibling}
+        onSwitchToSibling={
+          activeDaySibling
+            ? () => {
+                // Swap which week's version is open; the old day becomes the
+                // sibling so you can switch straight back.
+                const current = activeDay;
+                setActiveDay(activeDaySibling);
+                setActiveDaySibling(current);
+              }
+            : undefined
+        }
         onBack={() => {
           setActiveDay(null);
+          setActiveDaySibling(null);
           setSessionId(null);
           setSessionStartedAt(null);
         }}
@@ -370,7 +382,10 @@ function Root() {
             key={refreshKey}
             onUploadPlan={() => setModal('upload')}
             onLogBodyWeight={() => setModal('bodyWeight')}
-            onTapDay={setActiveDay}
+            onTapDay={(day, sibling) => {
+              setActiveDay(day);
+              setActiveDaySibling(sibling ?? null);
+            }}
             profile={profile}
             onResumeOnboarding={() => setModal('onboarding')}
             onResumeWorkout={({ day, exerciseIdx, sessionId: sid, startedAt }) => {

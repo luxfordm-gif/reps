@@ -15,8 +15,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     emoji: '🔄',
     title: "What's new",
     bullets: [
-      'Two-week rotating plans are supported — Home shows only the week you are on, and moves to the next once you have trained all of that week\'s days',
-      'A Week switch on Home if you want to move the rotation on (or back) yourself',
+      'Two-week rotating plans are supported — Home shows one card per day, and each opens whichever week\'s version you\'re due, swapping automatically once you\'ve done the other (just like the weekly machine alternatives)',
+      'A "Show week 2 instead" switch on the day screen if you want the other version',
       'Days titled "LEGS 1" or "PUSH 2" are now recognised — plans written that way used to import as nothing at all',
       'Home ab workouts import as a reference card — the movements listed to read, available every week, with no session to start and no sets to log',
       '"Failure", "Max Time" and "Max Hold" rep ranges are understood, and giant sets written down the sets column come in as one group',

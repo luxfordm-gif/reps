@@ -59,11 +59,8 @@ export interface QueuedSetRow {
 }
 
 /** Tables an offline edit may patch by primary key. Deliberately a closed list
- *  — the queue replays blind, so it must not be able to touch anything else.
- *  `plans` is here for the rotation-week switch, which is a gym-floor decision
- *  that has to work without signal like the rest of them. Row ownership is still
- *  enforced server-side by RLS. */
-export type UpdatableTable = 'plan_exercises' | 'plans';
+ *  — the queue replays blind, so it must not be able to touch anything else. */
+export type UpdatableTable = 'plan_exercises';
 
 export interface QueuedSetPatch {
   weight?: number | null;
@@ -651,7 +648,7 @@ export function describeEntry(entry: OutboxEntry): string {
     case 'session_notes':
       return 'Workout notes';
     case 'update_row':
-      return op.table === 'plans' ? 'Plan settings' : 'Exercise settings';
+      return 'Exercise settings';
     case 'delete_session':
     case 'delete_open_sessions':
       return 'Discarded workout';
