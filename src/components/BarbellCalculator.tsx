@@ -3,6 +3,11 @@ import {
   BARS,
   STANDARD_PLATES_KG,
   totalKg,
+  addPlate as addPlateTo,
+  removePlateAt as removePlateAtIndex,
+  removeOneOfSize as removeOneOfSizeFrom,
+  setQuantityOfSize,
+  groupPlates,
   getLastBarId,
   setLastBarId,
   getCustomBarKg,
@@ -130,21 +135,17 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
   }
 
   function addPlate(kg: number) {
-    setPlates((p) => [...p, kg].sort((a, b) => b - a));
+    setPlates((p) => addPlateTo(p, kg));
     hapticBuzz(12);
   }
 
   function removePlateAt(arrayIndex: number) {
-    setPlates((p) => p.filter((_, i) => i !== arrayIndex));
+    setPlates((p) => removePlateAtIndex(p, arrayIndex));
     hapticBuzz(10);
   }
 
   function removeOneOfSize(kg: number) {
-    setPlates((p) => {
-      const idx = p.findIndex((x) => x === kg);
-      if (idx === -1) return p;
-      return p.filter((_, i) => i !== idx);
-    });
+    setPlates((p) => removeOneOfSizeFrom(p, kg));
     hapticBuzz(10);
   }
 
@@ -154,12 +155,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
     if (raw == null) return;
     const n = Math.max(0, Math.min(20, Math.floor(Number(raw))));
     if (!Number.isFinite(n)) return;
-    setPlates((p) => {
-      const others = p.filter((x) => x !== kg);
-      const next = [...others];
-      for (let i = 0; i < n; i++) next.push(kg);
-      return next.sort((a, b) => b - a);
-    });
+    setPlates((p) => setQuantityOfSize(p, kg, n));
     hapticBuzz(12);
   }
 
@@ -383,14 +379,6 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
       </div>
     </div>
   );
-}
-
-function groupPlates(plates: number[]): { kg: number; count: number }[] {
-  const map = new Map<number, number>();
-  for (const p of plates) map.set(p, (map.get(p) ?? 0) + 1);
-  return [...map.entries()]
-    .map(([kg, count]) => ({ kg, count }))
-    .sort((a, b) => b.kg - a.kg);
 }
 
 function TotalButton({
