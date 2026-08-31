@@ -122,6 +122,11 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [previousExercises, setPreviousExercises] = useState<PreviousExercise[]>([]);
   const [matches, setMatches] = useState<Map<string, Match>>(new Map());
+  // The bulk keep/reset choice covers almost everyone, so the per-machine
+  // controls stay hidden until asked for — a row shows a quiet status line
+  // instead of a control it doesn't need.
+  const [adjustHistoryOpen, setAdjustHistoryOpen] = useState(false);
+
   // Keys of carried-over machines whose history is KEPT. Default is to keep every
   // match: a new block is usually the same machines with a different set and rep
   // prescription, and walking up to a familiar machine with a blank weight field
@@ -498,6 +503,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                     Reset all to zero
                   </button>
                 </div>
+                <button
+                  onClick={() => setAdjustHistoryOpen((v) => !v)}
+                  className="mt-3 w-full text-center text-xs font-semibold text-muted underline-offset-2 active:text-ink active:underline"
+                >
+                  {adjustHistoryOpen ? 'Done adjusting' : 'Adjust machine by machine'}
+                </button>
               </div>
             )}
 
@@ -520,6 +531,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                         <ExerciseReviewRow
                           exercise={ex}
                           restSeconds={restByKey.get(`${dayIdx}:${exIdx}`) ?? null}
+                          showHistoryControl={adjustHistoryOpen}
                           match={matches.get(`${dayIdx}:${exIdx}`)}
                           keepHistory={keepHistory.has(`${dayIdx}:${exIdx}`)}
                           onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
@@ -698,6 +710,7 @@ function RotateGlyph() {
 function ExerciseReviewRow({
   exercise,
   restSeconds,
+  showHistoryControl,
   match,
   keepHistory,
   onNotesChange,
@@ -708,6 +721,9 @@ function ExerciseReviewRow({
 }: {
   exercise: ParsedExercise;
   restSeconds: number | null;
+  // The bulk choice on the summary card covers the usual case; the per-machine
+  // control only renders while the user is explicitly adjusting.
+  showHistoryControl: boolean;
   match?: Match;
   keepHistory: boolean;
   onNotesChange: (notes: string) => void;
@@ -790,27 +806,52 @@ function ExerciseReviewRow({
 
       {match && match.kind !== 'none' && (
         <div className="mt-3">
-          {(match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')) && (
-            <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-ink/5 px-3 py-2.5">
-              <input
-                type="checkbox"
-                checked={keepHistory}
-                onChange={onToggleKeepHistory}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
-              />
-              <span className="text-xs text-ink/80">
-                <span className="font-semibold text-ink">Keep history</span> from{' '}
-                <span className="font-semibold text-ink">
-                  {match.candidate?.name ?? "a machine you've used before"}
+          {(match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')) &&
+            (showHistoryControl ? (
+              // Adjusting: a segmented pair, so the chosen state is unmistakable —
+              // exactly one side is filled, and it names what happens.
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-ink/5 px-3 py-2">
+                <span className="min-w-0 truncate text-xs text-ink/80">
+                  From{' '}
+                  <span className="font-semibold text-ink">
+                    {match.candidate?.name ?? 'your history'}
+                  </span>
                 </span>
-                <span className="mt-0.5 block text-muted">
-                  {keepHistory
-                    ? 'Your logged sets carry over.'
-                    : 'Starting fresh — resets to zero.'}
-                </span>
-              </span>
-            </label>
-          )}
+                <div className="flex shrink-0 rounded-pill bg-line/60 p-0.5">
+                  <button
+                    onClick={keepHistory ? undefined : onToggleKeepHistory}
+                    className={`rounded-pill px-3 py-1 text-[11px] font-semibold transition-colors duration-150 ${
+                      keepHistory ? 'bg-ink text-white shadow-card' : 'text-muted'
+                    }`}
+                  >
+                    Carry over
+                  </button>
+                  <button
+                    onClick={keepHistory ? onToggleKeepHistory : undefined}
+                    className={`rounded-pill px-3 py-1 text-[11px] font-semibold transition-colors duration-150 ${
+                      !keepHistory ? 'bg-ink text-white shadow-card' : 'text-muted'
+                    }`}
+                  >
+                    Start fresh
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // Not adjusting: state the outcome, no control to second-guess.
+              <div className="text-xs text-muted">
+                {keepHistory ? (
+                  <>
+                    Weights carry over from{' '}
+                    <span className="font-medium text-ink">
+                      {match.candidate?.name ?? "a machine you've used before"}
+                    </span>
+                    .
+                  </>
+                ) : (
+                  'Starting fresh at zero.'
+                )}
+              </div>
+            ))}
           {match.kind === 'fuzzy' && match.decision === 'pending' && (
             <div className="rounded-xl bg-ink/5 px-3 py-2.5">
               <div className="text-xs text-ink/80">
@@ -821,9 +862,9 @@ function ExerciseReviewRow({
               <div className="mt-2 flex gap-2">
                 <button
                   onClick={onSameMachine}
-                  className="flex-1 rounded-pill bg-ink py-1.5 text-xs font-semibold text-white active:opacity-80"
+                  className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40"
                 >
-                  Same — keep history
+                  Same machine
                 </button>
                 <button
                   onClick={onDifferentMachine}
