@@ -1,13 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrainingDayCard } from '../components/TrainingDayCard';
 import { WeeklyProgress } from '../components/WeeklyProgress';
-import { weeksOnPlan, type FullPlan } from '../lib/plansApi';
+import {
+  daysForRotationWeek,
+  nextRotationWeek,
+  planRotationWeeks,
+  setRotationWeek,
+  weeksOnPlan,
+  type FullPlan,
+} from '../lib/plansApi';
 import {
   type ActiveSessionContext,
   type WeekSummary,
 } from '../lib/sessionsApi';
 import { adjustWater, getWaterGoal, getWaterUnit } from '../lib/waterApi';
-import { getCachedHomeData, loadHomeData, patchHomeCache } from '../lib/homeCache';
+import {
+  clearHomeCache,
+  getCachedHomeData,
+  loadHomeData,
+  patchHomeCache,
+} from '../lib/homeCache';
 import { SyncStatus } from '../components/SyncStatus';
 import { requestFlush } from '../lib/offline/outbox';
 import { warmLastSetsForPlan } from '../lib/sessionsApi';
@@ -42,6 +54,13 @@ const ACCENTS: Record<string, string> = {
 };
 
 const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
+
+/** Accent for a day, ignoring any rotation number: "Legs 2" reads as Legs. */
+function accentFor(dayName: string): string {
+  return (
+    ACCENTS[dayName] ?? ACCENTS[dayName.replace(/\s+\d+$/, '')] ?? FALLBACK_ACCENT
+  );
+}
 const FIRST_NAME = 'Matt';
 
 function bodyPartsForDay(exercises: { body_part: string | null }[]): string {
@@ -150,6 +169,11 @@ export function Home({
   const [recentPositions, setRecentPositions] = useState<number[]>(
     initial?.recentPositions ?? []
   );
+  // Which rotation week to show. Normally the plan's own value; set locally when
+  // the user switches, so the cards change under their thumb rather than after a
+  // round trip. Null until they touch it.
+  const [weekOverride, setWeekOverride] = useState<number | null>(null);
+  const [switchingWeek, setSwitchingWeek] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -259,7 +283,12 @@ export function Home({
     );
   }
 
-  const days = plan.training_days ?? [];
+  // A rotating plan only shows the week you're on, plus anything that runs every
+  // week. Plans without a rotation are unaffected — every day has a null week.
+  const weeks = planRotationWeeks(plan);
+  const rotates = weeks.length > 1;
+  const rotationWeek = weekOverride ?? plan.rotation_week ?? weeks[0] ?? null;
+  const days = daysForRotationWeek(plan, rotates ? rotationWeek : null);
   const mainDays = days.filter((d) => d.name !== 'Abs');
   const absDay = days.find((d) => d.name === 'Abs');
   const nextDayName = getNextDayName(mainDays, lastCompleted, completedThisWeek);
@@ -269,7 +298,7 @@ export function Home({
   const listDays: { day: Day; slot: 'main' | 'abs' }[] = [];
   for (const d of mainDays) {
     listDays.push({ day: d, slot: 'main' });
-    if (absDay && (d.name === 'Pull' || d.name === 'Arms')) {
+    if (absDay && /^(Pull|Arms)(\s+\d+)?$/.test(d.name)) {
       listDays.push({ day: absDay, slot: 'abs' });
     }
   }
@@ -342,7 +371,7 @@ export function Home({
                 name={nextDay.name}
                 bodyParts={bodyPartsForDay(nextDay.plan_exercises ?? [])}
                 exerciseCount={(nextDay.plan_exercises ?? []).length}
-                accent={ACCENTS[nextDay.name] ?? FALLBACK_ACCENT}
+                accent={accentFor(nextDay.name)}
                 isNext
                 onClick={() => onTapDay(nextDay)}
               />
@@ -375,6 +404,43 @@ export function Home({
           )}
         </div>
 
+        {rotates && rotationWeek != null && (
+          <div className="mt-7 flex items-center justify-between rounded-card bg-paper-card px-5 py-4 shadow-card">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                Rotation
+              </div>
+              <div className="mt-0.5 text-base font-semibold text-ink">
+                Week {rotationWeek}
+              </div>
+              <div className="mt-0.5 text-xs text-muted">
+                Moves on by itself once you've done all {mainDays.length}.
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                const next = nextRotationWeek(weeks, rotationWeek);
+                if (next == null || switchingWeek) return;
+                setSwitchingWeek(true);
+                setWeekOverride(next);
+                try {
+                  await setRotationWeek(plan.id, next);
+                  clearHomeCache();
+                } catch {
+                  // The switch stands for this session either way; the plan
+                  // reloads from the server next time Home opens.
+                } finally {
+                  setSwitchingWeek(false);
+                }
+              }}
+              disabled={switchingWeek}
+              className="shrink-0 rounded-pill border border-line bg-paper px-4 py-2 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
+            >
+              Switch to week {nextRotationWeek(weeks, rotationWeek)}
+            </button>
+          </div>
+        )}
+
         <div className="mt-7">
           <SectionLabel>All workouts</SectionLabel>
           <div className="mt-3 space-y-3">
@@ -384,7 +450,7 @@ export function Home({
                 name={day.name}
                 bodyParts={bodyPartsForDay(day.plan_exercises ?? [])}
                 exerciseCount={(day.plan_exercises ?? []).length}
-                accent={ACCENTS[day.name] ?? FALLBACK_ACCENT}
+                accent={accentFor(day.name)}
                 done={completedThisWeek.includes(day.name)}
                 onClick={() => onTapDay(day)}
               />

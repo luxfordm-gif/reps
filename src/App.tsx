@@ -31,6 +31,7 @@ import { subscribeNet, isReachable } from './lib/offline/net';
 import { reconcileRecentWorkouts } from './lib/offline/reconcile';
 import { warmLastSetsForPlan } from './lib/sessionsApi';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
+import { advanceRotationIfWeekComplete } from './lib/plansApi';
 import { supersetMembers } from './lib/supersets';
 import { getMyProfile, type Profile as ProfileData } from './lib/profileApi';
 
@@ -316,6 +317,11 @@ function Root() {
               // Everything logged during the workout goes up now, if it can.
               requestFlush();
               afterWorkoutSync();
+              // A rotating plan moves to its next week once every day of the
+              // current one has been trained. Best-effort: a rotation that
+              // doesn't advance is a wrong day suggested, not a lost workout,
+              // and the Week switch on Home fixes it either way.
+              advanceRotationIfWeekComplete().catch(() => {});
             }
             setExerciseIdx(null);
             setSessionId(null);

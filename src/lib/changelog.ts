@@ -11,6 +11,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-02',
+    emoji: '🔄',
+    title: "What's new",
+    bullets: [
+      'Two-week rotating plans are supported — Home shows only the week you are on, and moves to the next once you have trained all of that week\'s days',
+      'A Week switch on Home if you want to move the rotation on (or back) yourself',
+      'Days titled "LEGS 1" or "PUSH 2" are now recognised — plans written that way used to import as nothing at all',
+      'Home ab workouts import as their own card, available every week whichever rotation week you are on',
+      '"Failure", "Max Time" and "Max Hold" rep ranges are understood, and giant sets written down the sets column come in as one group',
+      'Abs log reps or seconds with no weight field, and holds are timed in seconds rather than capped like reps',
+      'A rest written inside a set — "cluster set 5 sets 5 reps 1 min rest" — no longer gets mistaken for the rest between sets',
+    ],
+  },
+  {
     version: '2026-09-01',
     emoji: '🔁',
     title: "What's new",

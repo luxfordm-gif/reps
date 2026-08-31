@@ -15,6 +15,10 @@ export interface PlanRow {
   is_active: boolean;
   raw_text: string | null;
   activated_at: string | null;
+  // Which week of the rotation you're currently on, and when that week began.
+  // Null on plans that don't rotate.
+  rotation_week: number | null;
+  rotation_started_at: string | null;
 }
 
 export interface TrainingDayRow {
@@ -22,6 +26,8 @@ export interface TrainingDayRow {
   plan_id: string;
   name: string;
   position: number;
+  // Which week of a rotating plan this day belongs to; null runs every week.
+  week_index: number | null;
 }
 
 export interface PlanExerciseRow {
@@ -269,6 +275,9 @@ export async function savePlan(
   await supabase.from('plans').update({ is_active: false }).eq('user_id', userId);
 
   const nowIso = new Date().toISOString();
+  // A rotating plan starts on its lowest week; one without a rotation stays null
+  // and the Home screen shows every day as it always has.
+  const weeks = rotationWeeks(parsed);
   const { data: plan, error: planErr } = await supabase
     .from('plans')
     .insert({
@@ -277,6 +286,8 @@ export async function savePlan(
       raw_text: rawText,
       is_active: true,
       activated_at: nowIso,
+      rotation_week: weeks[0] ?? null,
+      rotation_started_at: weeks.length > 0 ? nowIso : null,
     })
     .select()
     .single();
@@ -290,6 +301,7 @@ export async function savePlan(
         user_id: userId,
         name: day.name,
         position: day.position,
+        week_index: day.weekIndex ?? null,
       })
       .select()
       .single();
@@ -435,6 +447,8 @@ export async function listPlans(): Promise<PlanSummary[]> {
     name: r.name,
     uploaded_at: r.uploaded_at,
     is_active: r.is_active,
+    rotation_week: r.rotation_week,
+    rotation_started_at: r.rotation_started_at,
     raw_text: r.raw_text,
     activated_at: r.activated_at,
     day_count: r.training_days?.length ?? 0,
@@ -509,4 +523,124 @@ export function weeksOnPlan(activatedAt: string | null): number {
   const ms = Date.now() - new Date(activatedAt).getTime();
   if (ms < 0) return 1;
   return Math.floor(ms / (7 * 24 * 60 * 60 * 1000)) + 1;
+}
+
+/** The distinct rotation weeks a parsed plan uses, ascending. Empty if it doesn't rotate. */
+export function rotationWeeks(parsed: ParsedPlan): number[] {
+  const weeks = new Set<number>();
+  for (const day of parsed.days) {
+    if (day.weekIndex != null) weeks.add(day.weekIndex);
+  }
+  return [...weeks].sort((a, b) => a - b);
+}
+
+/** The same, from a saved plan. */
+export function planRotationWeeks(plan: FullPlan | null): number[] {
+  const weeks = new Set<number>();
+  for (const day of plan?.training_days ?? []) {
+    if (day.week_index != null) weeks.add(day.week_index);
+  }
+  return [...weeks].sort((a, b) => a - b);
+}
+
+/**
+ * The days to show for a given rotation week: that week's days, plus everything
+ * that runs every week. A plan with no rotation returns all of its days.
+ */
+export function daysForRotationWeek(
+  plan: FullPlan | null,
+  week: number | null
+): FullPlan['training_days'] {
+  const days = plan?.training_days ?? [];
+  if (week == null) return days;
+  return days.filter((d) => d.week_index == null || d.week_index === week);
+}
+
+/** The week after this one, wrapping back to the first. */
+export function nextRotationWeek(weeks: number[], current: number | null): number | null {
+  if (weeks.length === 0) return null;
+  const idx = current == null ? -1 : weeks.indexOf(current);
+  return weeks[(idx + 1) % weeks.length];
+}
+
+/** Move the plan onto a rotation week, restarting the "days done this week" clock. */
+export async function setRotationWeek(planId: string, week: number): Promise<string> {
+  const startedAt = new Date().toISOString();
+  const update = { rotation_week: week, rotation_started_at: startedAt };
+  try {
+    await query(supabase.from('plans').update(update).eq('id', planId).select('id'), {
+      label: 'setRotationWeek',
+    });
+  } catch (e) {
+    if (!isOfflineError(e)) throw e;
+    const userId = await currentUserId();
+    if (!userId) throw e;
+    enqueue(userId, { kind: 'update_row', table: 'plans', id: planId, patch: update });
+  }
+  // Keep the cached plan in step so Home doesn't flip back on the next render.
+  const userId = currentUserIdSync();
+  const cached = getCachedActivePlan(userId);
+  if (cached && cached.id === planId) {
+    writeCache(userId, ACTIVE_PLAN_CACHE, { ...cached, ...update });
+  }
+  return startedAt;
+}
+
+/**
+ * Training-day ids with a completed session since `sinceIso`.
+ *
+ * Queried here rather than imported from `sessionsApi` (which imports this
+ * module) — same reason as dropWarmedWeights above. Returns an empty set rather
+ * than throwing: a rotation that fails to advance is far less disruptive than a
+ * Home screen that won't render.
+ */
+async function completedTrainingDayIdsSince(sinceIso: string): Promise<Set<string>> {
+  const userId = await currentUserId();
+  if (!userId) return new Set();
+  try {
+    const data = await query(
+      supabase
+        .from('sessions')
+        .select('training_day_id')
+        .eq('user_id', userId)
+        .not('completed_at', 'is', null)
+        .gte('completed_at', sinceIso),
+      { label: 'completedTrainingDayIdsSince' }
+    );
+    const rows = (data as { training_day_id: string | null }[]) ?? [];
+    return new Set(rows.map((r) => r.training_day_id).filter((id): id is string => !!id));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Move a rotating plan on if its current week is done.
+ *
+ * "Done" means every gym day of the current week has been trained since the week
+ * began — days that run every week (the home abs workout) don't hold the
+ * rotation up, since they're not part of it. Called after finishing a workout;
+ * a no-op for plans that don't rotate. Returns the week now showing.
+ */
+export async function advanceRotationIfWeekComplete(): Promise<number | null> {
+  // Read through the cache — this runs right after a workout, when signal is
+  // whatever the gym gives you.
+  const plan = getCachedActivePlan(currentUserIdSync()) ?? (await getActivePlan());
+  const weeks = planRotationWeeks(plan);
+  if (!plan || weeks.length < 2 || plan.rotation_week == null) return plan?.rotation_week ?? null;
+  const since = plan.rotation_started_at ?? plan.activated_at;
+  if (!since) return plan.rotation_week;
+
+  const thisWeeksDays = (plan.training_days ?? []).filter(
+    (d) => d.week_index === plan.rotation_week
+  );
+  if (thisWeeksDays.length === 0) return plan.rotation_week;
+
+  const done = await completedTrainingDayIdsSince(since);
+  if (!thisWeeksDays.every((d) => done.has(d.id))) return plan.rotation_week;
+
+  const next = nextRotationWeek(weeks, plan.rotation_week);
+  if (next == null || next === plan.rotation_week) return plan.rotation_week;
+  await setRotationWeek(plan.id, next);
+  return next;
 }

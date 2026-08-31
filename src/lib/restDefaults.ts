@@ -55,6 +55,13 @@ const COMPOUND_PATTERNS: RegExp[] = [
  */
 export function restSecondsFromNotes(notes: string | null | undefined): number | null {
   const text = (notes ?? '').toLowerCase();
+  // A rest inside a protocol is not the rest between sets. "Set 2: cluster set 5
+  // sets 5 reps 1 min rest" and "Set 3: 10 reps, 30s rest, 5 reps…" both describe
+  // pauses within one working set, so reading them as this exercise's rest would
+  // put a leg press on 30 seconds. Fall back to the defaults instead.
+  if (/\bset\s+\d+\s*:|cluster\s*set|rest[\s-]?pause|muscle\s*round/.test(text)) {
+    return null;
+  }
   // Coaches write rest in words as often as numbers. These are checked first so
   // "no rest" isn't read as whatever number happens to sit near it.
   if (/\bno\s+rest\b|\bwithout\s+rest\b|\bstraight\s+(?:into|through)\b/.test(text)) {
