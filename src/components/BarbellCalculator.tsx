@@ -241,7 +241,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
                 <button
                   key={t.id}
                   onClick={() => selectBar(t.id)}
-                  className={`relative flex h-[96px] w-[88px] flex-none snap-start flex-col items-center justify-between rounded-2xl bg-paper-card p-2 text-center transition-colors border-2 ${
+                  className={`relative flex h-[90px] w-[88px] flex-none snap-start flex-col items-center justify-between rounded-2xl bg-paper-card p-2 text-center transition-colors border-2 ${
                     selected ? 'border-ink' : 'border-line/60'
                   }`}
                 >
@@ -424,13 +424,22 @@ function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 
   return (
     <button
       onClick={onClick}
-      className={`flex h-14 w-14 flex-col items-center justify-center justify-self-center rounded-full active:scale-95 transition-transform ${
-        heavy ? 'bg-ink text-white' : 'border border-line bg-paper-card text-ink'
+      className={`flex h-14 w-14 flex-col items-center justify-center justify-self-center rounded-full pt-px active:scale-95 transition-transform ${
+        heavy
+          ? 'bg-[linear-gradient(180deg,#313135_0%,#131315_46%,#000000_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
+          : 'border border-line bg-[linear-gradient(180deg,#FFFFFF_0%,#F7F7F9_52%,#ECECF0_100%)] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
       }`}
       aria-label={`Add ${formatKg(kg)}kg plate`}
     >
       <span className="text-sm font-bold leading-none">{formatKg(kg)}</span>
-      <span className={`mt-0.5 text-[9px] font-semibold tracking-wider ${heavy ? 'text-white/70' : 'text-muted'}`}>
+      {/* leading-none on both, so the block's box hugs the glyphs. With normal
+          leading the KG caption carries empty space beneath it, which pushes
+          the visible text up inside a centred circle. */}
+      <span
+        className={`mt-0.5 text-[9px] font-semibold leading-none tracking-wider ${
+          heavy ? 'text-white/70' : 'text-muted'
+        }`}
+      >
         KG
       </span>
     </button>
@@ -561,15 +570,19 @@ function BarVisualisation({
           <stop offset="100%" stopColor="#6E6E73" />
         </linearGradient>
         <linearGradient id="bc-plate" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#3A3A3C" />
-          <stop offset="18%" stopColor="#131315" />
-          <stop offset="70%" stopColor="#0A0A0A" />
-          <stop offset="100%" stopColor="#2C2C2E" />
+          <stop offset="0%" stopColor="#4C4C50" />
+          <stop offset="7%" stopColor="#2B2B2E" />
+          <stop offset="24%" stopColor="#121214" />
+          <stop offset="62%" stopColor="#0B0B0C" />
+          <stop offset="88%" stopColor="#232326" />
+          <stop offset="100%" stopColor="#424246" />
         </linearGradient>
         <linearGradient id="bc-plate-light" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#FFFFFF" />
-          <stop offset="55%" stopColor="#F2F2F5" />
-          <stop offset="100%" stopColor="#DCDCE1" />
+          <stop offset="12%" stopColor="#F6F6F8" />
+          <stop offset="55%" stopColor="#E9E9ED" />
+          <stop offset="88%" stopColor="#F3F3F6" />
+          <stop offset="100%" stopColor="#FDFDFE" />
         </linearGradient>
       </defs>
 
