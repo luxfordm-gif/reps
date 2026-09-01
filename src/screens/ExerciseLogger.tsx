@@ -1085,7 +1085,10 @@ export function ExerciseLogger({
             // why the countdown is persisted rather than held in this screen.
             if (supersetLastOfRound) startRest(restSeconds);
             onGoToSupersetNext();
-          } else if (hasMoreToDo) {
+          } else if (hasMoreToDo || hasNext) {
+            // The exercise's last set still earns a rest when another exercise
+            // is waiting — the countdown is persisted, so it carries across
+            // the hop to the next screen. Only the workout's final set skips it.
             startRest(restSeconds);
           }
         }
@@ -1289,21 +1292,16 @@ export function ExerciseLogger({
           </div>
         )}
 
-        {/* With the full-screen overlay the rest pills otherwise live only
-            inside it, and that only appears once a countdown is running — so an
-            exercise's rest was invisible, and unchangeable, until after you had
-            logged a set. Always surface them. The wording says "between sets"
-            because the drops inside a set always run straight through whatever
-            this is set to. */}
-        {USE_REST_OVERLAY && !restActive && (
+        {/* Rest lives in the countdown overlay, which opens on every logged
+            set group and is where the duration is read and changed. The only
+            page-level rest UI is the way back for an exercise set to "no
+            rest" — that one never opens the overlay, so without this it could
+            never be undone. */}
+        {USE_REST_OVERLAY && !restActive && restSeconds === 0 && (
           <div className="mt-5 flex flex-col items-center gap-2">
-            {!inRound && (
-              <div className="text-[11px] text-muted">
-                {restSeconds === 0
-                  ? 'No rest between sets on this one.'
-                  : `Rest ${restLabel(restSeconds)} between sets.`}
-              </div>
-            )}
+            <div className="text-[11px] text-muted">
+              No rest between sets on this one.
+            </div>
             <RestPicker value={restSeconds} onChange={setRestSeconds} compact />
           </div>
         )}
