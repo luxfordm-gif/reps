@@ -1289,13 +1289,21 @@ export function ExerciseLogger({
           </div>
         )}
 
-        {/* With the full-screen overlay the rest pills only live inside it, so an
-            exercise set to "no rest" would have no way back. Surface them here. */}
-        {USE_REST_OVERLAY && !restActive && restSeconds === 0 && (
+        {/* With the full-screen overlay the rest pills otherwise live only
+            inside it, and that only appears once a countdown is running — so an
+            exercise's rest was invisible, and unchangeable, until after you had
+            logged a set. Always surface them. The wording says "between sets"
+            because the drops inside a set always run straight through whatever
+            this is set to. */}
+        {USE_REST_OVERLAY && !restActive && (
           <div className="mt-5 flex flex-col items-center gap-2">
-            <div className="text-[11px] text-muted">
-              No rest timer on this one — it runs straight through.
-            </div>
+            {!inRound && (
+              <div className="text-[11px] text-muted">
+                {restSeconds === 0
+                  ? 'No rest between sets on this one.'
+                  : `Rest ${restLabel(restSeconds)} between sets.`}
+              </div>
+            )}
             <RestPicker value={restSeconds} onChange={setRestSeconds} compact />
           </div>
         )}
@@ -2601,6 +2609,12 @@ function SetGroup({
         const isActive = !row.completed && idx === activeIndex;
         const isLastInGroup = ri === rows.length - 1;
         const shaking = shakeIdx === idx;
+        // Both numbers in (weight not needed on a weightless movement) — the
+        // tick darkens to say it's ready to tap.
+        const ready =
+          !row.completed &&
+          row.reps.trim() !== '' &&
+          (weightless || row.weight.trim() !== '');
         const showBackOffHeader = isMain && row.scheme === 'back_off' && !!row.repRangeLabel;
         return (
           <div key={idx}>
@@ -2612,7 +2626,7 @@ function SetGroup({
             <div
               className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
                 !isMain ? 'bg-line/30' : ''
-              } ${row.completed ? 'opacity-70' : ''} ${
+              } ${
                 isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
               } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
             >
@@ -2637,9 +2651,11 @@ function SetGroup({
                     }}
                     aria-label={`Weight in ${unit}`}
                     className={`no-spinner w-full rounded-xl border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
-                      row.weight === row.weightSuggested && row.weightSuggested !== ''
-                        ? 'text-ink/40'
-                        : 'text-ink'
+                      row.completed
+                        ? 'text-ink/60'
+                        : row.weight === row.weightSuggested && row.weightSuggested !== ''
+                          ? 'text-ink/40'
+                          : 'text-ink'
                     }`}
                   />
                   <span
@@ -2672,9 +2688,11 @@ function SetGroup({
               className={`${
                 weightless ? 'min-w-[76px] flex-1' : 'w-16 shrink-0'
               } rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
-                row.reps === row.repsSuggested && row.repsSuggested !== ''
-                  ? 'text-ink/40'
-                  : 'text-ink'
+                row.completed
+                  ? 'text-ink/60'
+                  : row.reps === row.repsSuggested && row.repsSuggested !== ''
+                    ? 'text-ink/40'
+                    : 'text-ink'
               }`}
             />
             <div className="ml-auto flex shrink-0 items-center gap-3">
@@ -2708,7 +2726,9 @@ function SetGroup({
                   onClick={() => onComplete(idx)}
                   disabled={savingIdx === idx}
                   aria-label={`Log set ${setIndex} as done`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-60 disabled:opacity-40"
+                  className={`flex h-9 w-9 items-center justify-center rounded-full border active:opacity-60 disabled:opacity-40 ${
+                    ready ? 'border-ink text-ink' : 'border-line text-muted'
+                  }`}
                 >
                   {savingIdx === idx ? (
                     <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-line border-t-muted" />

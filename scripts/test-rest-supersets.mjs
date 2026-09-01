@@ -36,9 +36,17 @@ check('deadlift', defaultRestSeconds({ name: 'Deadlift from floor' }), 120);
 check('squat variation', defaultRestSeconds({ name: 'Squat variation of choice' }), 120);
 check('leg press', defaultRestSeconds({ name: 'Leg press' }), 120);
 check('rdl abbreviation', defaultRestSeconds({ name: 'RDL' }), 120);
+// A drop set is no longer a special case: the logger already runs the drops of
+// a set straight through, and zeroing the whole exercise took the rest away
+// from the ordinary sets in front of the drop set too.
 check(
-  'drop set runs straight through',
-  defaultRestSeconds({ name: 'EZ bar curl', setScheme: 'dropset' }),
+  'drop set takes the normal default',
+  defaultRestSeconds({ name: 'EZ bar curl' }),
+  60
+);
+check(
+  'an explicit "no rest" note still wins',
+  defaultRestSeconds({ name: 'EZ bar curl', notes: 'No rest between sets' }),
   0
 );
 check(
@@ -49,13 +57,21 @@ check(
 
 console.log('\n=== a round rests as long as its longest movement ===');
 check(
-  'drop set paired with normal work',
+  'a pair takes the longer of the two',
   restSecondsForExercises([
     { name: 'Incline cable fly', supersetGroup: 1 },
-    { name: 'Nautilus flat press', setScheme: 'dropset', supersetGroup: 1 },
+    { name: 'Leg press', supersetGroup: 1 },
     { name: 'Rope pushdown', supersetGroup: null },
   ]),
-  [60, 60, 60]
+  [120, 120, 60]
+);
+check(
+  'a no-rest note does not drag its partner down',
+  restSecondsForExercises([
+    { name: 'Incline cable fly', supersetGroup: 1 },
+    { name: 'Nautilus flat press', notes: 'No rest', supersetGroup: 1 },
+  ]),
+  [60, 60]
 );
 
 const plan = String.raw`
