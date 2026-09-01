@@ -424,7 +424,7 @@ function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 
   return (
     <button
       onClick={onClick}
-      className={`flex h-14 w-14 flex-col items-center justify-center justify-self-center rounded-full pt-0.5 active:scale-95 transition-transform ${
+      className={`flex h-14 w-14 flex-col items-center justify-center justify-self-center rounded-full pt-px active:scale-95 transition-transform ${
         heavy
           ? 'bg-[linear-gradient(180deg,#313135_0%,#131315_46%,#000000_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
           : 'border border-line bg-[linear-gradient(180deg,#FFFFFF_0%,#F7F7F9_52%,#ECECF0_100%)] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
@@ -432,7 +432,14 @@ function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 
       aria-label={`Add ${formatKg(kg)}kg plate`}
     >
       <span className="text-sm font-bold leading-none">{formatKg(kg)}</span>
-      <span className={`mt-0.5 text-[9px] font-semibold tracking-wider ${heavy ? 'text-white/70' : 'text-muted'}`}>
+      {/* leading-none on both, so the block's box hugs the glyphs. With normal
+          leading the KG caption carries empty space beneath it, which pushes
+          the visible text up inside a centred circle. */}
+      <span
+        className={`mt-0.5 text-[9px] font-semibold leading-none tracking-wider ${
+          heavy ? 'text-white/70' : 'text-muted'
+        }`}
+      >
         KG
       </span>
     </button>
