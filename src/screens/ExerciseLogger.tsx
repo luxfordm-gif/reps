@@ -1289,13 +1289,21 @@ export function ExerciseLogger({
           </div>
         )}
 
-        {/* With the full-screen overlay the rest pills only live inside it, so an
-            exercise set to "no rest" would have no way back. Surface them here. */}
-        {USE_REST_OVERLAY && !restActive && restSeconds === 0 && (
+        {/* With the full-screen overlay the rest pills otherwise live only
+            inside it, and that only appears once a countdown is running — so an
+            exercise's rest was invisible, and unchangeable, until after you had
+            logged a set. Always surface them. The wording says "between sets"
+            because the drops inside a set always run straight through whatever
+            this is set to. */}
+        {USE_REST_OVERLAY && !restActive && (
           <div className="mt-5 flex flex-col items-center gap-2">
-            <div className="text-[11px] text-muted">
-              No rest timer on this one — it runs straight through.
-            </div>
+            {!inRound && (
+              <div className="text-[11px] text-muted">
+                {restSeconds === 0
+                  ? 'No rest between sets on this one.'
+                  : `Rest ${restLabel(restSeconds)} between sets.`}
+              </div>
+            )}
             <RestPicker value={restSeconds} onChange={setRestSeconds} compact />
           </div>
         )}

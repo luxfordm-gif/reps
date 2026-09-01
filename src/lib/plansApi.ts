@@ -302,15 +302,14 @@ export async function savePlan(
     if (tdErr) throw tdErr;
 
     if (day.exercises.length > 0) {
-      // Rest comes from the plan itself — drop sets run straight through, heavy
-      // compounds get longer, and an explicit rest in the coach's notes wins.
+      // Rest comes from the plan itself — heavy compounds get longer, and an
+      // explicit rest in the coach's notes wins.
       // Leaving it null (as we used to) meant every exercise fell back to
       // whatever rest was last picked anywhere in the app.
       const restByIndex = restSecondsForExercises(
         day.exercises.map((e) => ({
           name: e.name,
           notes: e.notes,
-          setScheme: e.setScheme,
           supersetGroup: e.supersetGroup ?? null,
         }))
       );

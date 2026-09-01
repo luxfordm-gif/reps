@@ -110,7 +110,6 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
         day.exercises.map((e) => ({
           name: e.name,
           notes: e.notes,
-          setScheme: e.setScheme,
           supersetGroup: e.supersetGroup ?? null,
         }))
       ).forEach((rest, exIdx) => map.set(`${dayIdx}:${exIdx}`, rest));

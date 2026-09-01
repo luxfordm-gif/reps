@@ -2,16 +2,21 @@
 //
 // Until now `rest_seconds` was left null on upload, so every exercise in a new
 // plan fell back to whatever rest the user last picked anywhere in the app (or
-// 60s). That ignored what the plan itself says: a drop set is meant to run
-// straight through, and a heavy compound needs longer on its feet than a
-// machine isolation does.
+// 60s). That ignored what the plan itself says: a heavy compound needs longer
+// on its feet than a machine isolation does.
 //
 // Precedence, most specific first:
 //   1. An explicit rest the coach wrote in the notes, in numbers ("45 seconds
 //      max rest") or in words ("no rest", "minimal rest", "full recovery").
-//   2. Drop sets — no rest.
-//   3. Heavy compounds (deadlift / squat / leg press family) — 2 minutes.
-//   4. Everything else — 1 minute.
+//   2. Heavy compounds (deadlift / squat / leg press family) — 2 minutes.
+//   3. Everything else — 1 minute.
+//
+// Drop sets used to be a fourth case, defaulting to no rest at all. That was
+// wrong twice over: the logger already runs the drops of a set straight through
+// on its own (rest only starts when the NEXT row belongs to a different set),
+// so the rule bought nothing there — and because it applied to the whole
+// exercise, it also removed the rest between the ordinary working sets that
+// come before the drop set. They now take the same default as anything else.
 //
 // Whatever we pick is only a starting point: the rest pill on the logger still
 // overrides it per exercise and that choice sticks.
@@ -100,17 +105,12 @@ export function isCompoundLift(name: string): boolean {
 }
 
 /**
- * The rest period to store for an exercise at upload time. `setScheme` is the
- * scheme the parser detected; `notes` is the coach's own text for the row.
+ * The rest period to store for an exercise at upload time. `notes` is the
+ * coach's own text for the row.
  */
-export function defaultRestSeconds(input: {
-  name: string;
-  notes?: string | null;
-  setScheme?: string | null;
-}): number {
+export function defaultRestSeconds(input: { name: string; notes?: string | null }): number {
   const explicit = restSecondsFromNotes(input.notes);
   if (explicit != null) return explicit;
-  if (input.setScheme === 'dropset') return NO_REST;
   if (isCompoundLift(input.name)) return COMPOUND_REST_SECONDS;
   return DEFAULT_REST_SECONDS;
 }
@@ -120,14 +120,13 @@ export function defaultRestSeconds(input: {
  *
  * Same as `defaultRestSeconds` per row, except that both halves of a superset
  * get the longer of the pair's two values. You only rest once the pair is done,
- * so pairing (say) a drop set with a normal movement should still leave you the
- * normal movement's rest rather than the drop set's none.
+ * so pairing (say) a machine isolation with a heavy compound should leave you
+ * the compound's longer rest rather than the isolation's.
  */
 export function restSecondsForExercises(
   exercises: {
     name: string;
     notes?: string | null;
-    setScheme?: string | null;
     supersetGroup?: number | null;
   }[]
 ): number[] {
