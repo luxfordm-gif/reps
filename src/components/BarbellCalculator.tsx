@@ -421,26 +421,49 @@ function TotalButton({
 
 function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 'light'; onClick: () => void }) {
   const heavy = variant === 'heavy';
+  const label = formatKg(kg);
+  // Longer labels ("1.25") shrink so they clear the rim.
+  const numberPx = label.length >= 4 ? 12 : label.length === 3 ? 14 : 16;
   return (
     <button
       onClick={onClick}
-      className={`flex h-14 w-14 flex-col items-center justify-center justify-self-center rounded-full pt-[1.5px] active:scale-95 transition-transform ${
+      className={`relative h-14 w-14 justify-self-center rounded-full active:scale-95 transition-transform ${
         heavy
           ? 'bg-[linear-gradient(180deg,#313135_0%,#131315_46%,#000000_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
           : 'border border-line bg-[linear-gradient(180deg,#FFFFFF_0%,#F7F7F9_52%,#ECECF0_100%)] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
       }`}
-      aria-label={`Add ${formatKg(kg)}kg plate`}
+      aria-label={`Add ${label}kg plate`}
     >
-      <span className="text-sm font-bold leading-none">{formatKg(kg)}</span>
-      {/* leading-none on both, so the block's box hugs the glyphs, and the
-          padding above carries a deliberate optical offset. Padding on a
-          centred box splits across the centre, so 1.5px moves the text down
-          0.75px — past geometric centre on purpose, because a large number
-          over a small caption reads high when the pixels are even. */}
+      {/* The lip a real plate has, inset from the edge. */}
       <span
-        className={`mt-0.5 text-[9px] font-semibold leading-none tracking-wider ${
-          heavy ? 'text-white/70' : 'text-muted'
+        aria-hidden
+        className={`pointer-events-none absolute inset-[2.5px] rounded-full border ${
+          heavy ? 'border-white/15' : 'border-ink/10'
         }`}
+      />
+      {/* Everything hangs off the centre hole: number above it, KG below it —
+          so the hole stays exactly centred whatever the label's length. The
+          number's anchor sits closer to the hole than it looks like it should
+          because a leading-none box still carries ~3px below the baseline. */}
+      <span
+        className="absolute inset-x-0 text-center font-bold leading-none"
+        style={{ bottom: 'calc(50% + 1px)', fontSize: numberPx }}
+      >
+        {label}
+      </span>
+      <span
+        aria-hidden
+        className={`absolute left-1/2 top-[calc(50%+1.5px)] h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full ${
+          heavy
+            ? 'border-[1.5px] border-white/90'
+            : 'bg-[#C2C2C7] shadow-[inset_0_0.5px_1px_rgba(0,0,0,0.3)]'
+        }`}
+      />
+      <span
+        className={`absolute inset-x-0 text-center text-[9px] font-semibold leading-none tracking-wider ${
+          heavy ? 'text-white/60' : 'text-muted'
+        }`}
+        style={{ top: 'calc(50% + 9.5px)' }}
       >
         KG
       </span>
