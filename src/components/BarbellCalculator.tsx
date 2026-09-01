@@ -423,31 +423,33 @@ function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 
   const heavy = variant === 'heavy';
   const label = formatKg(kg);
   // Longer labels ("1.25") shrink so they clear the rim.
-  const numberPx = label.length >= 4 ? 12 : label.length === 3 ? 14 : 16;
+  const numberPx = label.length >= 4 ? 12 : label.length === 3 ? 14 : 15;
   return (
     <button
       onClick={onClick}
       className={`relative h-14 w-14 justify-self-center rounded-full active:scale-95 transition-transform ${
         heavy
-          ? 'bg-[linear-gradient(180deg,#313135_0%,#131315_46%,#000000_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
-          : 'border border-line bg-[linear-gradient(180deg,#FFFFFF_0%,#F7F7F9_52%,#ECECF0_100%)] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
+          ? 'bg-[linear-gradient(180deg,#3A3A3E_0%,#141416_55%,#050506_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_3px_6px_rgba(0,0,0,0.22)]'
+          : 'border border-line bg-[linear-gradient(180deg,#FFFFFF_0%,#F2F2F5_60%,#E4E4E9_100%)] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_2px_5px_rgba(0,0,0,0.10)]'
       }`}
       aria-label={`Add ${label}kg plate`}
     >
-      {/* The lip a real plate has, inset from the edge. */}
+      {/* The raised face inside the plate's edge band, bounded by a fine ring. */}
       <span
         aria-hidden
-        className={`pointer-events-none absolute inset-[2.5px] rounded-full border ${
-          heavy ? 'border-white/15' : 'border-ink/10'
+        className={`pointer-events-none absolute inset-[4px] rounded-full border ${
+          heavy
+            ? 'border-white/12 bg-[linear-gradient(180deg,#303034_0%,#17171a_60%,#202024_100%)]'
+            : 'border-ink/10 bg-[linear-gradient(180deg,#FFFFFF_0%,#F7F7FA_60%,#EFEFF3_100%)]'
         }`}
       />
       {/* Everything hangs off the centre hole: number above it, KG below it —
-          so the hole stays exactly centred whatever the label's length. The
+          so the hole stays exactly placed whatever the label's length. The
           number's anchor sits closer to the hole than it looks like it should
           because a leading-none box still carries ~3px below the baseline. */}
       <span
         className="absolute inset-x-0 text-center font-bold leading-none"
-        style={{ bottom: 'calc(50% + 1px)', fontSize: numberPx }}
+        style={{ bottom: 'calc(50% + 3px)', fontSize: numberPx }}
       >
         {label}
       </span>
