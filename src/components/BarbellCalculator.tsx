@@ -429,18 +429,18 @@ function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 
       onClick={onClick}
       className={`relative h-14 w-14 justify-self-center rounded-full active:scale-95 transition-transform ${
         heavy
-          ? 'bg-[linear-gradient(180deg,#3A3A3E_0%,#141416_55%,#050506_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_3px_6px_rgba(0,0,0,0.22)]'
-          : 'border border-line bg-[linear-gradient(180deg,#FFFFFF_0%,#F2F2F5_60%,#E4E4E9_100%)] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_2px_5px_rgba(0,0,0,0.10)]'
+          ? 'bg-[linear-gradient(180deg,#26262A_0%,#0B0B0D_60%,#000000_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_3px_6px_rgba(0,0,0,0.22)]'
+          : 'border border-line bg-[linear-gradient(180deg,#FDFDFE_0%,#EFEFF3_60%,#E2E2E7_100%)] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_2px_5px_rgba(0,0,0,0.10)]'
       }`}
       aria-label={`Add ${label}kg plate`}
     >
       {/* The raised face inside the plate's edge band, bounded by a fine ring. */}
       <span
         aria-hidden
-        className={`pointer-events-none absolute inset-[4px] rounded-full border ${
+        className={`pointer-events-none absolute inset-[5.5px] rounded-full border ${
           heavy
-            ? 'border-white/12 bg-[linear-gradient(180deg,#303034_0%,#17171a_60%,#202024_100%)]'
-            : 'border-ink/10 bg-[linear-gradient(180deg,#FFFFFF_0%,#F7F7FA_60%,#EFEFF3_100%)]'
+            ? 'border-white/10 bg-[linear-gradient(180deg,#242428_0%,#17171A_65%,#1D1D21_100%)]'
+            : 'border-ink/10 bg-[linear-gradient(180deg,#FFFFFF_0%,#F7F7FA_65%,#F0F0F4_100%)]'
         }`}
       />
       {/* Everything hangs off the centre hole: number above it, KG below it —
@@ -455,15 +455,15 @@ function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 
       </span>
       <span
         aria-hidden
-        className={`absolute left-1/2 top-[calc(50%+1.5px)] h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full ${
+        className={`absolute left-1/2 top-[calc(50%+1.5px)] h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
           heavy
-            ? 'border-[1.5px] border-white/90'
-            : 'bg-[#C2C2C7] shadow-[inset_0_0.5px_1px_rgba(0,0,0,0.3)]'
+            ? 'border-2 border-white/95'
+            : 'bg-[#B9B9BF] shadow-[inset_0_0.5px_1px_rgba(0,0,0,0.3)]'
         }`}
       />
       <span
         className={`absolute inset-x-0 text-center text-[9px] font-semibold leading-none tracking-wider ${
-          heavy ? 'text-white/60' : 'text-muted'
+          heavy ? 'text-white/75' : 'text-muted'
         }`}
         style={{ top: 'calc(50% + 9.5px)' }}
       >
