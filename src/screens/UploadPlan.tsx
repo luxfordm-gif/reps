@@ -126,11 +126,13 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   // instead of a control it doesn't need.
   const [adjustHistoryOpen, setAdjustHistoryOpen] = useState(false);
 
-  // Keys of carried-over machines whose history is KEPT. Default is to keep every
-  // match: a new block is usually the same machines with a different set and rep
-  // prescription, and walking up to a familiar machine with a blank weight field
-  // is friction. Nothing is deleted either way — a reset only cuts off the "last
-  // time" prefill, so untick anything you'd rather restart from zero.
+  // Keys of carried-over machines whose history is KEPT. Default is empty —
+  // every matched machine starts fresh. Uploading a plan means a new block, and
+  // the new block's rep ranges rarely suit last block's weights: 6-8 reps at the
+  // weight you were pushing for 12 is how people stall or get hurt. Nothing is
+  // deleted either way — starting fresh only cuts off the "last time" prefill,
+  // and all-time bests are computed from every set ever logged regardless — so
+  // tick "Carry over" on anything you'd rather keep rolling.
   const [keepHistory, setKeepHistory] = useState<Set<string>>(new Set());
 
   // Candidates are every machine you have actually logged sets on, across all
@@ -174,12 +176,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       });
     });
     setMatches(next);
-    // New parse → carry history over on every machine that matched.
-    const carriers: string[] = [];
-    for (const [key, m] of next) {
-      if (carriesHistory(m)) carriers.push(key);
-    }
-    setKeepHistory(new Set(carriers));
+    // New parse → every matched machine starts fresh. Uploading a plan almost
+    // always means starting a new block, and walking up to a machine with last
+    // block's weight already in the box is how you end up chasing a number the
+    // new rep range was never meant to hit. Your all-time bests are untouched
+    // either way (see Personal records), so this is safe to default to.
+    setKeepHistory(new Set());
   }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
@@ -292,13 +294,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       next.set(key, { ...match, decision: 'same' });
       return next;
     });
-    // It's a carried-over machine now, so it takes the same default as the rest.
-    setKeepHistory((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
+    // It's a carried-over machine now, so it takes the same default as the
+    // rest: start fresh. The user can still carry it over from the per-machine
+    // control, or with "Carry all over".
   }
 
   function answerDifferentMachine(dayIdx: number, exIdx: number) {
@@ -471,35 +469,45 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
             {historyCarrierKeys.length > 0 && (
               <div className="mt-4 rounded-card bg-paper-card p-5 shadow-card">
                 <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                  Previous history
+                  Starting fresh
                 </div>
                 <div className="mt-1 text-sm text-ink">
                   <span className="font-semibold">{historyCarrierKeys.length}</span>{' '}
                   {historyCarrierKeys.length === 1
                     ? "machine matches one you've"
                     : "machines match ones you've"}{' '}
-                  trained before. Your weights{' '}
-                  <span className="font-semibold">carry over</span> by default — untick
-                  “Keep history” on any you'd rather restart at zero.
+                  trained before. A new plan{' '}
+                  <span className="font-semibold">starts them all at zero</span> so you
+                  work up to the new rep ranges instead of chasing last block's numbers.
+                </div>
+                <div className="mt-2 flex items-start gap-2 rounded-2xl bg-paper px-3 py-2.5">
+                  <TrophyIcon />
+                  <div className="text-xs text-muted">
+                    <span className="font-semibold text-ink">
+                      Your personal records are safe.
+                    </span>{' '}
+                    Nothing is ever deleted — starting fresh only clears the weight the
+                    logger pre-fills. Every set you've logged stays in your history and
+                    your all-time bests, under Profile → Personal records.
+                  </div>
                 </div>
                 <div className="mt-2 text-xs text-muted">
-                  Keeping {keptCount} · resetting {resetCount}. Nothing is deleted either
-                  way — a reset only clears the weights the logger pre-fills.
+                  Starting fresh on {resetCount} · carrying over {keptCount}.
                 </div>
                 <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => setKeepHistory(new Set(historyCarrierKeys))}
-                    disabled={keptCount === historyCarrierKeys.length}
-                    className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
-                  >
-                    Keep all history
-                  </button>
                   <button
                     onClick={() => setKeepHistory(new Set())}
                     disabled={keptCount === 0}
                     className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
                   >
-                    Reset all to zero
+                    Start all fresh
+                  </button>
+                  <button
+                    onClick={() => setKeepHistory(new Set(historyCarrierKeys))}
+                    disabled={keptCount === historyCarrierKeys.length}
+                    className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
+                  >
+                    Carry all over
                   </button>
                 </div>
                 <button
@@ -976,6 +984,27 @@ function UploadIcon() {
         d="M16 22V8 M10 14l6-6 6 6 M6 24h20"
         stroke="currentColor"
         strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TrophyIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      className="mt-0.5 shrink-0 text-ink"
+      aria-hidden="true"
+    >
+      <path
+        d="M4.5 2.5h7v3.25a3.5 3.5 0 0 1-7 0V2.5Z M4.5 3.75H3a1.5 1.5 0 0 0 0 3h.6 M11.5 3.75H13a1.5 1.5 0 0 1 0 3h-.6 M8 9.25v2.5 M5.75 13.5h4.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

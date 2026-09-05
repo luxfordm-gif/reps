@@ -11,6 +11,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-05',
+    emoji: '\u{1F3C6}',
+    title: "What's new",
+    bullets: [
+      'Personal records — Profile → Personal records keeps your best ever on every machine: heaviest set, estimated 1RM, and the date you hit it. Pull-ups and planks count too (most reps, longest hold), and anything set in the last month is flagged as new',
+      'A new plan now starts every machine at zero by default, so you work up to the new rep ranges instead of chasing last block\u2019s numbers \u2014 tap "Carry all over", or pick machine by machine, if you\u2019d rather keep them rolling',
+      'Your records are never affected by that: nothing is ever deleted, and the all-time bests are read from every set you have ever logged',
+      'A feedback button in the bottom bar \u2014 say what happened and attach a photo or a screen recording. It\u2019s in the workout menu too, since mid-set is when you spot things',
+    ],
+  },
+  {
     version: '2026-09-02',
     emoji: '🔄',
     title: "What's new",

@@ -47,6 +47,7 @@ interface Props {
   onOpenHistory?: () => void;
   onOpenPlans?: () => void;
   onOpenMachines?: () => void;
+  onOpenRecords?: () => void;
   profile?: Profile | null;
   onProfileChange?: (p: Profile) => void;
   onResumeOnboarding?: () => void;
@@ -57,6 +58,7 @@ export function Profile({
   onOpenHistory,
   onOpenPlans,
   onOpenMachines,
+  onOpenRecords,
   profile,
   onProfileChange,
   onResumeOnboarding,
@@ -191,6 +193,19 @@ export function Profile({
 
         <Section title="Activity">
           <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+            <button
+              onClick={onOpenRecords}
+              className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"
+            >
+              <div>
+                <div className="text-sm font-semibold text-ink">Personal records</div>
+                <div className="mt-0.5 text-xs text-muted">
+                  Your best ever on every machine — kept across plans
+                </div>
+              </div>
+              <ChevronRight />
+            </button>
+            <div className="border-t border-line" />
             <button
               onClick={onOpenHistory}
               className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"

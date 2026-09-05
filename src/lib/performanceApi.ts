@@ -1,5 +1,8 @@
 import { supabase, currentUserId } from './supabase';
 import { listBodyWeights, type BodyWeightRow } from './bodyWeightApi';
+import { estimate1RM } from './oneRepMax';
+
+export { estimate1RM };
 
 // Performance page data + aggregation.
 //
@@ -59,12 +62,6 @@ export interface PerformanceData {
   allTimeBests: PersonalRecord[];
   exerciseOptions: ExerciseOption[];
   topExerciseNormalized: string | null;
-}
-
-/** Epley estimated one-rep max. Single reps return the lifted weight unchanged. */
-export function estimate1RM(weight: number, reps: number): number {
-  if (reps <= 1) return weight;
-  return weight * (1 + reps / 30);
 }
 
 function pad(n: number): string {

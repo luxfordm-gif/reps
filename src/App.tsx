@@ -16,6 +16,8 @@ import { ExerciseLogger } from './screens/ExerciseLogger';
 import { SetNewPassword } from './screens/SetNewPassword';
 import { WorkoutHistory } from './screens/WorkoutHistory';
 import { Machines } from './screens/Machines';
+import { PersonalRecords } from './screens/PersonalRecords';
+import { FeedbackSheet } from './components/FeedbackSheet';
 import { WorkoutComplete } from './screens/WorkoutComplete';
 import { Onboarding } from './screens/Onboarding';
 import {
@@ -41,7 +43,8 @@ type Modal =
   | 'history'
   | 'plans'
   | 'onboarding'
-  | 'machines';
+  | 'machines'
+  | 'records';
 
 /**
  * After a workout: give the flush a moment to land, then confirm the session
@@ -95,6 +98,10 @@ function Root() {
   }, [session]);
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
+  // The feedback sheet overlays whatever is on screen rather than being a
+  // Modal: a report is most useful mid-workout, and routing to it would throw
+  // away the very screen being reported.
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeDay, setActiveDay] = useState<FullPlan['training_days'][number] | null>(null);
   // The other week's version of the active day, when the plan rotates — DayView
@@ -251,6 +258,8 @@ function Root() {
     );
   } else if (modal === 'history') {
     body = <WorkoutHistory onBack={() => setModal(null)} />;
+  } else if (modal === 'records') {
+    body = <PersonalRecords onBack={() => setModal(null)} />;
   } else if (modal === 'machines') {
     body = (
       <Machines
@@ -309,6 +318,7 @@ function Root() {
             setActiveDay(null);
           }}
           onEndWorkout={() => setEndWorkoutOpen(true)}
+          onFeedback={() => setFeedbackOpen(true)}
           onFinish={async () => {
             const sid = sessionId;
             const finishedDay = activeDay?.name ?? 'Workout';
@@ -408,6 +418,7 @@ function Root() {
             onOpenHistory={() => setModal('history')}
             onOpenPlans={() => setModal('plans')}
             onOpenMachines={() => setModal('machines')}
+            onOpenRecords={() => setModal('records')}
             profile={profile}
             onProfileChange={setProfile}
             onResumeOnboarding={() => setModal('onboarding')}
@@ -428,7 +439,15 @@ function Root() {
   return (
     <>
       {body}
-      <BottomNav active={tab} onChange={setTab} visible={navVisible} />
+      <BottomNav
+        active={tab}
+        onChange={setTab}
+        visible={navVisible}
+        onFeedback={session ? () => setFeedbackOpen(true) : undefined}
+      />
+      {feedbackOpen && (
+        <FeedbackSheet screen={screenKey} onClose={() => setFeedbackOpen(false)} />
+      )}
       <Splash visible={splashVisible} />
     </>
   );
