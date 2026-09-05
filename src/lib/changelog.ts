@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-05b',
+    emoji: '\u{1F4CA}',
+    title: "What's new",
+    bullets: [
+      'The Performance tab is now a dashboard: where you are on the plan and this week\u2019s progress, new PRs this month, body weight with a 12w / 6m / 1y chart, how consistently you\u2019ve turned up, workouts per week, and whether you\u2019re getting stronger overall',
+      'Overall strength compares your best estimated 1RM on each lift in your first two weeks on the plan with the last two \u2014 it only shows once there\u2019s enough data to mean something',
+      'Most improved this month is back, and your top three all-time records sit at the bottom with \u201cView all\u201d opening the full records board',
+    ],
+  },
+  {
     version: '2026-09-05',
     emoji: '\u{1F3C6}',
     title: "What's new",
