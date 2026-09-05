@@ -142,22 +142,10 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [previousExercises, setPreviousExercises] = useState<PreviousExercise[]>([]);
   const [matches, setMatches] = useState<Map<string, Match>>(new Map());
-  // The bulk keep/reset choice covers almost everyone, so the per-machine
-  // controls stay hidden until asked for — a row shows a quiet status line
-  // instead of a control it doesn't need.
-  const [adjustHistoryOpen, setAdjustHistoryOpen] = useState(false);
   // The repair sheets: fixing a row the parser got wrong, or a day's name/week.
   const [editor, setEditor] = useState<EditorState>(null);
   const [dayEditor, setDayEditor] = useState<{ dayIdx: number } | 'new' | null>(null);
 
-  // Keys of carried-over machines whose history is KEPT. Default is empty —
-  // every matched machine starts fresh. Uploading a plan means a new block, and
-  // the new block's rep ranges rarely suit last block's weights: 6-8 reps at the
-  // weight you were pushing for 12 is how people stall or get hurt. Nothing is
-  // deleted either way — starting fresh only cuts off the "last time" prefill,
-  // and all-time bests are computed from every set ever logged regardless — so
-  // tick "Carry over" on anything you'd rather keep rolling.
-  const [keepHistory, setKeepHistory] = useState<Set<string>>(new Set());
 
   // Candidates are every machine you have actually logged sets on, across all
   // plans — not just the plan that happens to be active. The "last time" prefill
@@ -212,12 +200,6 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       }
       return merged;
     });
-    // Every matched machine starts fresh by default: uploading a plan almost
-    // always means a new block, and last block's weight in the box is how you
-    // end up chasing a number the new rep range was never meant to hit. Your
-    // all-time bests are untouched either way. Choices already made stay;
-    // rows that were deleted drop out.
-    setKeepHistory((prev) => new Set([...prev].filter((k) => next.has(k))));
   }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
@@ -247,14 +229,17 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     setSaving(true);
     setError(null);
     try {
+      // A new plan starts every machine you've trained before at zero: the
+      // logger stops pre-filling last block's weight, and the new rep ranges
+      // are worked up to instead of chased. Nothing is deleted — every set
+      // stays in history and the all-time bests on the Performance tab.
       // Rows may have been added, moved or deleted, so positions are made
-      // contiguous first; savePlan keys the history reset by final position.
+      // contiguous first; savePlan keys the reset by final position.
       const normalized = normalizePositions(parsed);
       const historyResetKeys = new Set<string>();
       for (const d of normalized.days) {
         for (const e of d.exercises) {
-          const k = keyOf(e);
-          if (historyCarrierKeys.includes(k) && !keepHistory.has(k)) {
+          if (carriesHistory(matches.get(keyOf(e)))) {
             historyResetKeys.add(`${d.position}:${e.position}`);
           }
         }
@@ -341,9 +326,6 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       next.set(key, { ...match, decision: 'same' });
       return next;
     });
-    // It's a carried-over machine now, so it takes the same default as the
-    // rest: start fresh. The user can still carry it over from the per-machine
-    // control, or with "Carry all over".
   }
 
   function answerDifferentMachine(dayIdx: number, exIdx: number) {
@@ -355,25 +337,6 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       const current = next.get(key);
       if (!current) return prev;
       next.set(key, { ...current, decision: 'different' });
-      return next;
-    });
-    // A different machine has no history to keep — drop any stale keep flag.
-    setKeepHistory((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  }
-
-  function toggleKeepHistory(dayIdx: number, exIdx: number) {
-    const target = parsed?.days[dayIdx]?.exercises[exIdx];
-    if (!target) return;
-    const key = keyOf(target);
-    setKeepHistory((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
       return next;
     });
   }
@@ -475,14 +438,8 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     return [...ws].sort((a, b) => a - b);
   }, [parsed]);
 
-  // Keys of every exercise tied to a previous machine — the ones a keep/reset choice
-  // applies to.
-  const historyCarrierKeys: string[] = [];
-  for (const [key, m] of matches) {
-    if (carriesHistory(m)) historyCarrierKeys.push(key);
-  }
-  const keptCount = historyCarrierKeys.filter((k) => keepHistory.has(k)).length;
-  const resetCount = historyCarrierKeys.length - keptCount;
+  // How many exercises are tied to a machine already in the user's history.
+  const carrierCount = [...matches.values()].filter(carriesHistory).length;
 
   const totalExercises =
     parsed?.days.reduce((sum, d) => sum + d.exercises.length, 0) ?? 0;
@@ -601,6 +558,14 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                   {overrideCount === 1 ? 'exercise' : 'exercises'} below — give them a quick check.
                 </div>
               )}
+              {carrierCount > 0 && (
+                <div className="mt-2 text-xs text-muted">
+                  <span className="font-semibold text-ink">{carrierCount}</span>{' '}
+                  {carrierCount === 1 ? 'machine you' : 'machines you'} already train{' '}
+                  {carrierCount === 1 ? 'starts' : 'start'} at zero on the new plan. Your PRs
+                  stay on the Performance tab.
+                </div>
+              )}
               {pendingMatchCount > 0 && (
                 <div className="mt-2 text-xs text-muted">
                   <span className="font-semibold text-ink">{pendingMatchCount}</span>{' '}
@@ -615,58 +580,6 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               )}
             </div>
 
-            {historyCarrierKeys.length > 0 && (
-              <div className="mt-4 rounded-card bg-paper-card p-5 shadow-card">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                  Starting fresh
-                </div>
-                <div className="mt-1 text-sm text-ink">
-                  <span className="font-semibold">{historyCarrierKeys.length}</span>{' '}
-                  {historyCarrierKeys.length === 1
-                    ? "machine matches one you've"
-                    : "machines match ones you've"}{' '}
-                  trained before. A new plan{' '}
-                  <span className="font-semibold">starts them all at zero</span> so you
-                  work up to the new rep ranges instead of chasing last block's numbers.
-                </div>
-                <div className="mt-2 flex items-start gap-2 rounded-2xl bg-paper px-3 py-2.5">
-                  <TrophyIcon />
-                  <div className="text-xs text-muted">
-                    <span className="font-semibold text-ink">
-                      Your personal records are safe.
-                    </span>{' '}
-                    Nothing is ever deleted — starting fresh only clears the weight the
-                    logger pre-fills. Every set you've logged stays in your history and
-                    your all-time bests on the Performance tab.
-                  </div>
-                </div>
-                <div className="mt-2 text-xs text-muted">
-                  Starting fresh on {resetCount} · carrying over {keptCount}.
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => setKeepHistory(new Set())}
-                    disabled={keptCount === 0}
-                    className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
-                  >
-                    Start all fresh
-                  </button>
-                  <button
-                    onClick={() => setKeepHistory(new Set(historyCarrierKeys))}
-                    disabled={keptCount === historyCarrierKeys.length}
-                    className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
-                  >
-                    Carry all over
-                  </button>
-                </div>
-                <button
-                  onClick={() => setAdjustHistoryOpen((v) => !v)}
-                  className="mt-3 w-full text-center text-xs font-semibold text-muted underline-offset-2 active:text-ink active:underline"
-                >
-                  {adjustHistoryOpen ? 'Done adjusting' : 'Adjust machine by machine'}
-                </button>
-              </div>
-            )}
 
             <div className="mt-4 space-y-4">
               {parsed.days.map((day, dayIdx) => (
@@ -696,14 +609,11 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                         <ExerciseReviewRow
                           exercise={ex}
                           restSeconds={restByKey.get(keyOf(ex)) ?? null}
-                          showHistoryControl={adjustHistoryOpen}
                           match={matches.get(keyOf(ex))}
-                          keepHistory={keepHistory.has(keyOf(ex))}
                           onEdit={() => setEditor({ mode: 'edit', dayIdx, exIdx })}
                           onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
                           onSameMachine={() => answerSameMachine(dayIdx, exIdx)}
                           onDifferentMachine={() => answerDifferentMachine(dayIdx, exIdx)}
-                          onToggleKeepHistory={() => toggleKeepHistory(dayIdx, exIdx)}
                           onAlternativeChange={(alt) =>
                             setExerciseAlternative(dayIdx, exIdx, alt)
                           }
@@ -1030,27 +940,19 @@ function RotateGlyph() {
 function ExerciseReviewRow({
   exercise,
   restSeconds,
-  showHistoryControl,
   match,
-  keepHistory,
   onNotesChange,
   onSameMachine,
   onDifferentMachine,
-  onToggleKeepHistory,
   onAlternativeChange,
   onEdit,
 }: {
   exercise: ParsedExercise;
   restSeconds: number | null;
-  // The bulk choice on the summary card covers the usual case; the per-machine
-  // control only renders while the user is explicitly adjusting.
-  showHistoryControl: boolean;
   match?: Match;
-  keepHistory: boolean;
   onNotesChange: (notes: string) => void;
   onSameMachine: () => void;
   onDifferentMachine: () => void;
-  onToggleKeepHistory: () => void;
   onAlternativeChange: (alt: WeeklyAlternative | null) => void;
   onEdit: () => void;
 }) {
@@ -1136,58 +1038,12 @@ function ExerciseReviewRow({
         </div>
       )}
 
-      {match && match.kind !== 'none' && (
+      {match && match.kind === 'fuzzy' && (
         <div className="mt-3">
-          {(match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')) &&
-            (showHistoryControl ? (
-              // Adjusting: a segmented pair, so the chosen state is unmistakable —
-              // exactly one side is filled, and it names what happens.
-              <div className="flex items-center justify-between gap-3 rounded-xl bg-ink/5 px-3 py-2">
-                <span className="min-w-0 truncate text-xs text-ink/80">
-                  From{' '}
-                  <span className="font-semibold text-ink">
-                    {match.candidate?.name ?? 'your history'}
-                  </span>
-                </span>
-                <div className="flex shrink-0 rounded-pill bg-line/60 p-0.5">
-                  <button
-                    onClick={keepHistory ? undefined : onToggleKeepHistory}
-                    className={`rounded-pill px-3 py-1 text-[11px] font-semibold transition-colors duration-150 ${
-                      keepHistory ? 'bg-ink text-white shadow-card' : 'text-muted'
-                    }`}
-                  >
-                    Carry over
-                  </button>
-                  <button
-                    onClick={keepHistory ? onToggleKeepHistory : undefined}
-                    className={`rounded-pill px-3 py-1 text-[11px] font-semibold transition-colors duration-150 ${
-                      !keepHistory ? 'bg-ink text-white shadow-card' : 'text-muted'
-                    }`}
-                  >
-                    Start fresh
-                  </button>
-                </div>
-              </div>
-            ) : (
-              // Not adjusting: state the outcome, no control to second-guess.
-              <div className="text-xs text-muted">
-                {keepHistory ? (
-                  <>
-                    Weights carry over from{' '}
-                    <span className="font-medium text-ink">
-                      {match.candidate?.name ?? "a machine you've used before"}
-                    </span>
-                    .
-                  </>
-                ) : (
-                  'Starting fresh at zero.'
-                )}
-              </div>
-            ))}
-          {match.kind === 'fuzzy' && match.decision === 'pending' && (
+          {match.decision === 'pending' && (
             <div className="rounded-xl bg-ink/5 px-3 py-2.5">
               <div className="text-xs text-ink/80">
-                Looks similar to{' '}
+                Looks like{' '}
                 <span className="font-semibold text-ink">{match.candidate?.name}</span>{' '}
                 from your history. Same machine?
               </div>
@@ -1207,10 +1063,15 @@ function ExerciseReviewRow({
               </div>
             </div>
           )}
-          {match.kind === 'fuzzy' && match.decision === 'different' && (
+          {match.decision === 'same' && (
             <div className="text-xs text-muted">
-              Treated as a new exercise — past history won't carry over.
+              Same machine as{' '}
+              <span className="font-medium text-ink">{match.candidate?.name}</span> — its
+              history and PRs carry on.
             </div>
+          )}
+          {match.decision === 'different' && (
+            <div className="text-xs text-muted">Treated as a new machine.</div>
           )}
         </div>
       )}
@@ -1309,27 +1170,6 @@ function UploadIcon() {
         d="M16 22V8 M10 14l6-6 6 6 M6 24h20"
         stroke="currentColor"
         strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function TrophyIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className="mt-0.5 shrink-0 text-ink"
-      aria-hidden="true"
-    >
-      <path
-        d="M4.5 2.5h7v3.25a3.5 3.5 0 0 1-7 0V2.5Z M4.5 3.75H3a1.5 1.5 0 0 0 0 3h.6 M11.5 3.75H13a1.5 1.5 0 0 1 0 3h-.6 M8 9.25v2.5 M5.75 13.5h4.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

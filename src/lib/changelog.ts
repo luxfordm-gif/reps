@@ -16,7 +16,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "What's new",
     bullets: [
       'The Performance tab is now your records: body weight up top, then your best ever on every machine: heaviest set, estimated 1RM, and the date you hit it. Pull-ups and planks count too (most reps, longest hold), and anything set in the last month is flagged as new',
-      'A new plan now starts every machine at zero by default, so you work up to the new rep ranges instead of chasing last block\u2019s numbers \u2014 tap "Carry all over", or pick machine by machine, if you\u2019d rather keep them rolling',
+      'A new plan starts every machine at zero, so you work up to the new rep ranges instead of chasing last block\u2019s numbers',
       'Your records are never affected by that: nothing is ever deleted, and the all-time bests are read from every set you have ever logged',
       'Fix an import before you save it: add, edit, move or remove exercises and days on the review screen. A line Reps couldn\u2019t read now shows where it was found with an \u201cAdd as exercise\u201d button, pre-filled from the PDF \u2014 it used to be dropped silently, or glued onto the previous exercise\u2019s notes',
       'A plan with an empty day can no longer be saved \u2014 the screen says which day, and why',
