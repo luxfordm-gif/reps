@@ -38,7 +38,12 @@ export function SetNewPassword({ onDone }: Props) {
   return (
     <div className="min-h-screen bg-paper">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5">
-        <div className="flex flex-1 flex-col justify-center">
+        {/* Anchored to the top, not centred: with the keyboard up, a centred
+            form re-centres in the half-height viewport and jumps. */}
+        <div
+          className="flex flex-1 flex-col justify-start"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' }}
+        >
           <Logo className="h-16 w-auto self-start" />
 
           <h1 className="mt-10 text-[32px] font-bold leading-tight tracking-tight text-ink">

@@ -16,6 +16,7 @@ import { ExerciseLogger } from './screens/ExerciseLogger';
 import { SetNewPassword } from './screens/SetNewPassword';
 import { WorkoutHistory } from './screens/WorkoutHistory';
 import { Machines } from './screens/Machines';
+import { FeedbackSheet } from './components/FeedbackSheet';
 import { WorkoutComplete } from './screens/WorkoutComplete';
 import { Onboarding } from './screens/Onboarding';
 import {
@@ -95,6 +96,10 @@ function Root() {
   }, [session]);
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
+  // The feedback sheet overlays whatever is on screen rather than being a
+  // Modal: a report is most useful mid-workout, and routing to it would throw
+  // away the very screen being reported.
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeDay, setActiveDay] = useState<FullPlan['training_days'][number] | null>(null);
   // The other week's version of the active day, when the plan rotates — DayView
@@ -309,6 +314,7 @@ function Root() {
             setActiveDay(null);
           }}
           onEndWorkout={() => setEndWorkoutOpen(true)}
+          onFeedback={() => setFeedbackOpen(true)}
           onFinish={async () => {
             const sid = sessionId;
             const finishedDay = activeDay?.name ?? 'Workout';
@@ -428,7 +434,15 @@ function Root() {
   return (
     <>
       {body}
-      <BottomNav active={tab} onChange={setTab} visible={navVisible} />
+      <BottomNav
+        active={tab}
+        onChange={setTab}
+        visible={navVisible}
+        onFeedback={session ? () => setFeedbackOpen(true) : undefined}
+      />
+      {feedbackOpen && (
+        <FeedbackSheet screen={screenKey} onClose={() => setFeedbackOpen(false)} />
+      )}
       <Splash visible={splashVisible} />
     </>
   );

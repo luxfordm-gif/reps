@@ -96,6 +96,8 @@ interface Props {
   onOverview: () => void;
   onHome: () => void;
   onEndWorkout: () => void;
+  /** Opens the feedback sheet from the kebab menu. */
+  onFeedback?: () => void;
 }
 
 interface SetState {
@@ -379,6 +381,7 @@ export function ExerciseLogger({
   onOverview,
   onHome,
   onEndWorkout,
+  onFeedback,
 }: Props) {
   const [sets, setSets] = useState<SetState[]>([]);
   const [lastSets, setLastSets] = useState<LoggedSet[]>([]);
@@ -1135,6 +1138,7 @@ export function ExerciseLogger({
               onSwap={() => setSwapOpen(true)}
               onEditName={() => setRenameOpen(true)}
               onAddAlternative={() => setAddAltOpen(true)}
+              onFeedback={onFeedback}
               weightUnit={unit}
               onSelectUnit={handleSelectUnit}
             />
@@ -1621,6 +1625,7 @@ function ExerciseMenu({
   onSwap,
   onEditName,
   onAddAlternative,
+  onFeedback,
   weightUnit,
   onSelectUnit,
 }: {
@@ -1632,6 +1637,8 @@ function ExerciseMenu({
   onSwap: () => void;
   onEditName: () => void;
   onAddAlternative: () => void;
+  /** The bottom bar is hidden mid-workout, and mid-set is when bugs get found. */
+  onFeedback?: () => void;
   weightUnit: MachineUnit;
   onSelectUnit: (u: MachineUnit) => void;
 }) {
@@ -1728,6 +1735,17 @@ function ExerciseMenu({
             Back to home
           </button>
           <div className="border-t border-line/60" />
+          {onFeedback && (
+            <>
+              <button
+                onClick={() => pick(onFeedback)}
+                className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+              >
+                Send feedback
+              </button>
+              <div className="border-t border-line/60" />
+            </>
+          )}
           <button
             onClick={() => pick(onSkip)}
             className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"

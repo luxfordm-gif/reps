@@ -120,8 +120,15 @@ export function Login() {
           )}
         </div>
 
+        {/* The welcome step is centred — nothing there opens a keyboard. The
+            email and password steps sit near the top instead: a centred form
+            re-centres when the keyboard takes half the viewport, and the whole
+            page lurches upward the moment the field is tapped. Anchored at the
+            top, the field is already above the keyboard and nothing moves. */}
         <div
-          className="flex flex-1 flex-col items-center justify-center"
+          className={`flex flex-1 flex-col items-center ${
+            step === 'choose' ? 'justify-center' : 'justify-start pt-6'
+          }`}
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)' }}
         >
           <Logo className="h-8 w-auto" />

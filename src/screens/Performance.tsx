@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -9,41 +9,45 @@ import {
   Legend,
 } from 'recharts';
 import { PageHeader } from '../components/PageHeader';
+import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
   buildExerciseHistory,
   type PerformanceData,
-  type ExerciseOption,
   type ExerciseHistoryPoint,
   type SessionSet,
-  type MostImproved,
-  type PersonalRecord,
 } from '../lib/performanceApi';
-import { findCloseMatch } from '../lib/stringSimilarity';
+import { loadRecords, type LiftRecord } from '../lib/recordsApi';
 import {
-  getLiftWeightUnit,
   getBodyWeightUnit,
   fromKgFor,
   kgToStoneLb,
-  type LiftWeightUnit,
   type BodyWeightUnit,
+  type MachineUnit,
 } from '../lib/units';
+
+// The Performance tab: body weight up top, then your personal records, with
+// each lift's history a tap away underneath its record.
+//
+// This used to be four separate cards — most improved, an exercise picker with
+// a chart, body weight, and a top-eight bests list. The records board does the
+// job of three of them better: every movement, searchable, sorted how you want,
+// and the chart appears where you'd look for it, under the lift it belongs to.
 
 export function Performance() {
   const [data, setData] = useState<PerformanceData | null>(null);
+  const [records, setRecords] = useState<LiftRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [exercise, setExercise] = useState<string | null>(null);
-
-  const liftUnit = getLiftWeightUnit();
+  const [expanded, setExpanded] = useState<string | null>(null);
   const bwUnit = getBodyWeightUnit();
 
   useEffect(() => {
     let mounted = true;
-    loadPerformanceData()
-      .then((d) => {
+    Promise.all([loadPerformanceData(), loadRecords()])
+      .then(([d, rs]) => {
         if (!mounted) return;
         setData(d);
-        setExercise(d.topExerciseNormalized);
+        setRecords(rs);
       })
       .catch(() => mounted && setData(null))
       .finally(() => mounted && setLoading(false));
@@ -52,7 +56,7 @@ export function Performance() {
     };
   }, []);
 
-  const hasAnyData = !!data && (data.sets.length > 0 || data.bodyWeights.length > 0);
+  const hasAnyData = records.length > 0 || (data?.bodyWeights.length ?? 0) > 0;
 
   return (
     <div className="min-h-screen bg-paper pb-28">
@@ -69,39 +73,19 @@ export function Performance() {
           <EmptyState />
         ) : (
           <div className="mt-2">
-            {data!.mostImproved && (
+            {data && data.bodyWeights.length > 0 && (
               <Rise index={0}>
-                <MostImprovedHero
-                  mi={data!.mostImproved}
-                  liftUnit={liftUnit}
-                  onPick={setExercise}
-                />
+                <BodyWeightCard rows={data.bodyWeights} bwUnit={bwUnit} />
               </Rise>
             )}
 
-            {data!.exerciseOptions.length > 0 && (
+            {records.length > 0 && (
               <Rise index={1}>
-                <ExerciseHistoryCard
-                  data={data!}
-                  exercise={exercise}
-                  onExercise={setExercise}
-                  liftUnit={liftUnit}
-                />
-              </Rise>
-            )}
-
-            {data!.bodyWeights.length > 0 && (
-              <Rise index={2}>
-                <BodyWeightCard rows={data!.bodyWeights} bwUnit={bwUnit} />
-              </Rise>
-            )}
-
-            {data!.allTimeBests.length > 0 && (
-              <Rise index={3}>
-                <AllTimeBestsBoard
-                  bests={data!.allTimeBests}
-                  liftUnit={liftUnit}
-                  onPick={setExercise}
+                <RecordsBoard
+                  records={records}
+                  expanded={expanded}
+                  onToggle={(n) => setExpanded((cur) => (cur === n ? null : n))}
+                  renderDetail={(r) => <LiftHistory sets={data?.sets ?? []} record={r} />}
                 />
               </Rise>
             )}
@@ -123,138 +107,60 @@ function Rise({ index, children }: { index: number; children: React.ReactNode })
   );
 }
 
-// --- Most improved -------------------------------------------------------
+// --- One lift's history, under its record ---------------------------------
 
-function MostImprovedHero({
-  mi,
-  liftUnit,
-  onPick,
-}: {
-  mi: MostImproved;
-  liftUnit: LiftWeightUnit;
-  onPick: (n: string) => void;
-}) {
-  const target = fromKgFor(mi.toKg, liftUnit);
-  const counted = useCountUp(target);
-  const deltaDisplay = fromKgFor(mi.deltaKg, liftUnit);
-
-  const spark = mi.sparkline.map((p) => ({ v: fromKgFor(p.value, liftUnit) }));
-
-  return (
-    <button
-      type="button"
-      onClick={() => onPick(mi.normalizedName)}
-      className="w-full rounded-card bg-ink p-5 text-left text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
-    >
-      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
-        Most improved this month
-      </div>
-      <div className="mt-3 flex items-end justify-between gap-4">
-        <div className="min-w-0">
-          <div className="truncate text-lg font-semibold leading-tight">{mi.displayName}</div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-[40px] font-bold leading-none tracking-tight tabular-nums">
-              {fmtNum(counted)}
-            </span>
-            <span className="text-base font-medium text-white/60">{liftUnit}</span>
-          </div>
-          <div className="mt-1.5 text-xs text-white/55">estimated 1RM</div>
-        </div>
-        {spark.length >= 2 && (
-          <div className="h-12 w-28 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={spark} margin={{ top: 6, right: 2, bottom: 2, left: 2 }}>
-                <Line
-                  type="monotone"
-                  dataKey="v"
-                  stroke="#FFFFFF"
-                  strokeWidth={2}
-                  dot={false}
-                  isAnimationActive
-                  animationDuration={900}
-                  animationEasing="ease-out"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-      <div className="mt-4 inline-flex items-center gap-1.5 rounded-pill bg-white/12 px-3 py-1 text-sm font-semibold">
-        <ArrowUp />
-        <span className="tabular-nums">
-          +{fmtNum(deltaDisplay)} {liftUnit}
-        </span>
-        <span className="text-white/55">·</span>
-        <span className="tabular-nums text-white/80">+{Math.round(mi.deltaPct)}%</span>
-      </div>
-    </button>
-  );
-}
-
-// --- Exercise history ----------------------------------------------------
-
-function ExerciseHistoryCard({
-  data,
-  exercise,
-  onExercise,
-  liftUnit,
-}: {
-  data: PerformanceData;
-  exercise: string | null;
-  onExercise: (n: string) => void;
-  liftUnit: LiftWeightUnit;
-}) {
+function LiftHistory({ sets, record }: { sets: PerformanceData['sets']; record: LiftRecord }) {
   const history = useMemo(
-    () => (exercise ? buildExerciseHistory(data.sets, exercise) : []),
-    [data.sets, exercise]
+    () => buildExerciseHistory(sets, record.normalizedName),
+    [sets, record.normalizedName]
   );
-
   const points = useMemo(
     () =>
       history
         .filter((p) => p.topWeightKg != null && p.repsAtTopWeight != null)
         .map((p) => ({
           label: p.date,
-          weight: fromKgFor(p.topWeightKg!, liftUnit), // converted to display unit
+          weight: fromKgFor(p.topWeightKg!, record.unit), // converted to display unit
           reps: p.repsAtTopWeight!, // raw count — never converted
         })),
-    [history, liftUnit]
+    [history, record.unit]
   );
+
+  // Reps-only and hold records have no weight to chart; the list still shows
+  // every session.
+  if (record.kind !== 'weighted') {
+    return <SessionHistoryList history={history} unit={record.unit} compact />;
+  }
 
   return (
     <div>
-      <SectionLabel>Exercise history</SectionLabel>
-
-      <div className="mt-3 rounded-card bg-paper-card p-4 shadow-card">
-        <ExerciseCombobox value={exercise} options={data.exerciseOptions} onChange={onExercise} />
-
-        {points.length < 2 ? (
-          <div className="mt-4 flex h-[180px] items-center justify-center px-6 text-center text-sm text-muted">
-            {points.length === 0
-              ? 'No logged sets for this exercise yet.'
-              : 'Just one session so far — keep logging to see your trend.'}
-          </div>
-        ) : (
-          <DualAxisChart points={points} liftUnit={liftUnit} />
-        )}
-      </div>
-
-      <SessionHistoryList history={history} liftUnit={liftUnit} />
+      {points.length < 2 ? (
+        <div className="flex h-[120px] items-center justify-center px-6 text-center text-sm text-muted">
+          {points.length === 0
+            ? 'No weighted sets logged for this yet.'
+            : 'Just one session so far — keep logging to see the trend.'}
+        </div>
+      ) : (
+        <DualAxisChart points={points} unitLabel={record.unit} />
+      )}
+      <SessionHistoryList history={history} unit={record.unit} compact />
     </div>
   );
 }
 
+// --- Chart -------------------------------------------------------------------
+
 function DualAxisChart({
   points,
-  liftUnit,
+  unitLabel,
 }: {
   points: { label: string; weight: number; reps: number }[];
-  liftUnit: LiftWeightUnit;
+  unitLabel: string;
 }) {
   return (
     <div className="mt-4">
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -16 }}>
+        <LineChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
           <XAxis
             dataKey="label"
             tick={{ fill: '#8E8E93', fontSize: 10 }}
@@ -295,7 +201,7 @@ function DualAxisChart({
             }
             formatter={(value, name) =>
               name === 'Top weight'
-                ? [`${fmtNum(Number(value))} ${liftUnit}`, name]
+                ? [`${fmtNum(Number(value))} ${unitLabel}`, name]
                 : [`${value} reps`, name]
             }
           />
@@ -338,21 +244,32 @@ function DualAxisChart({
   );
 }
 
+// --- Session list --------------------------------------------------------------
+
 function SessionHistoryList({
   history,
-  liftUnit,
+  unit,
+  compact = false,
 }: {
   history: ExerciseHistoryPoint[];
-  liftUnit: LiftWeightUnit;
+  unit: MachineUnit;
+  /** Under a record row: tighter, and no section label. */
+  compact?: boolean;
 }) {
   if (history.length === 0) return null;
   const rows = [...history].reverse(); // newest first
   return (
-    <div className="mt-7">
-      <SectionLabel>History</SectionLabel>
-      <ul className="mt-3 divide-y divide-line overflow-hidden rounded-card bg-paper-card shadow-card">
+    <div className={compact ? 'mt-3' : 'mt-7'}>
+      {!compact && <SectionLabel>History</SectionLabel>}
+      <ul
+        className={
+          compact
+            ? 'divide-y divide-line/60'
+            : 'mt-3 divide-y divide-line overflow-hidden rounded-card bg-paper-card shadow-card'
+        }
+      >
         {rows.map((p) => (
-          <li key={p.date} className="px-5 py-3.5">
+          <li key={p.date} className={compact ? 'py-3' : 'px-5 py-3.5'}>
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-sm font-semibold text-ink">
                 {new Date(p.at).toLocaleDateString('en-GB', {
@@ -363,12 +280,12 @@ function SessionHistoryList({
               </span>
               {p.bestEst1RMkg != null && (
                 <span className="shrink-0 text-xs text-muted tabular-nums">
-                  1RM {fmtNum(fromKgFor(p.bestEst1RMkg, liftUnit))} {liftUnit}
+                  1RM {fmtNum(fromKgFor(p.bestEst1RMkg, unit))} {unit}
                 </span>
               )}
             </div>
             <div className="mt-1 text-sm text-muted tabular-nums">
-              {formatSets(p.sets, liftUnit)}
+              {formatSets(p.sets, unit)}
             </div>
           </li>
         ))}
@@ -377,122 +294,18 @@ function SessionHistoryList({
   );
 }
 
-function formatSets(sets: SessionSet[], liftUnit: LiftWeightUnit): string {
+function formatSets(sets: SessionSet[], unit: MachineUnit): string {
   if (sets.length === 0) return 'No sets';
   return sets
     .map((s) => {
-      const w = s.weightKg != null ? `${fmtNum(fromKgFor(s.weightKg, liftUnit))}${liftUnit}` : '—';
+      const w = s.weightKg != null ? `${fmtNum(fromKgFor(s.weightKg, unit))}${unit}` : '—';
       const r = s.reps != null ? `${s.reps}` : '—'; // reps raw
       return `${w} × ${r}`;
     })
     .join(', ');
 }
 
-function ExerciseCombobox({
-  value,
-  options,
-  onChange,
-}: {
-  value: string | null;
-  options: ExerciseOption[];
-  onChange: (n: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const selected = options.find((o) => o.normalizedName === value);
-
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    const direct = options.filter((o) => o.displayName.toLowerCase().includes(q));
-    if (direct.length > 0) return direct;
-    const close = findCloseMatch(
-      query,
-      options.map((o) => ({ name: o.displayName, normalizedName: o.normalizedName }))
-    );
-    return close ? options.filter((o) => o.normalizedName === close.normalizedName) : [];
-  }, [query, options]);
-
-  function close() {
-    setOpen(false);
-    setQuery('');
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    inputRef.current?.focus();
-    const onDown = (e: PointerEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) close();
-    };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [open]);
-
-  function pick(n: string) {
-    onChange(n);
-    close();
-  }
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <button
-        type="button"
-        onClick={() => (open ? close() : setOpen(true))}
-        className="flex w-full items-center justify-between gap-2 rounded-pill bg-line px-4 py-2 text-left"
-      >
-        <span className="truncate text-sm font-semibold text-ink">
-          {selected?.displayName ?? 'Select an exercise'}
-        </span>
-        <Chevron open={open} />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-card bg-paper-card shadow-card ring-1 ring-line">
-          <div className="border-b border-line p-2">
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') close();
-                if (e.key === 'Enter' && results[0]) pick(results[0].normalizedName);
-              }}
-              placeholder="Search exercises…"
-              className="w-full rounded-pill bg-paper px-3 py-1.5 text-sm text-ink placeholder:text-muted focus:outline-none"
-            />
-          </div>
-          <ul className="max-h-64 overflow-auto py-1">
-            {results.length === 0 ? (
-              <li className="px-4 py-3 text-sm text-muted">No matches</li>
-            ) : (
-              results.map((o) => (
-                <li key={o.normalizedName}>
-                  <button
-                    type="button"
-                    onClick={() => pick(o.normalizedName)}
-                    className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm ${
-                      o.normalizedName === value
-                        ? 'font-semibold text-ink'
-                        : 'font-medium text-ink'
-                    }`}
-                  >
-                    <span className="truncate">{o.displayName}</span>
-                    <span className="shrink-0 text-xs text-muted tabular-nums">{o.setCount}</span>
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- Body weight ---------------------------------------------------------
+// --- Body weight ---------------------------------------------------------------
 
 function BodyWeightCard({
   rows,
@@ -520,7 +333,7 @@ function BodyWeightCard({
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={140}>
-            <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+            <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <XAxis
                 dataKey="label"
                 tick={{ fill: '#8E8E93', fontSize: 10 }}
@@ -569,54 +382,7 @@ function BodyWeightCard({
   );
 }
 
-// --- All-time bests ------------------------------------------------------
-
-function AllTimeBestsBoard({
-  bests,
-  liftUnit,
-  onPick,
-}: {
-  bests: PersonalRecord[];
-  liftUnit: LiftWeightUnit;
-  onPick: (n: string) => void;
-}) {
-  return (
-    <div>
-      <SectionLabel>All-time bests</SectionLabel>
-      <ul className="mt-3 divide-y divide-line overflow-hidden rounded-card bg-paper-card shadow-card">
-        {bests.map((r) => (
-          <li key={r.normalizedName}>
-            <button
-              type="button"
-              onClick={() => onPick(r.normalizedName)}
-              className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-ink">{r.displayName}</div>
-                <div className="mt-0.5 text-xs text-muted">
-                  1RM {fmtNum(fromKgFor(r.best1RMkg, liftUnit))} {liftUnit} ·{' '}
-                  {new Date(r.achievedAt).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </div>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="text-base font-bold tracking-tight text-ink tabular-nums">
-                  {fmtNum(fromKgFor(r.bestWeightKg, liftUnit))} {liftUnit}
-                </div>
-                <div className="text-xs text-muted">× {r.bestWeightReps}</div>
-              </div>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// --- States --------------------------------------------------------------
+// --- States --------------------------------------------------------------------
 
 function LoadingState() {
   return (
@@ -650,45 +416,9 @@ function EmptyState() {
   );
 }
 
-// --- Helpers -------------------------------------------------------------
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{children}</div>
-  );
-}
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
-      fill="none"
-      className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`}
-    >
-      <path
-        d="M3.5 5.5L7 9l3.5-3.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ArrowUp() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M7 11V3M7 3L3.5 6.5M7 3l3.5 3.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 
@@ -700,26 +430,4 @@ function toDecimalStones(kg: number): number {
 function fmtNum(n: number): string {
   const r = Math.round(n * 10) / 10;
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
-}
-
-function useCountUp(target: number, durationMs = 900): number {
-  const [val, setVal] = useState(0);
-  const fromRef = useRef(0);
-  useEffect(() => {
-    const from = fromRef.current;
-    let raf = 0;
-    let start = 0;
-    const step = (ts: number) => {
-      if (!start) start = ts;
-      const t = Math.min(1, (ts - start) / durationMs);
-      const eased = 1 - Math.pow(1 - t, 3);
-      const next = from + (target - from) * eased;
-      setVal(next);
-      if (t < 1) raf = requestAnimationFrame(step);
-      else fromRef.current = target;
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [target, durationMs]);
-  return val;
 }

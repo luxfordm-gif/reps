@@ -13,6 +13,27 @@ import { normalizeExerciseName } from '../lib/normalizeExerciseName';
 import { restLabel, restSecondsForExercises } from '../lib/restDefaults';
 import { formatNameList, groupedSetLabel } from '../lib/supersets';
 import { PageHeader } from '../components/PageHeader';
+import { DayEditorSheet, ExerciseEditorSheet } from '../components/PlanRepairSheets';
+import {
+  EMPTY_DRAFT,
+  buildExercise,
+  draftFromExercise,
+  guessDraftFromText,
+  newDay,
+  normalizePositions,
+  planProblems,
+  splitUnparsed,
+  withUids,
+  type ExerciseDraft,
+} from '../lib/planRepair';
+
+/** Stable identity for a row while it's being edited (see planRepair.withUids). */
+const keyOf = (e: ParsedExercise): string => e.uid ?? `${e.name}#${e.position}`;
+
+type EditorState =
+  | null
+  | { mode: 'edit'; dayIdx: number; exIdx: number }
+  | { mode: 'new'; dayIdx: number; prefill?: ExerciseDraft; sourceRaw?: string };
 
 function parseTargetReps(repRange: string): number | null {
   const match = repRange.match(/(\d+)\s*(?:-\s*(\d+))?/);
@@ -105,14 +126,14 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   // Recomputed when notes are edited here, since notes can name a rest.
   const restByKey = useMemo(() => {
     const map = new Map<string, number>();
-    parsed?.days.forEach((day, dayIdx) => {
+    parsed?.days.forEach((day) => {
       restSecondsForExercises(
         day.exercises.map((e) => ({
           name: e.name,
           notes: e.notes,
           supersetGroup: e.supersetGroup ?? null,
         }))
-      ).forEach((rest, exIdx) => map.set(`${dayIdx}:${exIdx}`, rest));
+      ).forEach((rest, exIdx) => map.set(keyOf(day.exercises[exIdx]), rest));
     });
     return map;
   }, [parsed]);
@@ -121,17 +142,10 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [previousExercises, setPreviousExercises] = useState<PreviousExercise[]>([]);
   const [matches, setMatches] = useState<Map<string, Match>>(new Map());
-  // The bulk keep/reset choice covers almost everyone, so the per-machine
-  // controls stay hidden until asked for — a row shows a quiet status line
-  // instead of a control it doesn't need.
-  const [adjustHistoryOpen, setAdjustHistoryOpen] = useState(false);
+  // The repair sheets: fixing a row the parser got wrong, or a day's name/week.
+  const [editor, setEditor] = useState<EditorState>(null);
+  const [dayEditor, setDayEditor] = useState<{ dayIdx: number } | 'new' | null>(null);
 
-  // Keys of carried-over machines whose history is KEPT. Default is to keep every
-  // match: a new block is usually the same machines with a different set and rep
-  // prescription, and walking up to a familiar machine with a blank weight field
-  // is friction. Nothing is deleted either way — a reset only cuts off the "last
-  // time" prefill, so untick anything you'd rather restart from zero.
-  const [keepHistory, setKeepHistory] = useState<Set<string>>(new Set());
 
   // Candidates are every machine you have actually logged sets on, across all
   // plans — not just the plan that happens to be active. The "last time" prefill
@@ -168,18 +182,24 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       return;
     }
     const next = new Map<string, Match>();
-    parsed.days.forEach((day, dayIdx) => {
-      day.exercises.forEach((ex, exIdx) => {
-        next.set(`${dayIdx}:${exIdx}`, computeMatch(ex, previousExercises));
-      });
-    });
-    setMatches(next);
-    // New parse → carry history over on every machine that matched.
-    const carriers: string[] = [];
-    for (const [key, m] of next) {
-      if (carriesHistory(m)) carriers.push(key);
+    for (const day of parsed.days) {
+      for (const ex of day.exercises) next.set(keyOf(ex), computeMatch(ex, previousExercises));
     }
-    setKeepHistory(new Set(carriers));
+    // Any edit on the screen re-runs this, so a decision the user has already
+    // made about a row — same machine, different machine — has to survive it.
+    setMatches((prev) => {
+      const merged = new Map<string, Match>();
+      for (const [key, computed] of next) {
+        const old = prev.get(key);
+        merged.set(
+          key,
+          old && old.candidate?.normalizedName === computed.candidate?.normalizedName
+            ? { ...computed, decision: old.decision }
+            : computed
+        );
+      }
+      return merged;
+    });
   }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
@@ -194,7 +214,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       const text = await extractPdfText(f);
       setRawText(text);
       const result = parseTrainingPlan(text);
-      setParsed(result);
+      setParsed(withUids(result));
+      setEditor(null);
+      setDayEditor(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to parse PDF');
     } finally {
@@ -207,12 +229,22 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     setSaving(true);
     setError(null);
     try {
-      // Default is to carry history over: reset only the machines the user
-      // explicitly unticked.
-      const historyResetKeys = new Set(
-        historyCarrierKeys.filter((k) => !keepHistory.has(k))
-      );
-      await savePlan(parsed, planName, rawText, { historyResetKeys });
+      // A new plan starts every machine you've trained before at zero: the
+      // logger stops pre-filling last block's weight, and the new rep ranges
+      // are worked up to instead of chased. Nothing is deleted — every set
+      // stays in history and the all-time bests on the Performance tab.
+      // Rows may have been added, moved or deleted, so positions are made
+      // contiguous first; savePlan keys the reset by final position.
+      const normalized = normalizePositions(parsed);
+      const historyResetKeys = new Set<string>();
+      for (const d of normalized.days) {
+        for (const e of d.exercises) {
+          if (carriesHistory(matches.get(keyOf(e)))) {
+            historyResetKeys.add(`${d.position}:${e.position}`);
+          }
+        }
+      }
+      await savePlan(normalized, planName, rawText, { historyResetKeys });
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save plan');
@@ -267,7 +299,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }
 
   function answerSameMachine(dayIdx: number, exIdx: number) {
-    const key = `${dayIdx}:${exIdx}`;
+    const target = parsed?.days[dayIdx]?.exercises[exIdx];
+    if (!target) return;
+    const key = keyOf(target);
     const match = matches.get(key);
     if (!match || !match.candidate) return;
     const candidate = match.candidate;
@@ -292,17 +326,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       next.set(key, { ...match, decision: 'same' });
       return next;
     });
-    // It's a carried-over machine now, so it takes the same default as the rest.
-    setKeepHistory((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
   }
 
   function answerDifferentMachine(dayIdx: number, exIdx: number) {
-    const key = `${dayIdx}:${exIdx}`;
+    const target = parsed?.days[dayIdx]?.exercises[exIdx];
+    if (!target) return;
+    const key = keyOf(target);
     setMatches((prev) => {
       const next = new Map(prev);
       const current = next.get(key);
@@ -310,33 +339,107 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       next.set(key, { ...current, decision: 'different' });
       return next;
     });
-    // A different machine has no history to keep — drop any stale keep flag.
-    setKeepHistory((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
   }
 
-  function toggleKeepHistory(dayIdx: number, exIdx: number) {
-    const key = `${dayIdx}:${exIdx}`;
-    setKeepHistory((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
+  // --- Repairing the import -------------------------------------------------
+
+  function saveExercise(draft: ExerciseDraft, targetDayIdx: number) {
+    const state = editor;
+    if (!state) return;
+    setParsed((prev) => {
+      if (!prev) return prev;
+      const days = prev.days.map((d) => ({ ...d, exercises: [...d.exercises] }));
+      let unparsedLines = prev.unparsedLines;
+      if (state.mode === 'edit') {
+        const base = days[state.dayIdx]?.exercises[state.exIdx];
+        if (!base) return prev;
+        const built = buildExercise(draft, base);
+        if (targetDayIdx === state.dayIdx) {
+          days[state.dayIdx].exercises[state.exIdx] = built;
+        } else {
+          // Moved to another day: leaves any superset pairing behind.
+          days[state.dayIdx].exercises.splice(state.exIdx, 1);
+          days[targetDayIdx]?.exercises.push({
+            ...built,
+            supersetGroup: null,
+            supersetPartnerNames: null,
+          });
+        }
+      } else {
+        days[targetDayIdx]?.exercises.push(buildExercise(draft));
+        // A line rescued into a row is no longer unparsed.
+        if (state.sourceRaw) unparsedLines = unparsedLines.filter((l) => l !== state.sourceRaw);
+      }
+      return { ...prev, days, unparsedLines };
     });
+    setEditor(null);
   }
 
-  // Keys of every exercise tied to a previous machine — the ones a keep/reset choice
-  // applies to.
-  const historyCarrierKeys: string[] = [];
-  for (const [key, m] of matches) {
-    if (carriesHistory(m)) historyCarrierKeys.push(key);
+  function deleteExercise(dayIdx: number, exIdx: number) {
+    setParsed((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== dayIdx ? d : { ...d, exercises: d.exercises.filter((_, j) => j !== exIdx) }
+        ),
+      };
+    });
+    setEditor(null);
   }
-  const keptCount = historyCarrierKeys.filter((k) => keepHistory.has(k)).length;
-  const resetCount = historyCarrierKeys.length - keptCount;
+
+  function ignoreUnparsed(raw: string) {
+    setParsed((prev) =>
+      prev ? { ...prev, unparsedLines: prev.unparsedLines.filter((l) => l !== raw) } : prev
+    );
+  }
+
+  function saveDay(name: string, weekIndex: number | null) {
+    const state = dayEditor;
+    if (!state) return;
+    setParsed((prev) => {
+      if (!prev) return prev;
+      if (state === 'new') {
+        return { ...prev, days: [...prev.days, newDay(name, weekIndex, prev.days.length)] };
+      }
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== state.dayIdx ? d : { ...d, name: name.trim(), weekIndex }
+        ),
+      };
+    });
+    setDayEditor(null);
+  }
+
+  function deleteDay(dayIdx: number) {
+    setParsed((prev) =>
+      prev ? { ...prev, days: prev.days.filter((_, i) => i !== dayIdx) } : prev
+    );
+    setDayEditor(null);
+  }
+
+  // Lines the parser couldn't place, split into the day they were found under.
+  // Ones under a day that no longer exists (renamed, deleted) join the orphans.
+  const unparsed = useMemo(
+    () => (parsed?.unparsedLines ?? []).map(splitUnparsed),
+    [parsed]
+  );
+  const dayNames = useMemo(() => new Set((parsed?.days ?? []).map((d) => d.name)), [parsed]);
+  const orphanLines = unparsed.filter((u) => u.dayName == null || !dayNames.has(u.dayName));
+  const problems = parsed ? planProblems(parsed) : [];
+  // "No exercises" is a blocker shown by the save button now, not a warning.
+  const visibleWarnings = (parsed?.warnings ?? []).filter(
+    (w) => !/has no exercises detected/.test(w)
+  );
+  const planWeeks = useMemo(() => {
+    const ws = new Set<number>();
+    for (const d of parsed?.days ?? []) if (d.weekIndex != null) ws.add(d.weekIndex);
+    return [...ws].sort((a, b) => a - b);
+  }, [parsed]);
+
+  // How many exercises are tied to a machine already in the user's history.
+  const carrierCount = [...matches.values()].filter(carriesHistory).length;
 
   const totalExercises =
     parsed?.days.reduce((sum, d) => sum + d.exercises.length, 0) ?? 0;
@@ -445,13 +548,22 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                 Detected
               </div>
               <div className="mt-1 text-2xl font-bold tracking-tight text-ink">
-                {parsed.days.length} days · {totalExercises} exercises
+                {parsed.days.length} {parsed.days.length === 1 ? 'day' : 'days'} ·{' '}
+                {totalExercises} {totalExercises === 1 ? 'exercise' : 'exercises'}
               </div>
               {overrideCount > 0 && (
                 <div className="mt-3 text-xs text-muted">
                   Coach notes change the set scheme on{' '}
                   <span className="font-semibold text-ink">{overrideCount}</span>{' '}
                   {overrideCount === 1 ? 'exercise' : 'exercises'} below — give them a quick check.
+                </div>
+              )}
+              {carrierCount > 0 && (
+                <div className="mt-2 text-xs text-muted">
+                  <span className="font-semibold text-ink">{carrierCount}</span>{' '}
+                  {carrierCount === 1 ? 'machine you' : 'machines you'} already train{' '}
+                  {carrierCount === 1 ? 'starts' : 'start'} at zero on the new plan. Your PRs
+                  stay on the Performance tab.
                 </div>
               )}
               {pendingMatchCount > 0 && (
@@ -468,75 +580,40 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               )}
             </div>
 
-            {historyCarrierKeys.length > 0 && (
-              <div className="mt-4 rounded-card bg-paper-card p-5 shadow-card">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                  Previous history
-                </div>
-                <div className="mt-1 text-sm text-ink">
-                  <span className="font-semibold">{historyCarrierKeys.length}</span>{' '}
-                  {historyCarrierKeys.length === 1
-                    ? "machine matches one you've"
-                    : "machines match ones you've"}{' '}
-                  trained before. Your weights{' '}
-                  <span className="font-semibold">carry over</span> by default — untick
-                  “Keep history” on any you'd rather restart at zero.
-                </div>
-                <div className="mt-2 text-xs text-muted">
-                  Keeping {keptCount} · resetting {resetCount}. Nothing is deleted either
-                  way — a reset only clears the weights the logger pre-fills.
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => setKeepHistory(new Set(historyCarrierKeys))}
-                    disabled={keptCount === historyCarrierKeys.length}
-                    className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
-                  >
-                    Keep all history
-                  </button>
-                  <button
-                    onClick={() => setKeepHistory(new Set())}
-                    disabled={keptCount === 0}
-                    className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
-                  >
-                    Reset all to zero
-                  </button>
-                </div>
-                <button
-                  onClick={() => setAdjustHistoryOpen((v) => !v)}
-                  className="mt-3 w-full text-center text-xs font-semibold text-muted underline-offset-2 active:text-ink active:underline"
-                >
-                  {adjustHistoryOpen ? 'Done adjusting' : 'Adjust machine by machine'}
-                </button>
-              </div>
-            )}
 
             <div className="mt-4 space-y-4">
               {parsed.days.map((day, dayIdx) => (
-                <div key={day.name} className="rounded-card bg-paper-card shadow-card">
-                  <div className="border-b border-line/60 px-5 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-                      Day {day.position + 1}
-                      {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
-                      {day.weekIndex == null && rotates && ' · Every week'}
+                <div key={`${day.name}#${dayIdx}`} className="rounded-card bg-paper-card shadow-card">
+                  <div className="flex items-start justify-between gap-3 border-b border-line/60 px-5 py-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                        Day {dayIdx + 1}
+                        {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
+                        {day.weekIndex == null && rotates && ' · Every week'}
+                      </div>
+                      <div className="mt-0.5 truncate text-base font-semibold text-ink">
+                        {day.name}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-base font-semibold text-ink">
-                      {day.name}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDayEditor({ dayIdx })}
+                      className="-mr-2 shrink-0 rounded-pill px-2.5 py-1 text-xs font-semibold text-muted active:text-ink"
+                    >
+                      Edit day
+                    </button>
                   </div>
                   <ul className="divide-y divide-line/60">
                     {day.exercises.map((ex, exIdx) => (
-                      <li key={`${ex.name}-${ex.position}`}>
+                      <li key={keyOf(ex)}>
                         <ExerciseReviewRow
                           exercise={ex}
-                          restSeconds={restByKey.get(`${dayIdx}:${exIdx}`) ?? null}
-                          showHistoryControl={adjustHistoryOpen}
-                          match={matches.get(`${dayIdx}:${exIdx}`)}
-                          keepHistory={keepHistory.has(`${dayIdx}:${exIdx}`)}
+                          restSeconds={restByKey.get(keyOf(ex)) ?? null}
+                          match={matches.get(keyOf(ex))}
+                          onEdit={() => setEditor({ mode: 'edit', dayIdx, exIdx })}
                           onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
                           onSameMachine={() => answerSameMachine(dayIdx, exIdx)}
                           onDifferentMachine={() => answerDifferentMachine(dayIdx, exIdx)}
-                          onToggleKeepHistory={() => toggleKeepHistory(dayIdx, exIdx)}
                           onAlternativeChange={(alt) =>
                             setExerciseAlternative(dayIdx, exIdx, alt)
                           }
@@ -544,42 +621,98 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                       </li>
                     ))}
                   </ul>
+                  {unparsed
+                    .filter((u) => u.dayName === day.name)
+                    .map((u) => (
+                      <UnreadLineCard
+                        key={u.raw}
+                        text={u.text}
+                        onAdd={() =>
+                          setEditor({
+                            mode: 'new',
+                            dayIdx,
+                            prefill: guessDraftFromText(u.text),
+                            sourceRaw: u.raw,
+                          })
+                        }
+                        onIgnore={() => ignoreUnparsed(u.raw)}
+                      />
+                    ))}
+                  <button
+                    type="button"
+                    onClick={() => setEditor({ mode: 'new', dayIdx, prefill: EMPTY_DRAFT })}
+                    className="flex w-full items-center justify-center gap-1.5 border-t border-line/60 py-3 text-sm font-semibold text-ink active:bg-line/30"
+                  >
+                    <PlusIcon /> Add exercise
+                  </button>
                 </div>
               ))}
+
+              {orphanLines.length > 0 && (
+                <div className="rounded-card border border-amber-200 bg-amber-50 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+                    {orphanLines.length} {orphanLines.length === 1 ? 'line' : 'lines'} not under any day
+                  </div>
+                  <p className="mt-1 text-xs text-amber-800">
+                    These look like exercises but sat under a heading Reps didn't recognise as a
+                    day. Add the day they belong to, then add them to it — or ignore them.
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {orphanLines.map((u) => (
+                      <UnreadLineCard
+                        key={u.raw}
+                        text={u.text}
+                        tone="plain"
+                        onAdd={() =>
+                          setEditor({
+                            mode: 'new',
+                            dayIdx: 0,
+                            prefill: guessDraftFromText(u.text),
+                            sourceRaw: u.raw,
+                          })
+                        }
+                        addDisabled={parsed.days.length === 0}
+                        onIgnore={() => ignoreUnparsed(u.raw)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setDayEditor('new')}
+                className="flex w-full items-center justify-center gap-1.5 rounded-card border border-dashed border-line py-3.5 text-sm font-semibold text-muted active:bg-line/30"
+              >
+                <PlusIcon /> Add a day
+              </button>
             </div>
 
-            {parsed.warnings.length > 0 && (
+            {visibleWarnings.length > 0 && (
               <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <div className="font-semibold">Warnings</div>
                 <ul className="mt-1 list-inside list-disc">
-                  {parsed.warnings.map((w, i) => (
+                  {visibleWarnings.map((w, i) => (
                     <li key={i}>{w}</li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {parsed.unparsedLines.length > 0 && (
-              <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
-                <div className="font-semibold">Lines that didn't fit a row:</div>
+            {problems.length > 0 && (
+              <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="font-semibold">Before this can be saved</div>
                 <ul className="mt-1 list-inside list-disc">
-                  {parsed.unparsedLines.slice(0, 5).map((u, i) => (
-                    <li key={i} className="truncate">
-                      {u}
-                    </li>
+                  {problems.map((w, i) => (
+                    <li key={i}>{w}</li>
                   ))}
-                  {parsed.unparsedLines.length > 5 && (
-                    <li className="font-semibold">
-                      …and {parsed.unparsedLines.length - 5} more
-                    </li>
-                  )}
                 </ul>
               </div>
             )}
 
             <button
               onClick={handleSave}
-              disabled={saving || !planName}
+              disabled={saving || !planName || problems.length > 0}
               className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save plan'}
@@ -597,7 +730,105 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
           </>
         )}
       </div>
+
+      {parsed && editor && (
+        <ExerciseEditorSheet
+          title={editor.mode === 'edit' ? 'Edit exercise' : 'Add exercise'}
+          initial={
+            editor.mode === 'edit'
+              ? draftFromExercise(parsed.days[editor.dayIdx].exercises[editor.exIdx])
+              : editor.prefill ?? EMPTY_DRAFT
+          }
+          dayOptions={parsed.days.map((d, idx) => ({ idx, name: d.name }))}
+          dayIdx={editor.dayIdx}
+          sourceText={editor.mode === 'new' && editor.sourceRaw ? splitUnparsed(editor.sourceRaw).text : null}
+          onSave={saveExercise}
+          onDelete={
+            editor.mode === 'edit' ? () => deleteExercise(editor.dayIdx, editor.exIdx) : undefined
+          }
+          onClose={() => setEditor(null)}
+        />
+      )}
+
+      {parsed && dayEditor && (
+        <DayEditorSheet
+          title={dayEditor === 'new' ? 'Add a day' : 'Edit day'}
+          initialName={dayEditor === 'new' ? '' : parsed.days[dayEditor.dayIdx].name}
+          initialWeek={dayEditor === 'new' ? null : parsed.days[dayEditor.dayIdx].weekIndex}
+          weekOptions={planWeeks}
+          exerciseCount={dayEditor === 'new' ? 0 : parsed.days[dayEditor.dayIdx].exercises.length}
+          onSave={saveDay}
+          onDelete={dayEditor === 'new' ? undefined : () => deleteDay(dayEditor.dayIdx)}
+          onClose={() => setDayEditor(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// A line the parser couldn't turn into a row, shown where it was found so the
+// user can rescue it into an exercise or say it isn't one.
+function UnreadLineCard({
+  text,
+  tone = 'inset',
+  addDisabled = false,
+  onAdd,
+  onIgnore,
+}: {
+  text: string;
+  tone?: 'inset' | 'plain';
+  addDisabled?: boolean;
+  onAdd: () => void;
+  onIgnore: () => void;
+}) {
+  const body = (
+    <>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-800">
+        Couldn't read this line
+      </div>
+      <div className="mt-1 break-words font-mono text-[11px] text-ink/80">{text}</div>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={addDisabled}
+          className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
+        >
+          Add as exercise
+        </button>
+        <button
+          type="button"
+          onClick={onIgnore}
+          className="rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
+        >
+          Ignore
+        </button>
+      </div>
+    </>
+  );
+  if (tone === 'plain') return <li className="rounded-xl bg-paper-card px-3 py-2.5">{body}</li>;
+  return <div className="border-t border-line/60 bg-amber-50/60 px-5 py-3">{body}</div>;
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M7 2.5v9M2.5 7h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M11.3 2.7a1.6 1.6 0 0 1 2.3 2.3L6.2 12.4 3 13l.6-3.2 7.7-7.1Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -709,27 +940,21 @@ function RotateGlyph() {
 function ExerciseReviewRow({
   exercise,
   restSeconds,
-  showHistoryControl,
   match,
-  keepHistory,
   onNotesChange,
   onSameMachine,
   onDifferentMachine,
-  onToggleKeepHistory,
   onAlternativeChange,
+  onEdit,
 }: {
   exercise: ParsedExercise;
   restSeconds: number | null;
-  // The bulk choice on the summary card covers the usual case; the per-machine
-  // control only renders while the user is explicitly adjusting.
-  showHistoryControl: boolean;
   match?: Match;
-  keepHistory: boolean;
   onNotesChange: (notes: string) => void;
   onSameMachine: () => void;
   onDifferentMachine: () => void;
-  onToggleKeepHistory: () => void;
   onAlternativeChange: (alt: WeeklyAlternative | null) => void;
+  onEdit: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(exercise.notes ?? '');
@@ -760,7 +985,7 @@ function ExerciseReviewRow({
 
   return (
     <div className="px-5 py-4">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[15px] font-semibold text-ink">
             {exercise.name}
@@ -769,12 +994,22 @@ function ExerciseReviewRow({
             <div className="mt-0.5 text-xs text-muted">{exercise.bodyPart}</div>
           )}
         </div>
-        <div className="shrink-0 text-right text-xs text-muted">
-          <div>
-            <span className="text-ink">{exercise.totalSets ?? '—'}</span> sets
+        <div className="flex shrink-0 items-start gap-1">
+          <div className="text-right text-xs text-muted">
+            <div>
+              <span className="text-ink">{exercise.totalSets ?? '—'}</span> sets
+            </div>
+            <div>{exercise.repRange || '—'} reps</div>
+            {restSeconds != null && <div>{restLabel(restSeconds)} rest</div>}
           </div>
-          <div>{exercise.repRange || '—'} reps</div>
-          {restSeconds != null && <div>{restLabel(restSeconds)} rest</div>}
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit ${exercise.name}`}
+            className="-mr-2 -mt-1 flex h-8 w-8 items-center justify-center rounded-full text-muted active:bg-line/60"
+          >
+            <PencilIcon />
+          </button>
         </div>
       </div>
 
@@ -803,81 +1038,46 @@ function ExerciseReviewRow({
         </div>
       )}
 
-      {match && match.kind !== 'none' && (
+      {match && match.kind === 'fuzzy' && (
         <div className="mt-3">
-          {(match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')) &&
-            (showHistoryControl ? (
-              // Adjusting: a segmented pair, so the chosen state is unmistakable —
-              // exactly one side is filled, and it names what happens.
-              <div className="flex items-center justify-between gap-3 rounded-xl bg-ink/5 px-3 py-2">
-                <span className="min-w-0 truncate text-xs text-ink/80">
-                  From{' '}
-                  <span className="font-semibold text-ink">
-                    {match.candidate?.name ?? 'your history'}
-                  </span>
-                </span>
-                <div className="flex shrink-0 rounded-pill bg-line/60 p-0.5">
-                  <button
-                    onClick={keepHistory ? undefined : onToggleKeepHistory}
-                    className={`rounded-pill px-3 py-1 text-[11px] font-semibold transition-colors duration-150 ${
-                      keepHistory ? 'bg-ink text-white shadow-card' : 'text-muted'
-                    }`}
-                  >
-                    Carry over
-                  </button>
-                  <button
-                    onClick={keepHistory ? onToggleKeepHistory : undefined}
-                    className={`rounded-pill px-3 py-1 text-[11px] font-semibold transition-colors duration-150 ${
-                      !keepHistory ? 'bg-ink text-white shadow-card' : 'text-muted'
-                    }`}
-                  >
-                    Start fresh
-                  </button>
-                </div>
-              </div>
-            ) : (
-              // Not adjusting: state the outcome, no control to second-guess.
-              <div className="text-xs text-muted">
-                {keepHistory ? (
-                  <>
-                    Weights carry over from{' '}
-                    <span className="font-medium text-ink">
-                      {match.candidate?.name ?? "a machine you've used before"}
-                    </span>
-                    .
-                  </>
-                ) : (
-                  'Starting fresh at zero.'
-                )}
-              </div>
-            ))}
-          {match.kind === 'fuzzy' && match.decision === 'pending' && (
+          {match.decision === 'pending' && (
+            // Both names, side by side, then yes or no. The answer decides
+            // whether this row inherits the other name's history and PRs.
             <div className="rounded-xl bg-ink/5 px-3 py-2.5">
-              <div className="text-xs text-ink/80">
-                Looks similar to{' '}
-                <span className="font-semibold text-ink">{match.candidate?.name}</span>{' '}
-                from your history. Same machine?
-              </div>
-              <div className="mt-2 flex gap-2">
+              <div className="text-xs font-semibold text-ink">Is this the same machine?</div>
+              <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                <dt className="text-muted">This plan</dt>
+                <dd className="min-w-0 break-words font-semibold text-ink">{exercise.name}</dd>
+                <dt className="text-muted">Your history</dt>
+                <dd className="min-w-0 break-words font-semibold text-ink">
+                  {match.candidate?.name}
+                </dd>
+              </dl>
+              <div className="mt-2.5 flex gap-2">
                 <button
                   onClick={onSameMachine}
-                  className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40"
+                  className="flex-1 rounded-pill bg-ink py-1.5 text-xs font-semibold text-white active:opacity-80"
                 >
-                  Same machine
+                  Yes, same machine
                 </button>
                 <button
                   onClick={onDifferentMachine}
                   className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40"
                 >
-                  Different machine
+                  No, different
                 </button>
               </div>
             </div>
           )}
-          {match.kind === 'fuzzy' && match.decision === 'different' && (
+          {match.decision === 'same' && (
             <div className="text-xs text-muted">
-              Treated as a new exercise — past history won't carry over.
+              Same machine as{' '}
+              <span className="font-medium text-ink">{match.candidate?.name}</span> — its
+              history and PRs carry on.
             </div>
+          )}
+          {match.decision === 'different' && (
+            <div className="text-xs text-muted">Treated as a new machine.</div>
           )}
         </div>
       )}
