@@ -20,7 +20,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Your records are never affected by that: nothing is ever deleted, and the all-time bests are read from every set you have ever logged',
       'Tap any record for that lift\u2019s history \u2014 the weight and reps chart, and every session',
       'The bottom bar is icons only, evenly spaced, so nothing is squashed to one side',
-      'A feedback button in the bottom bar \u2014 say what happened and attach a photo or a screen recording. It\u2019s in the workout menu too, since mid-set is when you spot things',
+      'A feedback button in the bottom bar \u2014 say what happened and attach a screenshot. It\u2019s in the workout menu too, since mid-set is when you spot things',
       'Feedback works with no signal: it\u2019s saved on your phone, survives closing the app, and sends itself the moment you\u2019re back online \u2014 the same way your sets do',
     ],
   },

@@ -57,7 +57,7 @@ enqueue(USER, {
     message: 'Rest timer kept resetting on the superset',
     context: { screen: 'exercise:2', queuedOffline: true },
   },
-  attachments: [{ blobId: 'blob-1', name: 'clip.mp4', type: 'video/mp4' }],
+  attachments: [{ blobId: 'blob-1', name: 'shot.png', type: 'image/png' }],
 });
 
 let queued = listOutbox();
@@ -67,7 +67,7 @@ check('the words are kept verbatim', queued[0].op.row.message, 'Rest timer kept 
 check('the screen it happened on is kept', queued[0].op.row.context.screen, 'exercise:2');
 check('marked as queued offline', queued[0].op.row.context.queuedOffline, true);
 check('the attachment travels by id, not by value', queued[0].op.attachments, [
-  { blobId: 'blob-1', name: 'clip.mp4', type: 'video/mp4' },
+  { blobId: 'blob-1', name: 'shot.png', type: 'image/png' },
 ]);
 check('nothing has been attempted yet', queued[0].attempts, 0);
 check('described for the sync sheet', describeEntry(queued[0]), 'Feedback · 1 attachment');

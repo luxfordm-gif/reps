@@ -4,6 +4,7 @@ import {
   FEEDBACK_KINDS,
   MAX_ATTACHMENTS,
   describeAttachmentProblem,
+  describeSendError,
   sendFeedback,
   type FeedbackKind,
 } from '../lib/feedbackApi';
@@ -11,7 +12,7 @@ import {
 // The feedback sheet, reachable from the chat icon in the bottom bar.
 //
 // Deliberately one screen: pick what kind of thing it is, type it, optionally
-// attach a photo or a clip, send. Someone noticing a bug mid-set will not fill
+// attach a screenshot, send. Someone noticing a bug mid-set will not fill
 // in a form, so there is nothing here that isn't the report itself.
 
 interface Props {
@@ -91,11 +92,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
       window.setTimeout(onClose, dwell);
     } catch (e) {
       setStatus('editing');
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Couldn't send that. Check your connection and try again."
-      );
+      setError(describeSendError(e));
     }
   }
 
@@ -116,13 +113,8 @@ export function FeedbackSheet({ screen, onClose }: Props) {
           <SentState outcome={outcome} />
         ) : (
           <>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold tracking-tight text-ink">Send feedback</h2>
-                <p className="mt-0.5 text-xs text-muted">
-                  Goes straight to Matt. Screen and app version are included.
-                </p>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold tracking-tight text-ink">Send feedback</h2>
               <button
                 onClick={onClose}
                 className="-mr-2 -mt-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-line/60"
@@ -162,20 +154,11 @@ export function FeedbackSheet({ screen, onClose }: Props) {
               <ul className="mt-3 flex gap-2">
                 {previews.map((p) => (
                   <li key={p.url} className="relative">
-                    {p.file.type.startsWith('video/') ? (
-                      <video
-                        src={p.url}
-                        className="h-20 w-20 rounded-2xl bg-ink/5 object-cover"
-                        muted
-                        playsInline
-                      />
-                    ) : (
-                      <img
-                        src={p.url}
-                        alt={p.file.name}
-                        className="h-20 w-20 rounded-2xl bg-ink/5 object-cover"
-                      />
-                    )}
+                    <img
+                      src={p.url}
+                      alt={p.file.name}
+                      className="h-20 w-20 rounded-2xl bg-ink/5 object-cover"
+                    />
                     <button
                       onClick={() => removeFile(p.file)}
                       className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink text-white shadow-card"
@@ -203,7 +186,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line py-3 text-sm font-semibold text-muted active:bg-line/30"
               >
                 <PaperclipIcon />
-                {files.length === 0 ? 'Add a photo or video' : 'Add another'}
+                {files.length === 0 ? 'Add a screenshot' : 'Add another'}
               </button>
             )}
 
@@ -291,7 +274,7 @@ function ClockIcon() {
 function placeholderFor(kind: FeedbackKind): string {
   switch (kind) {
     case 'bug':
-      return "What happened, and what did you expect instead? A screenshot helps more than anything.";
+      return 'What happened, and what did you expect instead? A screenshot helps more than anything.';
     case 'plan_import':
       return 'Which part of your plan came in wrong — a missing exercise, the wrong day, the wrong week?';
     case 'idea':

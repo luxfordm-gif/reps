@@ -23,11 +23,14 @@ export const FEEDBACK_KINDS: { id: FeedbackKind; label: string }[] = [
 const BUCKET = 'feedback';
 
 /** Matches the bucket's file_size_limit in migration 0015. */
-export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS = 3;
 
+// Screenshots only. Video was allowed at first, but a screen recording is
+// 50MB of upload from a gym with one bar of signal, and a screenshot says
+// what's wrong just as well.
 export const ACCEPTED_ATTACHMENT_TYPES =
-  'image/png,image/jpeg,image/webp,image/heic,image/heif,image/gif,video/mp4,video/quicktime,video/webm';
+  'image/png,image/jpeg,image/webp,image/heic,image/heif,image/gif';
 
 export interface FeedbackContext {
   version: string;
@@ -65,10 +68,38 @@ function storagePath(userId: string, file: File, index: number): string {
 export function describeAttachmentProblem(file: File): string | null {
   if (file.size > MAX_ATTACHMENT_BYTES) {
     const mb = Math.ceil(file.size / (1024 * 1024));
-    return `${file.name} is ${mb}MB — the limit is 50MB. A shorter clip should fit.`;
+    return `${file.name} is ${mb}MB — the limit is 10MB. A screenshot should fit easily.`;
   }
   if (file.size === 0) return `${file.name} is empty.`;
   return null;
+}
+
+/**
+ * A message for the sheet when a send is rejected.
+ *
+ * The first version said "check your connection" for every failure, which is
+ * exactly wrong when the server answered — it points the user at their wifi
+ * for a problem that is ours. Connection problems never reach here now (they
+ * queue), so what's left is the server saying no, and the common case is the
+ * feedback migration not having been run on this project yet.
+ */
+export function describeSendError(e: unknown): string {
+  const err = (e ?? {}) as { code?: string; message?: string; status?: number };
+  const msg = `${err.message ?? ''}`.toLowerCase();
+  if (
+    err.code === 'PGRST205' ||
+    err.code === '42P01' ||
+    msg.includes('could not find the table') ||
+    msg.includes('does not exist')
+  ) {
+    return "Feedback isn't switched on for this server yet — the feedback database migration hasn't been run.";
+  }
+  if (err.code === '42501' || msg.includes('row-level security') || msg.includes('permission denied')) {
+    return "The server refused this — a permissions problem on the feedback table, not your connection.";
+  }
+  if (e instanceof Error && e.message) return e.message;
+  if (err.message) return `Couldn't send: ${err.message}`;
+  return "Couldn't send that. It wasn't your connection — try again in a moment.";
 }
 
 export interface SendFeedbackInput {

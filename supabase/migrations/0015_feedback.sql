@@ -1,7 +1,7 @@
 -- In-app feedback, for beta testers.
 --
 -- A tester in the gym should be able to report something the moment it happens,
--- with a photo or a screen recording, without leaving the app or finding an
+-- with a screenshot, without leaving the app or finding an
 -- email address. Feedback is write-mostly: users insert their own and can read
 -- back what they sent; nobody reads anyone else's through the API.
 --
@@ -37,18 +37,15 @@ create policy "feedback_select_own"
 grant select, insert on public.feedback to authenticated;
 grant all on public.feedback to service_role;
 
--- Attachments bucket. Private: a screen recording can show the user's whole
+-- Attachments bucket. Private: a screenshot can show the user's whole
 -- training history, so nothing here is world-readable.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'feedback',
   'feedback',
   false,
-  52428800, -- 50 MB, enough for a short screen recording from a phone
-  array[
-    'image/png','image/jpeg','image/webp','image/heic','image/heif','image/gif',
-    'video/mp4','video/quicktime','video/webm'
-  ]
+  10485760, -- 10 MB: screenshots only, comfortably
+  array['image/png','image/jpeg','image/webp','image/heic','image/heif','image/gif']
 )
 on conflict (id) do update
   set file_size_limit = excluded.file_size_limit,
