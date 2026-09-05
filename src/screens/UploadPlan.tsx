@@ -1041,24 +1041,30 @@ function ExerciseReviewRow({
       {match && match.kind === 'fuzzy' && (
         <div className="mt-3">
           {match.decision === 'pending' && (
+            // Both names, side by side, then yes or no. The answer decides
+            // whether this row inherits the other name's history and PRs.
             <div className="rounded-xl bg-ink/5 px-3 py-2.5">
-              <div className="text-xs text-ink/80">
-                Looks like{' '}
-                <span className="font-semibold text-ink">{match.candidate?.name}</span>{' '}
-                from your history. Same machine?
-              </div>
-              <div className="mt-2 flex gap-2">
+              <div className="text-xs font-semibold text-ink">Is this the same machine?</div>
+              <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                <dt className="text-muted">This plan</dt>
+                <dd className="min-w-0 break-words font-semibold text-ink">{exercise.name}</dd>
+                <dt className="text-muted">Your history</dt>
+                <dd className="min-w-0 break-words font-semibold text-ink">
+                  {match.candidate?.name}
+                </dd>
+              </dl>
+              <div className="mt-2.5 flex gap-2">
                 <button
                   onClick={onSameMachine}
-                  className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40"
+                  className="flex-1 rounded-pill bg-ink py-1.5 text-xs font-semibold text-white active:opacity-80"
                 >
-                  Same machine
+                  Yes, same machine
                 </button>
                 <button
                   onClick={onDifferentMachine}
                   className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40"
                 >
-                  Different machine
+                  No, different
                 </button>
               </div>
             </div>
