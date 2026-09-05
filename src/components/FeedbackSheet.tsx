@@ -22,13 +22,18 @@ interface Props {
 
 type Status = 'editing' | 'sending' | 'sent';
 
+interface Outcome {
+  queued: boolean;
+  failedAttachments: string[];
+}
+
 export function FeedbackSheet({ screen, onClose }: Props) {
   const [kind, setKind] = useState<FeedbackKind>('bug');
   const [message, setMessage] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<Status>('editing');
   const [error, setError] = useState<string | null>(null);
-  const [partial, setPartial] = useState<string[]>([]);
+  const [outcome, setOutcome] = useState<Outcome>({ queued: false, failedAttachments: [] });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -79,10 +84,11 @@ export function FeedbackSheet({ screen, onClose }: Props) {
     setError(null);
     try {
       const result = await sendFeedback({ kind, message, files, screen });
-      setPartial(result.failedAttachments);
+      setOutcome(result);
       setStatus('sent');
       // Long enough to read the confirmation, short enough not to be in the way.
-      window.setTimeout(onClose, result.failedAttachments.length > 0 ? 3200 : 1400);
+      const dwell = result.queued || result.failedAttachments.length > 0 ? 3200 : 1400;
+      window.setTimeout(onClose, dwell);
     } catch (e) {
       setStatus('editing');
       setError(
@@ -107,7 +113,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         {status === 'sent' ? (
-          <SentState partial={partial} />
+          <SentState outcome={outcome} />
         ) : (
           <>
             <div className="flex items-start justify-between gap-3">
@@ -221,31 +227,64 @@ export function FeedbackSheet({ screen, onClose }: Props) {
   );
 }
 
-function SentState({ partial }: { partial: string[] }) {
+function SentState({ outcome }: { outcome: Outcome }) {
+  const { queued, failedAttachments } = outcome;
   return (
     <div className="py-6 text-center">
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-ink text-white">
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-          <path
-            d="M5 11.5l4 4 8-9"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        {queued ? <ClockIcon /> : <TickIcon />}
       </div>
-      <p className="mt-4 text-base font-bold text-ink">Thanks — that's sent.</p>
-      {partial.length > 0 ? (
-        <p className="mt-1 text-sm text-muted">
-          Your message got through, but {partial.length}{' '}
-          {partial.length === 1 ? 'attachment' : 'attachments'} wouldn't upload on
-          this connection. Send it again on wifi if it matters.
-        </p>
-      ) : (
-        <p className="mt-1 text-sm text-muted">It really does help. Back to it.</p>
-      )}
+      <p className="mt-4 text-base font-bold text-ink">
+        {queued ? "Saved — it'll send itself." : "Thanks — that's sent."}
+      </p>
+      <p className="mt-1 text-sm text-muted">{sentDetail(queued, failedAttachments)}</p>
     </div>
+  );
+}
+
+function sentDetail(queued: boolean, failedAttachments: string[]): string {
+  const n = failedAttachments.length;
+  if (queued) {
+    const base =
+      "No signal right now, so it's saved on your phone and goes the moment you're back online. You can close the app.";
+    return n > 0
+      ? `${base} ${n} ${n === 1 ? 'attachment was' : 'attachments were'} too big to store, so ${n === 1 ? "it isn't" : "they aren't"} included.`
+      : base;
+  }
+  if (n > 0) {
+    return `Your message got through, but ${n} ${
+      n === 1 ? "attachment wouldn't" : "attachments wouldn't"
+    } upload on this connection. Send it again on wifi if it matters.`;
+  }
+  return 'It really does help. Back to it.';
+}
+
+function TickIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <path
+        d="M5 11.5l4 4 8-9"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <circle cx="11" cy="11" r="7.5" stroke="currentColor" strokeWidth="1.9" />
+      <path
+        d="M11 7v4.3l2.8 1.7"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

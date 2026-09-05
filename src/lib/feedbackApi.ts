@@ -1,5 +1,8 @@
 import { supabase, currentUserId } from './supabase';
 import { CHANGELOG } from './changelog';
+import { enqueue } from './offline/outbox';
+import { isReachable, isTransportError, reportNetworkFail } from './offline/net';
+import { putBlob } from './offline/blobStore';
 
 // Sending feedback from inside the app.
 //
@@ -76,17 +79,60 @@ export interface SendFeedbackInput {
 }
 
 export interface SendFeedbackResult {
+  /** True when the report is banked on the device and will go when signal returns. */
+  queued: boolean;
   /** Attachments that could not be uploaded. The message is sent regardless. */
   failedAttachments: string[];
 }
 
 /**
+ * Bank the report on the device for the outbox to replay.
+ *
+ * Attachment bytes go into IndexedDB first: only once they are safe is the
+ * queue entry written, so an entry can never reference a file that was never
+ * stored. A file that won't store (no IndexedDB, no room) is dropped from the
+ * report rather than losing the whole thing — the words are the part that
+ * matters.
+ */
+async function queueFeedback(
+  userId: string,
+  input: SendFeedbackInput,
+  message: string
+): Promise<SendFeedbackResult> {
+  const attachments: { blobId: string; name: string; type: string }[] = [];
+  const failedAttachments: string[] = [];
+  for (const file of input.files.slice(0, MAX_ATTACHMENTS)) {
+    try {
+      const blobId = await putBlob(file);
+      attachments.push({ blobId, name: file.name, type: file.type });
+    } catch {
+      failedAttachments.push(file.name);
+    }
+  }
+  enqueue(userId, {
+    kind: 'feedback',
+    row: {
+      id: crypto.randomUUID(),
+      kind: input.kind,
+      message,
+      context: { ...collectContext(input.screen), queuedOffline: true },
+    },
+    attachments,
+  });
+  return { queued: true, failedAttachments };
+}
+
+/**
  * Send one piece of feedback.
  *
- * Attachments are uploaded first, but a failed upload never blocks the report:
- * a bad connection in a basement gym is exactly when people find bugs, and the
- * words matter more than the video. Whatever did upload is attached, and the
- * caller is told what didn't so it can say so.
+ * With signal, it goes straight out. Without it — or if the send dies on the
+ * way — the report is queued on the device and replayed by the outbox when the
+ * phone can reach the server again, the same guarantee a logged set gets. A
+ * bug found in a basement gym is still a bug worth reporting, and asking
+ * someone to remember it until they get home is asking to never hear about it.
+ *
+ * When online, a failed *attachment* upload still never blocks the report: the
+ * words go regardless and the caller is told what didn't make it.
  */
 export async function sendFeedback(
   input: SendFeedbackInput
@@ -97,26 +143,47 @@ export async function sendFeedback(
   const message = input.message.trim();
   if (!message) throw new Error('Add a short description first');
 
+  if (!isReachable()) return queueFeedback(userId, input, message);
+
   const attachments: string[] = [];
   const failedAttachments: string[] = [];
 
-  for (const [i, file] of input.files.slice(0, MAX_ATTACHMENTS).entries()) {
-    const path = storagePath(userId, file, i);
-    const { error } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, file, { contentType: file.type || undefined, upsert: false });
-    if (error) failedAttachments.push(file.name);
-    else attachments.push(path);
+  try {
+    for (const [i, file] of input.files.slice(0, MAX_ATTACHMENTS).entries()) {
+      const path = storagePath(userId, file, i);
+      const { error } = await supabase.storage
+        .from(BUCKET)
+        .upload(path, file, { contentType: file.type || undefined, upsert: false });
+      // supabase-storage returns its error rather than throwing, so a
+      // transport failure arrives as a value and has to be re-thrown to reach
+      // the offline fallback below.
+      if (isTransportError(error)) {
+        reportNetworkFail();
+        throw error;
+      }
+      if (error) failedAttachments.push(file.name);
+      else attachments.push(path);
+    }
+
+    const { error } = await supabase.from('feedback').insert({
+      user_id: userId,
+      kind: input.kind,
+      message,
+      attachments,
+      context: collectContext(input.screen),
+    });
+    if (error) throw error;
+  } catch (e) {
+    // Signal died part-way through. Bank the whole report and let the outbox
+    // replay it rather than dropping it on the floor. Any attachment that did
+    // upload before the connection went is left orphaned in the bucket, which
+    // is only wasted space; re-sending the report whole is worth that.
+    if (isTransportError(e)) {
+      reportNetworkFail();
+      return queueFeedback(userId, input, message);
+    }
+    throw e;
   }
 
-  const { error } = await supabase.from('feedback').insert({
-    user_id: userId,
-    kind: input.kind,
-    message,
-    attachments,
-    context: collectContext(input.screen),
-  });
-  if (error) throw error;
-
-  return { failedAttachments };
+  return { queued: false, failedAttachments };
 }

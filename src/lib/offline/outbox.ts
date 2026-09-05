@@ -19,6 +19,7 @@ import { useSyncExternalStore } from 'react';
 import { supabase, currentUserId, currentUserIdSync } from '../supabase';
 import { isOfflineError, isReachable, query } from './net';
 import { newId, readJson, writeJson } from './storage';
+import { deleteBlobs, deleteOrphans, getBlob } from './blobStore';
 import {
   getLocalSessions,
   installEvictionPlan,
@@ -83,7 +84,18 @@ export type OutboxOp =
   | { kind: 'delete_open_sessions' }
   | { kind: 'body_weight'; row: { id: string; weight_kg: number; recorded_on: string } }
   | { kind: 'delete_body_weight'; id: string }
-  | { kind: 'water'; recorded_on: string; count: number };
+  | { kind: 'water'; recorded_on: string; count: number }
+  | {
+      kind: 'feedback';
+      row: {
+        id: string;
+        kind: string;
+        message: string;
+        context: Record<string, unknown>;
+      };
+      /** Bytes live in the IndexedDB blob store; only their ids travel here. */
+      attachments: { blobId: string; name: string; type: string }[];
+    };
 
 export interface OutboxError {
   code?: string;
@@ -458,6 +470,45 @@ async function applyOp(op: OutboxOp, userId: string): Promise<void> {
         { label: 'sync:water' }
       );
       return;
+    case 'feedback': {
+      // Attachments first, then the row that references them. A file whose
+      // bytes are gone from the device (cleared site data, a browser that
+      // evicted the store) is skipped rather than pinning the report in the
+      // queue forever — the words are the part worth keeping.
+      const paths: string[] = [];
+      for (const att of op.attachments) {
+        const stored = await getBlob(att.blobId);
+        if (!stored) continue;
+        const { error } = await supabase.storage
+          .from('feedback')
+          .upload(`${userId}/${op.row.id}-${att.blobId}`, stored.blob, {
+            contentType: att.type || undefined,
+            upsert: true,
+          });
+        if (error) throw error;
+        paths.push(`${userId}/${op.row.id}-${att.blobId}`);
+      }
+      await query(
+        supabase
+          .from('feedback')
+          .upsert(
+            {
+              id: op.row.id,
+              user_id: userId,
+              kind: op.row.kind,
+              message: op.row.message,
+              attachments: paths,
+              context: op.row.context,
+            },
+            { onConflict: 'id' }
+          )
+          .select('id'),
+        { label: 'sync:feedback' }
+      );
+      // Only now are the bytes safe to drop.
+      await deleteBlobs(op.attachments.map((a) => a.blobId));
+      return;
+    }
   }
 }
 
@@ -630,7 +681,13 @@ export function retryAllNow(): void {
 /** Drop a single queued write. Only ever called from an explicit user action —
  *  nothing in the sync path deletes a write the server hasn't taken. */
 export function discardEntry(entryId: string): void {
+  const entry = load().find((e) => e.id === entryId);
   save(load().filter((e) => e.id !== entryId));
+  // The user has said they don't want this write. Nothing else references its
+  // attachments, so the bytes go with it rather than sitting on the device.
+  if (entry?.op.kind === 'feedback') {
+    void deleteBlobs(entry.op.attachments.map((a) => a.blobId));
+  }
 }
 
 /** One line describing a queued write, for the details sheet. */
@@ -658,6 +715,10 @@ export function describeEntry(entry: OutboxEntry): string {
       return 'Deleted body weight';
     case 'water':
       return 'Water count';
+    case 'feedback':
+      return op.attachments.length > 0
+        ? `Feedback · ${op.attachments.length} attachment${op.attachments.length === 1 ? '' : 's'}`
+        : 'Feedback';
   }
 }
 
@@ -758,7 +819,20 @@ export async function flushOutbox(): Promise<void> {
   } finally {
     syncing = false;
     publish();
+    // Bytes nothing in the queue still references: the residue of a report that
+    // was interrupted between banking its files and queueing the entry.
+    void deleteOrphans(referencedBlobIds());
   }
+}
+
+/** Every attachment id the queue still needs. */
+function referencedBlobIds(): Set<string> {
+  const ids = new Set<string>();
+  for (const e of load()) {
+    if (e.op.kind !== 'feedback') continue;
+    for (const a of e.op.attachments) ids.add(a.blobId);
+  }
+  return ids;
 }
 
 let started = false;
