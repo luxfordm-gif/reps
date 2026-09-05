@@ -17,7 +17,15 @@ import {
   type PrefetchExercise,
 } from '../lib/sessionsApi';
 import { prefetchAlternativesForExercises } from '../lib/alternativesApi';
-import { lastSetsWarmth, warmLastSetsForPlan } from '../lib/sessionsApi';
+import {
+  completeSession,
+  createSession,
+  getLastCompletedAtByTrainingDay,
+  lastSetsWarmth,
+  mondayOfWeek,
+  warmLastSetsForPlan,
+} from '../lib/sessionsApi';
+import { clearHomeCache } from '../lib/homeCache';
 import { useNetStatus } from '../lib/offline/net';
 
 type TrainingDay = FullPlan['training_days'][number];
@@ -85,6 +93,56 @@ export function DayView({
   // A workout listed for reference — done at home, in your own time, with no
   // session to start and no sets to log.
   const referenceOnly = day.reference_only === true;
+
+  // A reference day can still be ticked off. "Done" is a completed session
+  // with no sets, which is exactly what Home counts for its weekly tick and
+  // what history shows — so marking it is one write, and undo is one delete.
+  const [referenceDoneAt, setReferenceDoneAt] = useState<string | null>(null);
+  // The session created from this screen, so it can be undone here.
+  const [referenceSessionId, setReferenceSessionId] = useState<string | null>(null);
+  const [markingDone, setMarkingDone] = useState(false);
+  useEffect(() => {
+    if (!referenceOnly) return;
+    let cancelled = false;
+    getLastCompletedAtByTrainingDay([day.id]).then((by) => {
+      if (cancelled) return;
+      const at = by[day.id];
+      // Only this week counts as "done"; last week's tick shouldn't linger.
+      if (at && new Date(at) >= mondayOfWeek(0)) setReferenceDoneAt(at);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [referenceOnly, day.id]);
+
+  async function markReferenceDone() {
+    if (markingDone) return;
+    setMarkingDone(true);
+    hapticBuzz(10);
+    try {
+      const sess = await createSession(day.id);
+      await completeSession(sess.id);
+      setReferenceSessionId(sess.id);
+      setReferenceDoneAt(new Date().toISOString());
+      // Home's cache holds last week's ticks; drop it so the card updates.
+      clearHomeCache();
+    } finally {
+      setMarkingDone(false);
+    }
+  }
+
+  async function undoReferenceDone() {
+    if (!referenceSessionId || markingDone) return;
+    setMarkingDone(true);
+    try {
+      await deleteSession(referenceSessionId);
+      setReferenceSessionId(null);
+      setReferenceDoneAt(null);
+      clearHomeCache();
+    } finally {
+      setMarkingDone(false);
+    }
+  }
   // Memoised so the effects below key off the day's exercises, not a fresh
   // empty array on every render.
   const exercises = useMemo(() => day.plan_exercises ?? [], [day.plan_exercises]);
@@ -337,13 +395,46 @@ export function DayView({
         )}
 
         {referenceOnly && (
-          <div className="mt-6 rounded-card bg-paper-card px-5 py-4 text-center shadow-card">
+          <div className="mt-6 rounded-card bg-paper-card px-5 py-4 shadow-card">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
               Reference
             </div>
             <div className="mt-1 text-sm text-ink">
               Do this one at home in your own time — it isn't tracked set by set.
             </div>
+            {referenceDoneAt ? (
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <TickBadge />
+                  Done this week
+                  <span className="font-normal text-muted">
+                    ·{' '}
+                    {new Date(referenceDoneAt).toLocaleDateString('en-GB', {
+                      weekday: 'short',
+                    })}
+                  </span>
+                </div>
+                {referenceSessionId && (
+                  <button
+                    type="button"
+                    onClick={undoReferenceDone}
+                    disabled={markingDone}
+                    className="text-xs font-semibold text-muted active:text-ink disabled:opacity-50"
+                  >
+                    Undo
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={markReferenceDone}
+                disabled={markingDone}
+                className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+              >
+                {markingDone ? 'Saving…' : 'Mark as done'}
+              </button>
+            )}
           </div>
         )}
 
@@ -699,5 +790,21 @@ function ChevronSmall() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function TickBadge() {
+  return (
+    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-ink text-white">
+      <svg width="12" height="12" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+        <path
+          d="M5 11.5l4 4 8-9"
+          stroke="currentColor"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
   );
 }

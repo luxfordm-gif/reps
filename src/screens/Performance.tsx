@@ -94,6 +94,12 @@ export function Performance() {
   const bwUnit = getBodyWeightUnit();
   const liftUnit = getLiftWeightUnit();
 
+  // "View all" swaps the view inside the same tab, so without this the records
+  // board opened wherever the dashboard had been scrolled to.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [view]);
+
   useEffect(() => {
     let mounted = true;
     loadAll()
@@ -113,11 +119,17 @@ export function Performance() {
     const weeklyTarget = slots.filter(
       (s) => s.name !== 'Abs' && !s.variants.every((v) => v.reference_only === true)
     ).length;
+    // A reference day (the home abs workout) isn't in the weekly target, so a
+    // session marked done for it mustn't count towards it either.
+    const referenceNames = new Set(
+      (plan?.training_days ?? []).filter((d) => d.reference_only).map((d) => d.name)
+    );
+    const gymSessions = sessions.filter((s) => !referenceNames.has(s.day_name));
     const mostImproved = computeMostImproved(perf.sets);
     return {
       weeklyTarget,
-      consistency: computeConsistency(sessions, activatedAt, weeklyTarget),
-      perWeek: computeWorkoutsPerWeek(sessions, activatedAt),
+      consistency: computeConsistency(gymSessions, activatedAt, weeklyTarget),
+      perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       strength: computeOverallStrength(perf.sets, activatedAt),
       mostImproved,
       mostImprovedSeries: mostImproved

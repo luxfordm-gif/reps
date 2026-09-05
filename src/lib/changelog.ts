@@ -18,6 +18,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'The Performance tab is now a dashboard: where you are on the plan and this week\u2019s progress, new PRs this month, body weight with a 12w / 6m / 1y chart, how consistently you\u2019ve turned up, workouts per week, and whether you\u2019re getting stronger overall',
       'Overall strength compares your best estimated 1RM on each lift in your first two weeks on the plan with the last two \u2014 it only shows once there\u2019s enough data to mean something',
       'Most improved this month is back, and your top three all-time records sit at the bottom with \u201cView all\u201d opening the full records board',
+      'The home abs workout can be marked as done \u2014 it ticks off on Home like any other day, and you can undo it',
     ],
   },
   {
