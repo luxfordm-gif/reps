@@ -13,6 +13,27 @@ import { normalizeExerciseName } from '../lib/normalizeExerciseName';
 import { restLabel, restSecondsForExercises } from '../lib/restDefaults';
 import { formatNameList, groupedSetLabel } from '../lib/supersets';
 import { PageHeader } from '../components/PageHeader';
+import { DayEditorSheet, ExerciseEditorSheet } from '../components/PlanRepairSheets';
+import {
+  EMPTY_DRAFT,
+  buildExercise,
+  draftFromExercise,
+  guessDraftFromText,
+  newDay,
+  normalizePositions,
+  planProblems,
+  splitUnparsed,
+  withUids,
+  type ExerciseDraft,
+} from '../lib/planRepair';
+
+/** Stable identity for a row while it's being edited (see planRepair.withUids). */
+const keyOf = (e: ParsedExercise): string => e.uid ?? `${e.name}#${e.position}`;
+
+type EditorState =
+  | null
+  | { mode: 'edit'; dayIdx: number; exIdx: number }
+  | { mode: 'new'; dayIdx: number; prefill?: ExerciseDraft; sourceRaw?: string };
 
 function parseTargetReps(repRange: string): number | null {
   const match = repRange.match(/(\d+)\s*(?:-\s*(\d+))?/);
@@ -105,14 +126,14 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   // Recomputed when notes are edited here, since notes can name a rest.
   const restByKey = useMemo(() => {
     const map = new Map<string, number>();
-    parsed?.days.forEach((day, dayIdx) => {
+    parsed?.days.forEach((day) => {
       restSecondsForExercises(
         day.exercises.map((e) => ({
           name: e.name,
           notes: e.notes,
           supersetGroup: e.supersetGroup ?? null,
         }))
-      ).forEach((rest, exIdx) => map.set(`${dayIdx}:${exIdx}`, rest));
+      ).forEach((rest, exIdx) => map.set(keyOf(day.exercises[exIdx]), rest));
     });
     return map;
   }, [parsed]);
@@ -125,6 +146,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   // controls stay hidden until asked for — a row shows a quiet status line
   // instead of a control it doesn't need.
   const [adjustHistoryOpen, setAdjustHistoryOpen] = useState(false);
+  // The repair sheets: fixing a row the parser got wrong, or a day's name/week.
+  const [editor, setEditor] = useState<EditorState>(null);
+  const [dayEditor, setDayEditor] = useState<{ dayIdx: number } | 'new' | null>(null);
 
   // Keys of carried-over machines whose history is KEPT. Default is empty —
   // every matched machine starts fresh. Uploading a plan means a new block, and
@@ -170,18 +194,30 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       return;
     }
     const next = new Map<string, Match>();
-    parsed.days.forEach((day, dayIdx) => {
-      day.exercises.forEach((ex, exIdx) => {
-        next.set(`${dayIdx}:${exIdx}`, computeMatch(ex, previousExercises));
-      });
+    for (const day of parsed.days) {
+      for (const ex of day.exercises) next.set(keyOf(ex), computeMatch(ex, previousExercises));
+    }
+    // Any edit on the screen re-runs this, so a decision the user has already
+    // made about a row — same machine, different machine — has to survive it.
+    setMatches((prev) => {
+      const merged = new Map<string, Match>();
+      for (const [key, computed] of next) {
+        const old = prev.get(key);
+        merged.set(
+          key,
+          old && old.candidate?.normalizedName === computed.candidate?.normalizedName
+            ? { ...computed, decision: old.decision }
+            : computed
+        );
+      }
+      return merged;
     });
-    setMatches(next);
-    // New parse → every matched machine starts fresh. Uploading a plan almost
-    // always means starting a new block, and walking up to a machine with last
-    // block's weight already in the box is how you end up chasing a number the
-    // new rep range was never meant to hit. Your all-time bests are untouched
-    // either way (see Personal records), so this is safe to default to.
-    setKeepHistory(new Set());
+    // Every matched machine starts fresh by default: uploading a plan almost
+    // always means a new block, and last block's weight in the box is how you
+    // end up chasing a number the new rep range was never meant to hit. Your
+    // all-time bests are untouched either way. Choices already made stay;
+    // rows that were deleted drop out.
+    setKeepHistory((prev) => new Set([...prev].filter((k) => next.has(k))));
   }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
@@ -196,7 +232,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       const text = await extractPdfText(f);
       setRawText(text);
       const result = parseTrainingPlan(text);
-      setParsed(result);
+      setParsed(withUids(result));
+      setEditor(null);
+      setDayEditor(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to parse PDF');
     } finally {
@@ -209,12 +247,19 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     setSaving(true);
     setError(null);
     try {
-      // Default is to carry history over: reset only the machines the user
-      // explicitly unticked.
-      const historyResetKeys = new Set(
-        historyCarrierKeys.filter((k) => !keepHistory.has(k))
-      );
-      await savePlan(parsed, planName, rawText, { historyResetKeys });
+      // Rows may have been added, moved or deleted, so positions are made
+      // contiguous first; savePlan keys the history reset by final position.
+      const normalized = normalizePositions(parsed);
+      const historyResetKeys = new Set<string>();
+      for (const d of normalized.days) {
+        for (const e of d.exercises) {
+          const k = keyOf(e);
+          if (historyCarrierKeys.includes(k) && !keepHistory.has(k)) {
+            historyResetKeys.add(`${d.position}:${e.position}`);
+          }
+        }
+      }
+      await savePlan(normalized, planName, rawText, { historyResetKeys });
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save plan');
@@ -269,7 +314,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }
 
   function answerSameMachine(dayIdx: number, exIdx: number) {
-    const key = `${dayIdx}:${exIdx}`;
+    const target = parsed?.days[dayIdx]?.exercises[exIdx];
+    if (!target) return;
+    const key = keyOf(target);
     const match = matches.get(key);
     if (!match || !match.candidate) return;
     const candidate = match.candidate;
@@ -300,7 +347,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }
 
   function answerDifferentMachine(dayIdx: number, exIdx: number) {
-    const key = `${dayIdx}:${exIdx}`;
+    const target = parsed?.days[dayIdx]?.exercises[exIdx];
+    if (!target) return;
+    const key = keyOf(target);
     setMatches((prev) => {
       const next = new Map(prev);
       const current = next.get(key);
@@ -318,7 +367,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }
 
   function toggleKeepHistory(dayIdx: number, exIdx: number) {
-    const key = `${dayIdx}:${exIdx}`;
+    const target = parsed?.days[dayIdx]?.exercises[exIdx];
+    if (!target) return;
+    const key = keyOf(target);
     setKeepHistory((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -326,6 +377,103 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       return next;
     });
   }
+
+  // --- Repairing the import -------------------------------------------------
+
+  function saveExercise(draft: ExerciseDraft, targetDayIdx: number) {
+    const state = editor;
+    if (!state) return;
+    setParsed((prev) => {
+      if (!prev) return prev;
+      const days = prev.days.map((d) => ({ ...d, exercises: [...d.exercises] }));
+      let unparsedLines = prev.unparsedLines;
+      if (state.mode === 'edit') {
+        const base = days[state.dayIdx]?.exercises[state.exIdx];
+        if (!base) return prev;
+        const built = buildExercise(draft, base);
+        if (targetDayIdx === state.dayIdx) {
+          days[state.dayIdx].exercises[state.exIdx] = built;
+        } else {
+          // Moved to another day: leaves any superset pairing behind.
+          days[state.dayIdx].exercises.splice(state.exIdx, 1);
+          days[targetDayIdx]?.exercises.push({
+            ...built,
+            supersetGroup: null,
+            supersetPartnerNames: null,
+          });
+        }
+      } else {
+        days[targetDayIdx]?.exercises.push(buildExercise(draft));
+        // A line rescued into a row is no longer unparsed.
+        if (state.sourceRaw) unparsedLines = unparsedLines.filter((l) => l !== state.sourceRaw);
+      }
+      return { ...prev, days, unparsedLines };
+    });
+    setEditor(null);
+  }
+
+  function deleteExercise(dayIdx: number, exIdx: number) {
+    setParsed((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== dayIdx ? d : { ...d, exercises: d.exercises.filter((_, j) => j !== exIdx) }
+        ),
+      };
+    });
+    setEditor(null);
+  }
+
+  function ignoreUnparsed(raw: string) {
+    setParsed((prev) =>
+      prev ? { ...prev, unparsedLines: prev.unparsedLines.filter((l) => l !== raw) } : prev
+    );
+  }
+
+  function saveDay(name: string, weekIndex: number | null) {
+    const state = dayEditor;
+    if (!state) return;
+    setParsed((prev) => {
+      if (!prev) return prev;
+      if (state === 'new') {
+        return { ...prev, days: [...prev.days, newDay(name, weekIndex, prev.days.length)] };
+      }
+      return {
+        ...prev,
+        days: prev.days.map((d, i) =>
+          i !== state.dayIdx ? d : { ...d, name: name.trim(), weekIndex }
+        ),
+      };
+    });
+    setDayEditor(null);
+  }
+
+  function deleteDay(dayIdx: number) {
+    setParsed((prev) =>
+      prev ? { ...prev, days: prev.days.filter((_, i) => i !== dayIdx) } : prev
+    );
+    setDayEditor(null);
+  }
+
+  // Lines the parser couldn't place, split into the day they were found under.
+  // Ones under a day that no longer exists (renamed, deleted) join the orphans.
+  const unparsed = useMemo(
+    () => (parsed?.unparsedLines ?? []).map(splitUnparsed),
+    [parsed]
+  );
+  const dayNames = useMemo(() => new Set((parsed?.days ?? []).map((d) => d.name)), [parsed]);
+  const orphanLines = unparsed.filter((u) => u.dayName == null || !dayNames.has(u.dayName));
+  const problems = parsed ? planProblems(parsed) : [];
+  // "No exercises" is a blocker shown by the save button now, not a warning.
+  const visibleWarnings = (parsed?.warnings ?? []).filter(
+    (w) => !/has no exercises detected/.test(w)
+  );
+  const planWeeks = useMemo(() => {
+    const ws = new Set<number>();
+    for (const d of parsed?.days ?? []) if (d.weekIndex != null) ws.add(d.weekIndex);
+    return [...ws].sort((a, b) => a - b);
+  }, [parsed]);
 
   // Keys of every exercise tied to a previous machine — the ones a keep/reset choice
   // applies to.
@@ -443,7 +591,8 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                 Detected
               </div>
               <div className="mt-1 text-2xl font-bold tracking-tight text-ink">
-                {parsed.days.length} days · {totalExercises} exercises
+                {parsed.days.length} {parsed.days.length === 1 ? 'day' : 'days'} ·{' '}
+                {totalExercises} {totalExercises === 1 ? 'exercise' : 'exercises'}
               </div>
               {overrideCount > 0 && (
                 <div className="mt-3 text-xs text-muted">
@@ -521,26 +670,36 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
 
             <div className="mt-4 space-y-4">
               {parsed.days.map((day, dayIdx) => (
-                <div key={day.name} className="rounded-card bg-paper-card shadow-card">
-                  <div className="border-b border-line/60 px-5 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-                      Day {day.position + 1}
-                      {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
-                      {day.weekIndex == null && rotates && ' · Every week'}
+                <div key={`${day.name}#${dayIdx}`} className="rounded-card bg-paper-card shadow-card">
+                  <div className="flex items-start justify-between gap-3 border-b border-line/60 px-5 py-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                        Day {dayIdx + 1}
+                        {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
+                        {day.weekIndex == null && rotates && ' · Every week'}
+                      </div>
+                      <div className="mt-0.5 truncate text-base font-semibold text-ink">
+                        {day.name}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-base font-semibold text-ink">
-                      {day.name}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDayEditor({ dayIdx })}
+                      className="-mr-2 shrink-0 rounded-pill px-2.5 py-1 text-xs font-semibold text-muted active:text-ink"
+                    >
+                      Edit day
+                    </button>
                   </div>
                   <ul className="divide-y divide-line/60">
                     {day.exercises.map((ex, exIdx) => (
-                      <li key={`${ex.name}-${ex.position}`}>
+                      <li key={keyOf(ex)}>
                         <ExerciseReviewRow
                           exercise={ex}
-                          restSeconds={restByKey.get(`${dayIdx}:${exIdx}`) ?? null}
+                          restSeconds={restByKey.get(keyOf(ex)) ?? null}
                           showHistoryControl={adjustHistoryOpen}
-                          match={matches.get(`${dayIdx}:${exIdx}`)}
-                          keepHistory={keepHistory.has(`${dayIdx}:${exIdx}`)}
+                          match={matches.get(keyOf(ex))}
+                          keepHistory={keepHistory.has(keyOf(ex))}
+                          onEdit={() => setEditor({ mode: 'edit', dayIdx, exIdx })}
                           onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
                           onSameMachine={() => answerSameMachine(dayIdx, exIdx)}
                           onDifferentMachine={() => answerDifferentMachine(dayIdx, exIdx)}
@@ -552,42 +711,98 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                       </li>
                     ))}
                   </ul>
+                  {unparsed
+                    .filter((u) => u.dayName === day.name)
+                    .map((u) => (
+                      <UnreadLineCard
+                        key={u.raw}
+                        text={u.text}
+                        onAdd={() =>
+                          setEditor({
+                            mode: 'new',
+                            dayIdx,
+                            prefill: guessDraftFromText(u.text),
+                            sourceRaw: u.raw,
+                          })
+                        }
+                        onIgnore={() => ignoreUnparsed(u.raw)}
+                      />
+                    ))}
+                  <button
+                    type="button"
+                    onClick={() => setEditor({ mode: 'new', dayIdx, prefill: EMPTY_DRAFT })}
+                    className="flex w-full items-center justify-center gap-1.5 border-t border-line/60 py-3 text-sm font-semibold text-ink active:bg-line/30"
+                  >
+                    <PlusIcon /> Add exercise
+                  </button>
                 </div>
               ))}
+
+              {orphanLines.length > 0 && (
+                <div className="rounded-card border border-amber-200 bg-amber-50 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+                    {orphanLines.length} {orphanLines.length === 1 ? 'line' : 'lines'} not under any day
+                  </div>
+                  <p className="mt-1 text-xs text-amber-800">
+                    These look like exercises but sat under a heading Reps didn't recognise as a
+                    day. Add the day they belong to, then add them to it — or ignore them.
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {orphanLines.map((u) => (
+                      <UnreadLineCard
+                        key={u.raw}
+                        text={u.text}
+                        tone="plain"
+                        onAdd={() =>
+                          setEditor({
+                            mode: 'new',
+                            dayIdx: 0,
+                            prefill: guessDraftFromText(u.text),
+                            sourceRaw: u.raw,
+                          })
+                        }
+                        addDisabled={parsed.days.length === 0}
+                        onIgnore={() => ignoreUnparsed(u.raw)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setDayEditor('new')}
+                className="flex w-full items-center justify-center gap-1.5 rounded-card border border-dashed border-line py-3.5 text-sm font-semibold text-muted active:bg-line/30"
+              >
+                <PlusIcon /> Add a day
+              </button>
             </div>
 
-            {parsed.warnings.length > 0 && (
+            {visibleWarnings.length > 0 && (
               <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <div className="font-semibold">Warnings</div>
                 <ul className="mt-1 list-inside list-disc">
-                  {parsed.warnings.map((w, i) => (
+                  {visibleWarnings.map((w, i) => (
                     <li key={i}>{w}</li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {parsed.unparsedLines.length > 0 && (
-              <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
-                <div className="font-semibold">Lines that didn't fit a row:</div>
+            {problems.length > 0 && (
+              <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="font-semibold">Before this can be saved</div>
                 <ul className="mt-1 list-inside list-disc">
-                  {parsed.unparsedLines.slice(0, 5).map((u, i) => (
-                    <li key={i} className="truncate">
-                      {u}
-                    </li>
+                  {problems.map((w, i) => (
+                    <li key={i}>{w}</li>
                   ))}
-                  {parsed.unparsedLines.length > 5 && (
-                    <li className="font-semibold">
-                      …and {parsed.unparsedLines.length - 5} more
-                    </li>
-                  )}
                 </ul>
               </div>
             )}
 
             <button
               onClick={handleSave}
-              disabled={saving || !planName}
+              disabled={saving || !planName || problems.length > 0}
               className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save plan'}
@@ -605,7 +820,105 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
           </>
         )}
       </div>
+
+      {parsed && editor && (
+        <ExerciseEditorSheet
+          title={editor.mode === 'edit' ? 'Edit exercise' : 'Add exercise'}
+          initial={
+            editor.mode === 'edit'
+              ? draftFromExercise(parsed.days[editor.dayIdx].exercises[editor.exIdx])
+              : editor.prefill ?? EMPTY_DRAFT
+          }
+          dayOptions={parsed.days.map((d, idx) => ({ idx, name: d.name }))}
+          dayIdx={editor.dayIdx}
+          sourceText={editor.mode === 'new' && editor.sourceRaw ? splitUnparsed(editor.sourceRaw).text : null}
+          onSave={saveExercise}
+          onDelete={
+            editor.mode === 'edit' ? () => deleteExercise(editor.dayIdx, editor.exIdx) : undefined
+          }
+          onClose={() => setEditor(null)}
+        />
+      )}
+
+      {parsed && dayEditor && (
+        <DayEditorSheet
+          title={dayEditor === 'new' ? 'Add a day' : 'Edit day'}
+          initialName={dayEditor === 'new' ? '' : parsed.days[dayEditor.dayIdx].name}
+          initialWeek={dayEditor === 'new' ? null : parsed.days[dayEditor.dayIdx].weekIndex}
+          weekOptions={planWeeks}
+          exerciseCount={dayEditor === 'new' ? 0 : parsed.days[dayEditor.dayIdx].exercises.length}
+          onSave={saveDay}
+          onDelete={dayEditor === 'new' ? undefined : () => deleteDay(dayEditor.dayIdx)}
+          onClose={() => setDayEditor(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// A line the parser couldn't turn into a row, shown where it was found so the
+// user can rescue it into an exercise or say it isn't one.
+function UnreadLineCard({
+  text,
+  tone = 'inset',
+  addDisabled = false,
+  onAdd,
+  onIgnore,
+}: {
+  text: string;
+  tone?: 'inset' | 'plain';
+  addDisabled?: boolean;
+  onAdd: () => void;
+  onIgnore: () => void;
+}) {
+  const body = (
+    <>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-800">
+        Couldn't read this line
+      </div>
+      <div className="mt-1 break-words font-mono text-[11px] text-ink/80">{text}</div>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={addDisabled}
+          className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
+        >
+          Add as exercise
+        </button>
+        <button
+          type="button"
+          onClick={onIgnore}
+          className="rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
+        >
+          Ignore
+        </button>
+      </div>
+    </>
+  );
+  if (tone === 'plain') return <li className="rounded-xl bg-paper-card px-3 py-2.5">{body}</li>;
+  return <div className="border-t border-line/60 bg-amber-50/60 px-5 py-3">{body}</div>;
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M7 2.5v9M2.5 7h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M11.3 2.7a1.6 1.6 0 0 1 2.3 2.3L6.2 12.4 3 13l.6-3.2 7.7-7.1Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -725,6 +1038,7 @@ function ExerciseReviewRow({
   onDifferentMachine,
   onToggleKeepHistory,
   onAlternativeChange,
+  onEdit,
 }: {
   exercise: ParsedExercise;
   restSeconds: number | null;
@@ -738,6 +1052,7 @@ function ExerciseReviewRow({
   onDifferentMachine: () => void;
   onToggleKeepHistory: () => void;
   onAlternativeChange: (alt: WeeklyAlternative | null) => void;
+  onEdit: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(exercise.notes ?? '');
@@ -768,7 +1083,7 @@ function ExerciseReviewRow({
 
   return (
     <div className="px-5 py-4">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[15px] font-semibold text-ink">
             {exercise.name}
@@ -777,12 +1092,22 @@ function ExerciseReviewRow({
             <div className="mt-0.5 text-xs text-muted">{exercise.bodyPart}</div>
           )}
         </div>
-        <div className="shrink-0 text-right text-xs text-muted">
-          <div>
-            <span className="text-ink">{exercise.totalSets ?? '—'}</span> sets
+        <div className="flex shrink-0 items-start gap-1">
+          <div className="text-right text-xs text-muted">
+            <div>
+              <span className="text-ink">{exercise.totalSets ?? '—'}</span> sets
+            </div>
+            <div>{exercise.repRange || '—'} reps</div>
+            {restSeconds != null && <div>{restLabel(restSeconds)} rest</div>}
           </div>
-          <div>{exercise.repRange || '—'} reps</div>
-          {restSeconds != null && <div>{restLabel(restSeconds)} rest</div>}
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit ${exercise.name}`}
+            className="-mr-2 -mt-1 flex h-8 w-8 items-center justify-center rounded-full text-muted active:bg-line/60"
+          >
+            <PencilIcon />
+          </button>
         </div>
       </div>
 

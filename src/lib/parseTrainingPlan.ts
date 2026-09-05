@@ -36,6 +36,12 @@ export interface WeeklyAlternative {
 }
 
 export interface ParsedExercise {
+  /**
+   * Client-side identity for the upload review screen, where rows can be
+   * added, moved and deleted before anything is saved. Not set by the parser;
+   * assigned by the screen, never persisted.
+   */
+  uid?: string;
   bodyPart: string;
   name: string;
   normalizedName: string;
@@ -428,6 +434,23 @@ function matchExerciseRow(line: string): RowMatch | null {
   };
 }
 
+/** Prefix on an unparsed line that was found before any recognised day. */
+export const NO_DAY_TAG = 'No day';
+
+// The fingerprint of an exercise row the strict regex couldn't read: it opens
+// with a name (letters, not a digit) and then a sets count next to a rep count
+// or range — "CHEST CABLE FLY 3 12-15", "FLAT BENCH PRESS 3 8-10 2 0 1 0". A
+// wrapped coach note that mentions numbers ("1 x 8-10 reps / 1 12-15 back off",
+// "Set 3: 10 reps slow") opens with a digit or puts punctuation between them,
+// and a volume-table entry ("CHEST 7") has only one number. Deliberately
+// conservative: a row this misses stays a note, which is what happened to all
+// of them before.
+function looksLikeExerciseRow(line: string): boolean {
+  return /^[A-Za-z][A-Za-z/&'().-]*(?:\s+[A-Za-z/&'().-]+)*\s+\d{1,2}\s+\d{1,3}(?:\s*-\s*\d{1,3})?(?:\s|$)/.test(
+    line.trim()
+  );
+}
+
 function looksLikeBoilerplate(line: string): boolean {
   const upper = line.toUpperCase().trim();
   if (!upper) return true;
@@ -567,7 +590,15 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
       continue;
     }
 
-    if (!currentDay) continue;
+    if (!currentDay) {
+      // No day header recognised yet. A line that reads like an exercise row
+      // ("QUADS LEG PRESS 3 8-10 …") is almost certainly one under a title we
+      // didn't recognise, so keep it for the review screen to rescue rather
+      // than dropping it silently. Anything else up here is a volume table or
+      // a preamble, and is noise.
+      if (looksLikeExerciseRow(line)) unparsedLines.push(`[${NO_DAY_TAG}] ${line}`);
+      continue;
+    }
 
     const rowMatch = matchExerciseRow(line);
     if (rowMatch) {
@@ -635,6 +666,15 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
 
     if (inSubsection) {
       currentDay.inlineNotes.push(line);
+      continue;
+    }
+
+    // A line shaped like a row that the row regexes still rejected — a column
+    // the plan doesn't have, a rep count outside what they allow. Gluing it to
+    // the previous exercise's notes made it vanish from the plan while looking
+    // like it had been read; the review screen can rescue it if it's told.
+    if (lastExercise && looksLikeExerciseRow(line)) {
+      unparsedLines.push(`[${currentDay.name}] ${line}`);
       continue;
     }
 

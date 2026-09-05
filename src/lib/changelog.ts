@@ -18,6 +18,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       'The Performance tab is now your records: body weight up top, then your best ever on every machine: heaviest set, estimated 1RM, and the date you hit it. Pull-ups and planks count too (most reps, longest hold), and anything set in the last month is flagged as new',
       'A new plan now starts every machine at zero by default, so you work up to the new rep ranges instead of chasing last block\u2019s numbers \u2014 tap "Carry all over", or pick machine by machine, if you\u2019d rather keep them rolling',
       'Your records are never affected by that: nothing is ever deleted, and the all-time bests are read from every set you have ever logged',
+      'Fix an import before you save it: add, edit, move or remove exercises and days on the review screen. A line Reps couldn\u2019t read now shows where it was found with an \u201cAdd as exercise\u201d button, pre-filled from the PDF \u2014 it used to be dropped silently, or glued onto the previous exercise\u2019s notes',
+      'A plan with an empty day can no longer be saved \u2014 the screen says which day, and why',
       'Tap any record for that lift\u2019s history \u2014 the weight and reps chart, and every session',
       'The bottom bar is icons only, evenly spaced, so nothing is squashed to one side',
       'A feedback button in the bottom bar \u2014 say what happened and attach a screenshot. It\u2019s in the workout menu too, since mid-set is when you spot things',
