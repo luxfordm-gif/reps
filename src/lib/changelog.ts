@@ -15,9 +15,11 @@ export const CHANGELOG: ChangelogEntry[] = [
     emoji: '\u{1F3C6}',
     title: "What's new",
     bullets: [
-      'Personal records — Profile → Personal records keeps your best ever on every machine: heaviest set, estimated 1RM, and the date you hit it. Pull-ups and planks count too (most reps, longest hold), and anything set in the last month is flagged as new',
+      'The Performance tab is now your records: body weight up top, then your best ever on every machine: heaviest set, estimated 1RM, and the date you hit it. Pull-ups and planks count too (most reps, longest hold), and anything set in the last month is flagged as new',
       'A new plan now starts every machine at zero by default, so you work up to the new rep ranges instead of chasing last block\u2019s numbers \u2014 tap "Carry all over", or pick machine by machine, if you\u2019d rather keep them rolling',
       'Your records are never affected by that: nothing is ever deleted, and the all-time bests are read from every set you have ever logged',
+      'Tap any record for that lift\u2019s history \u2014 the weight and reps chart, and every session',
+      'The bottom bar is icons only, evenly spaced, so nothing is squashed to one side',
       'A feedback button in the bottom bar \u2014 say what happened and attach a photo or a screen recording. It\u2019s in the workout menu too, since mid-set is when you spot things',
       'Feedback works with no signal: it\u2019s saved on your phone, survives closing the app, and sends itself the moment you\u2019re back online \u2014 the same way your sets do',
     ],

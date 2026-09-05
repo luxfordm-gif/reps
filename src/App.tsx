@@ -16,7 +16,6 @@ import { ExerciseLogger } from './screens/ExerciseLogger';
 import { SetNewPassword } from './screens/SetNewPassword';
 import { WorkoutHistory } from './screens/WorkoutHistory';
 import { Machines } from './screens/Machines';
-import { PersonalRecords } from './screens/PersonalRecords';
 import { FeedbackSheet } from './components/FeedbackSheet';
 import { WorkoutComplete } from './screens/WorkoutComplete';
 import { Onboarding } from './screens/Onboarding';
@@ -43,8 +42,7 @@ type Modal =
   | 'history'
   | 'plans'
   | 'onboarding'
-  | 'machines'
-  | 'records';
+  | 'machines';
 
 /**
  * After a workout: give the flush a moment to land, then confirm the session
@@ -258,8 +256,6 @@ function Root() {
     );
   } else if (modal === 'history') {
     body = <WorkoutHistory onBack={() => setModal(null)} />;
-  } else if (modal === 'records') {
-    body = <PersonalRecords onBack={() => setModal(null)} />;
   } else if (modal === 'machines') {
     body = (
       <Machines
@@ -418,7 +414,6 @@ function Root() {
             onOpenHistory={() => setModal('history')}
             onOpenPlans={() => setModal('plans')}
             onOpenMachines={() => setModal('machines')}
-            onOpenRecords={() => setModal('records')}
             profile={profile}
             onProfileChange={setProfile}
             onResumeOnboarding={() => setModal('onboarding')}

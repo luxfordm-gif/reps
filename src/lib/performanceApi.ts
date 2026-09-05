@@ -27,41 +27,10 @@ export interface TrendPoint {
   value: number;
 }
 
-export interface MostImproved {
-  displayName: string;
-  normalizedName: string;
-  fromKg: number;
-  toKg: number;
-  deltaKg: number;
-  deltaPct: number;
-  sparkline: TrendPoint[];
-}
-
-export interface PersonalRecord {
-  displayName: string;
-  normalizedName: string;
-  bestWeightKg: number;
-  bestWeightReps: number;
-  best1RMkg: number;
-  /** ISO timestamp of the set that produced the best estimated 1RM. */
-  achievedAt: string;
-  bodyPart: string | null;
-}
-
-export interface ExerciseOption {
-  normalizedName: string;
-  displayName: string;
-  setCount: number;
-}
-
 export interface PerformanceData {
   /** All weighted sets, ascending by completion. The screen re-buckets these in memory for the trend chart. */
   sets: PerfSet[];
   bodyWeights: BodyWeightRow[];
-  mostImproved: MostImproved | null;
-  allTimeBests: PersonalRecord[];
-  exerciseOptions: ExerciseOption[];
-  topExerciseNormalized: string | null;
 }
 
 function pad(n: number): string {
@@ -215,127 +184,10 @@ export function buildExerciseHistory(
   return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-/** Biggest est-1RM gain comparing the last 30 days to the prior 30 days. */
-export function computeMostImproved(sets: PerfSet[], now: Date = new Date()): MostImproved | null {
-  const start30 = now.getTime() - 30 * 86400000;
-  const start60 = now.getTime() - 60 * 86400000;
-  const acc = new Map<string, { display: string; recent: number; prior: number }>();
-  for (const s of sets) {
-    if (s.weight == null || s.reps == null) continue;
-    const t = new Date(s.completedAt).getTime();
-    if (t < start60) continue;
-    const e = estimate1RM(s.weight, s.reps);
-    let a = acc.get(s.normalizedName);
-    if (!a) {
-      a = { display: s.displayName, recent: 0, prior: 0 };
-      acc.set(s.normalizedName, a);
-    }
-    a.display = s.displayName; // ascending order → most recent name wins
-    if (t >= start30) a.recent = Math.max(a.recent, e);
-    else a.prior = Math.max(a.prior, e);
-  }
-  let best: MostImproved | null = null;
-  for (const [name, a] of acc) {
-    if (a.recent <= 0 || a.prior <= 0) continue;
-    const deltaKg = a.recent - a.prior;
-    if (deltaKg <= 0) continue;
-    if (!best || deltaKg > best.deltaKg) {
-      best = {
-        displayName: a.display,
-        normalizedName: name,
-        fromKg: a.prior,
-        toKg: a.recent,
-        deltaKg,
-        deltaPct: (deltaKg / a.prior) * 100,
-        sparkline: [],
-      };
-    }
-  }
-  if (best) best.sparkline = buildWeeklySeries(sets, 'est1rm', { normalizedName: best.normalizedName });
-  return best;
-}
-
-/** Per-lift personal records, ranked by estimated 1RM. */
-export function computeAllTimeBests(sets: PerfSet[], limit = 8): PersonalRecord[] {
-  const acc = new Map<
-    string,
-    {
-      display: string;
-      bodyPart: string | null;
-      bestWeightKg: number;
-      bestWeightReps: number;
-      best1RMkg: number;
-      achievedAt: string;
-    }
-  >();
-  for (const s of sets) {
-    if (s.weight == null || s.reps == null) continue;
-    const e = estimate1RM(s.weight, s.reps);
-    let a = acc.get(s.normalizedName);
-    if (!a) {
-      a = {
-        display: s.displayName,
-        bodyPart: s.bodyPart,
-        bestWeightKg: 0,
-        bestWeightReps: 0,
-        best1RMkg: 0,
-        achievedAt: s.completedAt,
-      };
-      acc.set(s.normalizedName, a);
-    }
-    a.display = s.displayName;
-    if (s.bodyPart) a.bodyPart = s.bodyPart;
-    if (s.weight > a.bestWeightKg) {
-      a.bestWeightKg = s.weight;
-      a.bestWeightReps = s.reps;
-    }
-    if (e > a.best1RMkg) {
-      a.best1RMkg = e;
-      a.achievedAt = s.completedAt;
-    }
-  }
-  return [...acc.entries()]
-    .map(([normalizedName, a]) => ({
-      normalizedName,
-      displayName: a.display,
-      bodyPart: a.bodyPart,
-      bestWeightKg: a.bestWeightKg,
-      bestWeightReps: a.bestWeightReps,
-      best1RMkg: a.best1RMkg,
-      achievedAt: a.achievedAt,
-    }))
-    .filter((r) => r.bestWeightKg > 0)
-    .sort((a, b) => b.best1RMkg - a.best1RMkg)
-    .slice(0, limit);
-}
-
-/** Weighted lifts the user has logged, most-frequent first (drives the trend selector). */
-export function computeExerciseOptions(sets: PerfSet[]): ExerciseOption[] {
-  const m = new Map<string, { display: string; count: number }>();
-  for (const s of sets) {
-    if (s.weight == null || s.reps == null) continue;
-    let a = m.get(s.normalizedName);
-    if (!a) {
-      a = { display: s.displayName, count: 0 };
-      m.set(s.normalizedName, a);
-    }
-    a.display = s.displayName;
-    a.count += 1;
-  }
-  return [...m.entries()]
-    .map(([normalizedName, a]) => ({ normalizedName, displayName: a.display, setCount: a.count }))
-    .sort((a, b) => b.setCount - a.setCount);
-}
-
+// All-time bests live in lib/records.ts now (every set, three record kinds);
+// the top-eight leaderboard that used to be computed here went with the card
+// that showed it.
 export async function loadPerformanceData(): Promise<PerformanceData> {
   const [sets, bodyWeights] = await Promise.all([fetchPerfSets(), listBodyWeights()]);
-  const exerciseOptions = computeExerciseOptions(sets);
-  return {
-    sets,
-    bodyWeights,
-    mostImproved: computeMostImproved(sets),
-    allTimeBests: computeAllTimeBests(sets),
-    exerciseOptions,
-    topExerciseNormalized: exerciseOptions[0]?.normalizedName ?? null,
-  };
+  return { sets, bodyWeights };
 }

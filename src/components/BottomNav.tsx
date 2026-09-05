@@ -2,6 +2,11 @@ import type { ReactNode } from 'react';
 
 export type Tab = 'home' | 'performance' | 'profile';
 
+// Icons only, four equal slots. The earlier bar grew a text label under the
+// active tab, which squeezed everything else — the feedback button ended up
+// jammed against the right edge. With no labels every slot is the same width
+// and the active tab is simply the one on a white pill.
+
 const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
   {
     id: 'home',
@@ -54,7 +59,7 @@ interface Props {
   active?: Tab;
   onChange?: (tab: Tab) => void;
   visible?: boolean;
-  /** Opens the feedback sheet. Sits apart from the tabs — it's an action, not a place. */
+  /** Opens the feedback sheet. An action, not a place — it never shows as active. */
   onFeedback?: () => void;
 }
 
@@ -71,36 +76,37 @@ export function BottomNav({
       }`}
       aria-hidden={!visible}
     >
-      <div className="mx-auto flex max-w-md items-center justify-between rounded-pill bg-ink p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+      <nav
+        aria-label="Main"
+        className="mx-auto grid max-w-md grid-flow-col auto-cols-fr items-center rounded-pill bg-ink p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+      >
         {TABS.map((tab) => {
           const isActive = tab.id === active;
           return (
             <button
               key={tab.id}
               onClick={() => onChange?.(tab.id)}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-pill py-2.5 text-xs font-medium transition-colors ${
-                isActive ? 'bg-white text-ink' : 'text-white/65'
+              aria-label={tab.label}
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex h-11 items-center justify-center rounded-pill transition-colors ${
+                isActive ? 'bg-white text-ink' : 'text-white/65 active:text-white'
               }`}
             >
               {tab.icon}
-              {isActive && <span>{tab.label}</span>}
             </button>
           );
         })}
         {onFeedback && (
-          <>
-            <span className="mx-0.5 h-6 w-px shrink-0 bg-white/20" aria-hidden="true" />
-            <button
-              onClick={onFeedback}
-              aria-label="Send feedback"
-              title="Send feedback"
-              className="flex shrink-0 items-center justify-center rounded-pill px-3.5 py-2.5 text-white/65 transition-colors active:bg-white/10 active:text-white"
-            >
-              <ChatIcon />
-            </button>
-          </>
+          <button
+            onClick={onFeedback}
+            aria-label="Send feedback"
+            title="Send feedback"
+            className="flex h-11 items-center justify-center rounded-pill text-white/65 transition-colors active:bg-white/10 active:text-white"
+          >
+            <ChatIcon />
+          </button>
         )}
-      </div>
+      </nav>
     </div>
   );
 }

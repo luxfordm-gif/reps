@@ -488,7 +488,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                     </span>{' '}
                     Nothing is ever deleted — starting fresh only clears the weight the
                     logger pre-fills. Every set you've logged stays in your history and
-                    your all-time bests, under Profile → Personal records.
+                    your all-time bests on the Performance tab.
                   </div>
                 </div>
                 <div className="mt-2 text-xs text-muted">
