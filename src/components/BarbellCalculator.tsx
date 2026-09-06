@@ -52,7 +52,7 @@ function defaultModeFor(barId: string): OutputMode {
 }
 
 export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
-  const [barId, setBarId] = useState<string>(() => getLastBarId() ?? 'none');
+  const [barId, setBarId] = useState<string>(() => getLastBarId() ?? 'mens');
   const [customBarKg, setCustomBarKgState] = useState<number | null>(() => getCustomBarKg());
   const [plates, setPlates] = useState<number[]>([]);
   const [customPlates, setCustomPlates] = useState<number[]>(() => getCustomPlates());
@@ -60,7 +60,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
   const [visible, setVisible] = useState(false);
   const [outputMode, setOutputMode] = useState<OutputMode>(() => {
     const stored = getStoredOutputMode();
-    const lastBar = getLastBarId() ?? 'none';
+    const lastBar = getLastBarId() ?? 'mens';
     const valid = validModesFor(lastBar);
     if (stored && valid.includes(stored)) return stored;
     return defaultModeFor(lastBar);
@@ -457,7 +457,7 @@ function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 
         aria-hidden
         className={`absolute left-1/2 top-[calc(50%+1.5px)] h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
           heavy
-            ? 'border-2 border-white/95'
+            ? 'border border-white/45'
             : 'bg-[#B9B9BF] shadow-[inset_0_0.5px_1px_rgba(0,0,0,0.3)]'
         }`}
       />
