@@ -80,3 +80,11 @@ h1, h2, h3, h4 {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* Cards easing in one after another as a screen settles — the Performance
+   dashboard and the end-of-workout summary both stagger their sections with
+   it, so the two feel like the same surface. */
+@keyframes reps-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
