@@ -29,9 +29,6 @@ interface Props {
   // Opens a training day. `sibling` is the other week's version of the same day
   // type, when the plan rotates — DayView offers a switch to it.
   onTapDay: (day: Day, sibling?: Day | null) => void;
-  // Starts the day's workout directly on its first exercise (the hero card's
-  // Start pill), skipping the overview.
-  onStartDay?: (day: Day, sibling?: Day | null) => void;
   profile?: Profile | null;
   onResumeOnboarding?: () => void;
   onResumeWorkout?: (params: {
@@ -120,7 +117,6 @@ export function Home({
   onUploadPlan,
   onLogBodyWeight,
   onTapDay,
-  onStartDay,
   onResumeWorkout,
   profile,
   onResumeOnboarding,
@@ -413,11 +409,6 @@ export function Home({
                 tag={slotTag(nextSlot)}
                 isNext
                 onClick={() => openSlot(nextSlot)}
-                onStart={
-                  onStartDay
-                    ? () => onStartDay(nextDay, siblingVariant(nextSlot, nextDay))
-                    : undefined
-                }
               />
             </div>
           </div>
