@@ -1076,7 +1076,7 @@ export function ExerciseLogger({
         const nextIdx = sets.findIndex((s, i) => i > idx && !s.completed);
         if (nextIdx !== -1) setActiveIndex(nextIdx);
         // Rest only when stepping into a NEW set group (not within drops of the
-        // same set) AND only when there is more still to do.
+        // same set) AND only when this exercise still has sets left.
         const next = sets[idx + 1];
         const isLastInGroup = !next || next.setIndex !== set.setIndex;
         const hasMoreToDo = sets.some((s, i) => i !== idx && !s.completed);
@@ -1088,10 +1088,10 @@ export function ExerciseLogger({
             // why the countdown is persisted rather than held in this screen.
             if (supersetLastOfRound) startRest(restSeconds);
             onGoToSupersetNext();
-          } else if (hasMoreToDo || hasNext) {
-            // The exercise's last set still earns a rest when another exercise
-            // is waiting — the countdown is persisted, so it carries across
-            // the hop to the next screen. Only the workout's final set skips it.
+          } else if (hasMoreToDo) {
+            // Only between sets of the same exercise. Once its last working set
+            // is in, the rest is the walk to the next machine — so the timer
+            // stays shut and Next goes straight there.
             startRest(restSeconds);
           }
         }

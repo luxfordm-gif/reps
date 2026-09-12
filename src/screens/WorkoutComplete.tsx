@@ -90,8 +90,9 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
 
   // Heaviest first, medal or not: a medal ranks today's set against your whole
   // history on that one movement, so promoting medalled rows would print 90 kg
-  // above 100 kg and read like a mistake. The metal and the tint make them
-  // stand out wherever they land.
+  // above 100 kg and read like a mistake. The metal circle and its badge make
+  // them stand out wherever they land — the row itself stays plain paper, so a
+  // tinted band never competes with the medal.
   const bestSets = recap ? recap.bestSets : [];
   const medalCount = bestSets.filter((s) => s.medal != null).length;
 
@@ -158,7 +159,6 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
                       <li
                         key={s.exercise}
                         className="flex items-center justify-between gap-3 px-4 py-3.5"
-                        style={s.medal ? { backgroundColor: MEDALS[s.medal].rowBg } : undefined}
                       >
                         <div className="flex min-w-0 items-center gap-3">
                           <Medal kind={s.medal} />
@@ -318,7 +318,6 @@ const MEDALS: Record<
     to: string;
     ring: string;
     ink: string;
-    rowBg: string;
     badgeBg: string;
     badgeInk: string;
   }
@@ -330,7 +329,6 @@ const MEDALS: Record<
     to: '#D6A62C',
     ring: 'rgba(150,110,20,0.30)',
     ink: '#4A3608',
-    rowBg: '#FDF9EE',
     badgeBg: '#F7EDD2',
     badgeInk: '#6E5210',
   },
@@ -341,7 +339,6 @@ const MEDALS: Record<
     to: '#B4BBC4',
     ring: 'rgba(85,95,108,0.28)',
     ink: '#3B4148',
-    rowBg: '#F5F7FA',
     badgeBg: '#ECEEF1',
     badgeInk: '#5A6068',
   },
@@ -352,7 +349,6 @@ const MEDALS: Record<
     to: '#B0733C',
     ring: 'rgba(120,70,25,0.30)',
     ink: '#4B2F13',
-    rowBg: '#FDF6EF',
     badgeBg: '#F3E1D0',
     badgeInk: '#7A4A1E',
   },
