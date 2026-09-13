@@ -17,6 +17,8 @@ import {
   type Bar,
 } from '../lib/barbell';
 import { hapticBuzz } from '../lib/haptics';
+import { useScrollLock } from '../lib/useScrollLock';
+import { useVisualViewport } from '../lib/useVisualViewport';
 
 type Props = {
   open: boolean;
@@ -85,14 +87,11 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
     return () => clearTimeout(t);
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  // The page behind stays put while the sheet is up, and the sheet sits in
+  // whatever the keyboard has left of the viewport rather than under it —
+  // the custom bar weight field brings the keyboard up.
+  useScrollLock(open);
+  const viewport = useVisualViewport();
 
   const bar: Bar = useMemo(() => {
     if (barId === 'custom') {
@@ -198,15 +197,16 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
 
   return (
     <div
-      className={`fixed inset-0 z-50 transition-opacity duration-300 ${
+      className={`fixed inset-x-0 z-50 transition-opacity duration-300 ${
         visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
+      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
       aria-modal="true"
       role="dialog"
     >
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
       <div
-        className={`absolute inset-x-0 bottom-0 max-h-[92vh] overflow-y-auto rounded-t-3xl bg-paper shadow-card transition-transform duration-300 ease-out ${
+        className={`absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-3xl bg-paper shadow-card transition-transform duration-300 ease-out ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}

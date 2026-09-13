@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
-// Freezes the page behind a sheet for as long as the sheet is mounted.
+// Freezes the page behind a sheet for as long as the sheet is mounted — or,
+// for sheets that stay mounted and animate open, for as long as `active`.
 //
 // `overflow: hidden` on its own isn't enough: when a sheet focuses an input and
 // the on-screen keyboard opens, the browser scrolls the document to bring that
@@ -8,8 +9,9 @@ import { useEffect } from 'react';
 // body at its current offset leaves nothing to scroll, so the background stays
 // exactly where the user left it. The offset is put back — and the scroll
 // position restored — when the sheet closes.
-export function useScrollLock() {
+export function useScrollLock(active = true) {
   useEffect(() => {
+    if (!active) return;
     const { body } = document;
     const scrollY = window.scrollY;
     const previous = {
@@ -42,5 +44,5 @@ export function useScrollLock() {
       body.style.overflow = previous.overflow;
       window.scrollTo(0, scrollY);
     };
-  }, []);
+  }, [active]);
 }
