@@ -14,6 +14,8 @@ import {
   type WeekSummary,
 } from '../lib/sessionsApi';
 import { adjustWater, getWaterGoal, getWaterUnit } from '../lib/waterApi';
+import { formatSteps, getStepGoal } from '../lib/stepsApi';
+import { getQuickActions, type QuickActionId } from '../lib/quickActions';
 import { getCachedHomeData, loadHomeData, patchHomeCache } from '../lib/homeCache';
 import { SyncStatus } from '../components/SyncStatus';
 import { requestFlush } from '../lib/offline/outbox';
@@ -26,6 +28,7 @@ type Day = FullPlan['training_days'][number];
 interface Props {
   onUploadPlan: () => void;
   onLogBodyWeight: () => void;
+  onLogSteps: () => void;
   // Opens a training day. `sibling` is the other week's version of the same day
   // type, when the plan rotates — DayView offers a switch to it.
   onTapDay: (day: Day, sibling?: Day | null) => void;
@@ -51,6 +54,22 @@ const ACCENTS: Record<string, string> = {
 };
 
 const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
+
+/**
+ * How wide each quick action tile wants to be, as a percentage of the content
+ * column — coffee is a bare number so it needs less room than the ones that
+ * print a count against a goal.
+ *
+ * All four together come to more than 100%, which is what makes the row
+ * scroll. Switch enough of them off and they fit, and then the same numbers
+ * are used as grow ratios so the row fills the width instead of trailing off.
+ */
+const QUICK_ACTION_SHARE: Record<QuickActionId, number> = {
+  water: 44,
+  coffee: 30,
+  steps: 50,
+  weight: 44,
+};
 
 /** Accent for a day, ignoring any rotation number: "Legs 2" reads as Legs. */
 function accentFor(dayName: string): string {
@@ -116,6 +135,7 @@ function greeting() {
 export function Home({
   onUploadPlan,
   onLogBodyWeight,
+  onLogSteps,
   onTapDay,
   onResumeWorkout,
   profile,
@@ -149,6 +169,11 @@ export function Home({
   const [waterUnit] = useState(() => getWaterUnit());
   const [waterBusy, setWaterBusy] = useState(false);
   const [waterError, setWaterError] = useState<string | null>(null);
+  const [stepCount, setStepCount] = useState(initial?.stepCount ?? 0);
+  const [stepGoal] = useState(() => getStepGoal());
+  // Which tiles the row shows, and in what order — set in Profile. Read once:
+  // changing it there unmounts Home, so it's re-read on the way back.
+  const [quickActions] = useState<QuickActionId[]>(() => getQuickActions());
   const [loading, setLoading] = useState(!initial);
   const [active, setActive] = useState<ActiveSessionContext | null>(
     initial?.active ?? null
@@ -182,6 +207,7 @@ export function Home({
         setPlan(data.plan);
         setLastCompleted(data.lastCompleted);
         setWaterCount(data.waterCount);
+        setStepCount(data.stepCount ?? 0);
         setActive(data.active);
         setWeekSummary(data.weekSummary);
         setCompletedThisWeek(data.completedThisWeek);
@@ -308,6 +334,10 @@ export function Home({
     .filter((i): i is number => i != null);
   const showNextDay = shouldShowUpNext(recentSlotPositions, mainSlots.length);
 
+  // Few enough tiles to fit the width: share it out rather than scroll.
+  const quickActionsFit =
+    quickActions.reduce((sum, id) => sum + QUICK_ACTION_SHARE[id], 0) <= 100;
+
   function openSlot(slot: DaySlot) {
     const due = dueBySlot.get(slot.name);
     if (due) onTapDay(due, siblingVariant(slot, due));
@@ -416,21 +446,48 @@ export function Home({
 
         <div className="mt-7">
           <SectionLabel>Quick actions</SectionLabel>
-          <div className="mt-3 grid grid-cols-[1fr_0.675fr_1fr] gap-2">
-            <WaterAction
-              count={waterCount}
-              goal={waterGoal}
-              unit={waterUnit}
-              busy={waterBusy}
-              onTap={() => handleWaterTap(1)}
-              onLongPress={() => handleWaterTap(-1)}
-            />
-            <CoffeeAction />
-            <QuickAction
-              icon={<ScaleIcon />}
-              label="Log weight"
-              onClick={onLogBodyWeight}
-            />
+          {/* More tiles than fit: the row scrolls sideways, bleeding out to
+              both screen edges so the next one is visibly half cut off rather
+              than everything being squeezed to fit. data-no-tab-swipe keeps a
+              sideways drag here from switching tabs. */}
+          <div
+            data-no-tab-swipe
+            className="-mx-5 mt-3 flex gap-2 overflow-x-auto px-5 pb-1 [&::-webkit-scrollbar]:hidden"
+            style={{ scrollbarWidth: 'none' }}
+          >
+            {quickActions.map((id) => (
+              <div
+                key={id}
+                className="min-w-0"
+                style={
+                  quickActionsFit
+                    ? { flex: `${QUICK_ACTION_SHARE[id]} 1 0px` }
+                    : { flex: '0 0 auto', width: `${QUICK_ACTION_SHARE[id]}%` }
+                }
+              >
+                {id === 'water' && (
+                  <WaterAction
+                    count={waterCount}
+                    goal={waterGoal}
+                    unit={waterUnit}
+                    busy={waterBusy}
+                    onTap={() => handleWaterTap(1)}
+                    onLongPress={() => handleWaterTap(-1)}
+                  />
+                )}
+                {id === 'coffee' && <CoffeeAction />}
+                {id === 'steps' && (
+                  <StepsAction count={stepCount} goal={stepGoal} onTap={onLogSteps} />
+                )}
+                {id === 'weight' && (
+                  <QuickAction
+                    icon={<ScaleIcon />}
+                    label="Log weight"
+                    onClick={onLogBodyWeight}
+                  />
+                )}
+              </div>
+            ))}
           </div>
           {waterError && (
             <div className="mt-2 rounded-card bg-[#FFEDED] px-3 py-2 text-xs text-[#B42318]">
@@ -711,6 +768,48 @@ function CoffeeAction() {
   );
 }
 
+/**
+ * Today's step count against the goal, as a tap-through rather than a counter:
+ * steps come off a phone's health app in one number, so the tile opens the
+ * screen where that number gets typed in instead of incrementing.
+ */
+function StepsAction({
+  count,
+  goal,
+  onTap,
+}: {
+  count: number;
+  goal: number;
+  onTap: () => void;
+}) {
+  const pct = Math.min(1, count / Math.max(1, goal));
+  const reached = count >= goal;
+  return (
+    <button
+      onClick={() => {
+        hapticBuzz(12);
+        onTap();
+      }}
+      aria-label={`Steps today: ${count} of ${goal}. Opens the step log.`}
+      className="relative flex w-full items-center justify-between overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+    >
+      <div
+        className="absolute inset-y-0 left-0 bg-[#E4E0FF]"
+        style={{ width: `${pct * 100}%`, transition: 'width 350ms cubic-bezier(.22,.85,.36,1)' }}
+      />
+      <span className="relative">
+        <WalkIcon />
+      </span>
+      <span className="relative truncate pl-2 text-right tabular-nums">
+        {formatSteps(count)}
+        <span className="text-muted">
+          {reached ? ' \u2713' : ` / ${formatSteps(goal)}`}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 const HYDRATION_MESSAGES = [
   'Well done!',
   "You're well hydrated",
@@ -904,6 +1003,28 @@ function DropletIcon() {
         d="M12 3c2.5 3.8 6.5 7.5 6.5 12a6.5 6.5 0 0 1-13 0C5.5 10.5 9.5 6.8 12 3z"
         stroke="currentColor"
         strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function WalkIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <circle cx="13.5" cy="4" r="2" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M8 21l3-5.6-2-2.6 1-4.6 3.6-1.2 2 2.6 2.6 1.2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 15.4l2.6 2.2.9 3.4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>

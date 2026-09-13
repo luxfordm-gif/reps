@@ -11,6 +11,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-13',
+    emoji: '\u{1F6B6}',
+    title: "What's new",
+    bullets: [
+      'A step count tile on Home: tap it to record how many steps you\u2019ve done today, with a goal of 7,000 a day to start with',
+      'The steps screen works like body weight \u2014 pick a day, type the number, and it saves; a chart of your recent days with the goal line across it, and a history you can correct or delete',
+      'Quick actions now scroll sideways, so a fourth tile doesn\u2019t squash the rest \u2014 swipe the row to reveal the ones sitting off the edge',
+      'Profile \u2192 Home quick actions picks which tiles appear and in what order, and Preferences is where the daily step goal lives',
+      'Steps log with no signal like everything else \u2014 saved on the phone and sent the moment you\u2019re back online',
+    ],
+  },
+  {
     version: '2026-09-05b',
     emoji: '\u{1F4CA}',
     title: "What's new",
