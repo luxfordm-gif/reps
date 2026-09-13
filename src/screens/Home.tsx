@@ -1022,9 +1022,9 @@ function Confetti() {
 }
 
 /*
- * The quick action icons, drawn for these tiles: a bottle rather than a
- * droplet, a trainer rather than a footprint. Stroked on an 18px grid at 1.5,
- * in currentColor so they take the tile's text colour.
+ * The quick action icons, drawn for these tiles at 18px on a 1px stroke.
+ * Taken from the 18px artwork as authored, with the colour swapped to
+ * currentColor so each takes its tile's text colour.
  */
 
 function WaterIcon() {
@@ -1032,14 +1032,15 @@ function WaterIcon() {
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <g
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M6.6 3.2h4.8" />
-        <path d="M7.1 1.6h3.8v1.6H7.1z" />
-        <path d="M6.3 4.4c-.8.7-1.2 1.5-1.2 2.5v7.8c0 .9.7 1.6 1.6 1.6h4.6c.9 0 1.6-.7 1.6-1.6V6.9c0-1-.4-1.8-1.2-2.5" />
-        <path d="M5.1 9.2h7.8" />
+        <path d="M7.2 2.3h3.6" />
+        <path d="M7.6 1.4h2.8v1H7.6z" />
+        <path d="M6.7 3.5c-.78.73-1.17 1.58-1.17 2.55v8.05c0 .83.67 1.5 1.5 1.5h3.94c.83 0 1.5-.67 1.5-1.5V6.05c0-.97-.39-1.82-1.17-2.55" />
+        <path d="M5.53 9.2h6.94" />
       </g>
     </svg>
   );
@@ -1050,14 +1051,15 @@ function CoffeeIcon() {
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <g
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M4 7.2h8v5.1c0 1.4-1.1 2.5-2.5 2.5h-3C5.1 14.8 4 13.7 4 12.3V7.2z" />
-        <path d="M12 8.2h1.3a2 2 0 0 1 0 4H12" />
-        <path d="M6.7 2.3v2" />
-        <path d="M9.5 2.3v2" />
+        <path d="M4.2 7h7.4v4.8c0 1.43-1.17 2.6-2.6 2.6H6.8c-1.43 0-2.6-1.17-2.6-2.6V7z" />
+        <path d="M11.6 8h1.25a1.9 1.9 0 0 1 0 3.8H11.6" />
+        <path d="M6.6 2.3c-.4.45-.4.95 0 1.4s.4.95 0 1.4" />
+        <path d="M9.1 2.3c-.4.45-.4.95 0 1.4s.4.95 0 1.4" />
       </g>
     </svg>
   );
@@ -1068,14 +1070,15 @@ function StepsIcon() {
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <g
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M3 10.9c1.9-.4 3.1-1.7 3.8-4.3l2.4 2.2 1.6-.7c.5-.2 1.1-.1 1.5.3l2.2 2c.4.4.7.9.7 1.5v.4H6.1c-1.5 0-2.6-.5-3.1-1.4z" />
-        <path d="M4.4 13.3h10.8" />
-        <path d="M7.4 9.5l1.3 1" />
-        <path d="M9.1 8.8l1.2 1" />
+        <path d="M3.0 10.85 5.55 6.55c.35-.58 1.12-.72 1.64-.3l1.24 1.0c.49.39 1.18.41 1.69.05l1.31-.94 1.55 1.76c.7.8 1.57 1.45 2.54 1.9l.66.31c.64.3 1.05.94 1.05 1.65 0 1.02-.83 1.85-1.85 1.85H6.0c-1.3 0-2.46-.78-2.95-1.98l-.13-.31c-.1-.24-.07-.5.08-.69z" />
+        <path d="M3.75 10.65c2.35.95 4.95 1.43 7.79 1.43 2.17 0 4-.28 5.48-.84" />
+        <path d="m10.7 7.9 1.35-.82" />
+        <path d="m11.72 8.78 1.33-.78" />
       </g>
     </svg>
   );
@@ -1086,13 +1089,14 @@ function ScaleIcon() {
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <g
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <rect x="2.8" y="2.8" width="12.4" height="12.4" rx="2.4" />
-        <circle cx="9" cy="7.1" r="2.1" />
-        <path d="M9 7.1l1.1-1" />
+        <rect x="3" y="3" width="12" height="12" rx="2.2" />
+        <path d="M6.25 8.1a2.75 2.75 0 0 1 5.5 0" />
+        <path d="M9 8.1 10.1 7.05" />
       </g>
     </svg>
   );
