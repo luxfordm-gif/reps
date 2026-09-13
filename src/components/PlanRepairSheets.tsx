@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BODY_PART_OPTIONS, type ExerciseDraft } from '../lib/planRepair';
+import { useScrollLock } from '../lib/useScrollLock';
+import { useVisualViewport } from '../lib/useVisualViewport';
 
 // The two editor sheets for repairing an import on the upload review screen.
 // Both are plain forms: the person using them is fixing what the parser got
@@ -12,16 +14,23 @@ interface SheetFrameProps {
 }
 
 function SheetFrame({ title, onClose, children }: SheetFrameProps) {
+  // Both sheets are forms, so the keyboard is up most of the time they are:
+  // pin the page behind and sit in whatever the keyboard has left of the
+  // viewport, rather than under it.
+  useScrollLock();
+  const viewport = useVisualViewport();
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
       <div
-        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
+        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -77,7 +86,9 @@ export function ExerciseEditorSheet({
 
   useEffect(() => {
     if (!initial.name) {
-      const t = window.setTimeout(() => nameRef.current?.focus(), 120);
+      // preventScroll because the sheet is already in view: without it the
+      // browser scrolls the page to "reveal" the field it can see fine.
+      const t = window.setTimeout(() => nameRef.current?.focus({ preventScroll: true }), 120);
       return () => window.clearTimeout(t);
     }
   }, [initial.name]);

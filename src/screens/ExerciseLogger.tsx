@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useThemeColor } from '../lib/useThemeColor';
+import { useScrollLock } from '../lib/useScrollLock';
+import { useVisualViewport } from '../lib/useVisualViewport';
 import {
   logSet,
   updateLoggedSet,
@@ -2328,13 +2330,19 @@ function RenameExerciseModal({
   const trimmed = name.trim();
   const valid = trimmed.length > 0 && trimmed !== initialName.trim();
 
+  // The field autofocuses, so the keyboard is up straight away: hold the page
+  // behind still and sit in what the keyboard has left of the viewport.
+  useScrollLock();
+  const viewport = useVisualViewport();
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-md rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >

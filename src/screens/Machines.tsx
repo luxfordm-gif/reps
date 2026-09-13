@@ -21,6 +21,8 @@ import {
 } from '../lib/machinesApi';
 import type { MachineUnit } from '../lib/units';
 import { clearHomeCache } from '../lib/homeCache';
+import { useScrollLock } from '../lib/useScrollLock';
+import { useVisualViewport } from '../lib/useVisualViewport';
 
 type SortMode = 'alpha' | 'bodyPart';
 const UNITS: MachineUnit[] = ['kg', 'lb', 'pin'];
@@ -510,6 +512,11 @@ function MachineEditModal({
   const [unitChoice, setUnitChoice] = useState<'preserve' | 'fork' | null>(null);
   const [forkName, setForkName] = useState(machine.displayName + ' (new)');
 
+  // The page behind stays put while the sheet is up, and the sheet sits in
+  // whatever the keyboard has left of the viewport — renaming brings it up.
+  useScrollLock();
+  const viewport = useVisualViewport();
+
   const nameChanged = name.trim() && name.trim() !== machine.displayName;
   const bodyPartChanged = (bodyPart ?? null) !== (machine.bodyPart ?? null);
   const unitChanged = unit !== machine.unit;
@@ -537,11 +544,12 @@ function MachineEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 px-0 backdrop-blur-sm sm:items-center sm:px-6"
+      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 px-0 backdrop-blur-sm sm:items-center sm:px-6"
+      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onClose}
     >
       <div
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
+        className="max-h-full w-full overflow-y-auto rounded-t-3xl bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Edit machine</h2>
@@ -756,6 +764,9 @@ function MergeMachinesModal({
   const [survivorName, setSurvivorName] = useState<string>(
     machines[0]?.normalizedName ?? ''
   );
+
+  // No fields to type in here, so the page just needs holding still.
+  useScrollLock();
   const survivor =
     machines.find((m) => m.normalizedName === survivorName) ?? machines[0];
   const losers = machines.filter((m) => m.normalizedName !== survivor.normalizedName);
