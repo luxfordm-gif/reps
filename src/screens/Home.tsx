@@ -55,6 +55,13 @@ const ACCENTS: Record<string, string> = {
 
 const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
 
+/**
+ * The bar that creeps across a quick action tile as its count rises. One grey
+ * for all of them: the tiles sit on white cards in a greyscale app, and a
+ * colour each turned the row into the loudest thing on the screen.
+ */
+const TILE_FILL = 'bg-[#EAEAEE]';
+
 /** Accent for a day, ignoring any rotation number: "Legs 2" reads as Legs. */
 function accentFor(dayName: string): string {
   return (
@@ -827,11 +834,11 @@ function StepsAction({
       className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
     >
       <div
-        className="absolute inset-y-0 left-0 bg-[#E4E0FF]"
+        className={`absolute inset-y-0 left-0 ${TILE_FILL}`}
         style={{ width: `${pct * 100}%`, transition: 'width 350ms cubic-bezier(.22,.85,.36,1)' }}
       />
       <span className="relative shrink-0">
-        <FootIcon />
+        <StepsIcon />
       </span>
       <span className="relative whitespace-nowrap tabular-nums">
         {formatSteps(count)}
@@ -948,7 +955,7 @@ function WaterAction({
         className="relative flex w-full touch-manipulation select-none items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
       >
         <div
-          className="absolute inset-y-0 left-0 bg-[#D6E8FF]"
+          className={`absolute inset-y-0 left-0 ${TILE_FILL}`}
           style={{ width: `${pct * 100}%`, transition: 'width 350ms cubic-bezier(.22,.85,.36,1)' }}
         />
         {reached ? (
@@ -958,7 +965,7 @@ function WaterAction({
         ) : (
           <>
             <span className="relative shrink-0">
-              <DropletIcon />
+              <WaterIcon />
             </span>
             <span className="relative whitespace-nowrap">
               {count} / {goal} <span className="text-muted">{unit}</span>
@@ -1014,81 +1021,79 @@ function Confetti() {
   );
 }
 
+/*
+ * The quick action icons, drawn for these tiles: a bottle rather than a
+ * droplet, a trainer rather than a footprint. Stroked on an 18px grid at 1.5,
+ * in currentColor so they take the tile's text colour.
+ */
+
+function WaterIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <g
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6.6 3.2h4.8" />
+        <path d="M7.1 1.6h3.8v1.6H7.1z" />
+        <path d="M6.3 4.4c-.8.7-1.2 1.5-1.2 2.5v7.8c0 .9.7 1.6 1.6 1.6h4.6c.9 0 1.6-.7 1.6-1.6V6.9c0-1-.4-1.8-1.2-2.5" />
+        <path d="M5.1 9.2h7.8" />
+      </g>
+    </svg>
+  );
+}
+
 function CoffeeIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M4 8h12v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8z"
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <g
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.5"
+        strokeLinecap="round"
         strokeLinejoin="round"
-      />
-      <path
-        d="M16 10h2a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-2"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M8 3v2M11 3v2"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
+      >
+        <path d="M4 7.2h8v5.1c0 1.4-1.1 2.5-2.5 2.5h-3C5.1 14.8 4 13.7 4 12.3V7.2z" />
+        <path d="M12 8.2h1.3a2 2 0 0 1 0 4H12" />
+        <path d="M6.7 2.3v2" />
+        <path d="M9.5 2.3v2" />
+      </g>
     </svg>
   );
 }
 
-function DropletIcon() {
+function StepsIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M12 3c2.5 3.8 6.5 7.5 6.5 12a6.5 6.5 0 0 1-13 0C5.5 10.5 9.5 6.8 12 3z"
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <g
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.5"
+        strokeLinecap="round"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function FootIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M11.4 9c2.7 0 4.2 1.9 4.2 4.5 0 1.8-.7 3-.7 4.4 0 2.1-1.3 3.4-3.5 3.4s-3.5-1.3-3.5-3.4c0-1.4-.7-2.6-.7-4.4C7.2 10.9 8.7 9 11.4 9z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <circle cx="6.8" cy="6.6" r="1.45" fill="currentColor" />
-      <circle cx="11.3" cy="4.5" r="1.55" fill="currentColor" />
-      <circle cx="15.7" cy="5.4" r="1.4" fill="currentColor" />
-      <circle cx="19" cy="7.8" r="1.25" fill="currentColor" />
+      >
+        <path d="M3 10.9c1.9-.4 3.1-1.7 3.8-4.3l2.4 2.2 1.6-.7c.5-.2 1.1-.1 1.5.3l2.2 2c.4.4.7.9.7 1.5v.4H6.1c-1.5 0-2.6-.5-3.1-1.4z" />
+        <path d="M4.4 13.3h10.8" />
+        <path d="M7.4 9.5l1.3 1" />
+        <path d="M9.1 8.8l1.2 1" />
+      </g>
     </svg>
   );
 }
 
 function ScaleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <rect
-        x="3"
-        y="4"
-        width="18"
-        height="16"
-        rx="3"
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <g
         stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <circle cx="12" cy="13" r="3.5" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M12 13l1.8-2.2"
-        stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.5"
         strokeLinecap="round"
-      />
-      <path d="M9 7h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        strokeLinejoin="round"
+      >
+        <rect x="2.8" y="2.8" width="12.4" height="12.4" rx="2.4" />
+        <circle cx="9" cy="7.1" r="2.1" />
+        <path d="M9 7.1l1.1-1" />
+      </g>
     </svg>
   );
 }

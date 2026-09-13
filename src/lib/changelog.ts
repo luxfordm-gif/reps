@@ -19,6 +19,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'The steps screen works like body weight \u2014 pick a day, type the number, and it saves; a chart of your recent days with the goal line across it, and a history you can correct or delete',
       'Quick actions now scroll sideways, so a fourth tile doesn\u2019t squash the rest \u2014 swipe the row to reveal the ones sitting off the edge, and dragging it no longer counts as a tap on whatever was under your thumb',
       'Profile \u2192 Home quick actions picks which tiles appear and in what order, and Preferences is where the daily step goal lives',
+      'New artwork on the quick action tiles \u2014 a bottle, a cup, a set of scales and a trainer \u2014 and the bar that fills as you tap is now a soft grey rather than blue, to sit with the rest of the app',
       'Steps log with no signal like everything else \u2014 saved on the phone and sent the moment you\u2019re back online',
     ],
   },
