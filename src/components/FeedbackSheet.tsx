@@ -8,6 +8,8 @@ import {
   sendFeedback,
   type FeedbackKind,
 } from '../lib/feedbackApi';
+import { useScrollLock } from '../lib/useScrollLock';
+import { useVisualViewport } from '../lib/useVisualViewport';
 
 // The feedback sheet, reachable from the chat icon in the bottom bar.
 //
@@ -38,9 +40,16 @@ export function FeedbackSheet({ screen, onClose }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // The page behind stays put while the sheet is up, and the sheet sits in
+  // whatever the keyboard has left of the viewport rather than under it.
+  useScrollLock();
+  const viewport = useVisualViewport();
+
   useEffect(() => {
     // Straight into typing — the keyboard is the next thing they need.
-    const t = window.setTimeout(() => textRef.current?.focus(), 120);
+    // preventScroll because the sheet is already in view: without it the
+    // browser scrolls the page to "reveal" the textarea it can see fine.
+    const t = window.setTimeout(() => textRef.current?.focus({ preventScroll: true }), 120);
     return () => window.clearTimeout(t);
   }, []);
 
@@ -98,14 +107,15 @@ export function FeedbackSheet({ screen, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={status === 'sending' ? undefined : onClose}
       role="dialog"
       aria-modal="true"
       aria-label="Send feedback"
     >
       <div
-        className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
+        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
         onClick={(e) => e.stopPropagation()}
       >
