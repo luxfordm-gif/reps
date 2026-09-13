@@ -32,6 +32,15 @@ import {
   setWaterUnit,
   type WaterUnit,
 } from '../lib/waterApi';
+import { getStepGoal, setStepGoal, formatSteps, MAX_STEPS } from '../lib/stepsApi';
+import {
+  QUICK_ACTION_META,
+  getQuickActions,
+  moveQuickAction,
+  setQuickActions,
+  toggleQuickAction,
+  type QuickActionId,
+} from '../lib/quickActions';
 import {
   getRecentSessionNotes,
   getWeeklyWorkoutSummary,
@@ -67,6 +76,27 @@ export function Profile({
   const [lwUnit, setLwUnitState] = useState<LiftWeightUnit>(getLiftWeightUnit());
   const [waterGoal, setWaterGoalState] = useState<number>(getWaterGoal());
   const [waterUnit, setWaterUnitState] = useState<WaterUnit>(getWaterUnit());
+  const [stepGoal, setStepGoalState] = useState<number>(getStepGoal());
+  // The goal field is typed into digit by digit, so it keeps its own text: a
+  // controlled numeric value can't be cleared to retype a four-figure number.
+  const [stepGoalText, setStepGoalText] = useState<string>(() => String(getStepGoal()));
+  const [quickActions, setQuickActionsState] = useState<QuickActionId[]>(() =>
+    getQuickActions()
+  );
+
+  function changeQuickActions(next: QuickActionId[]) {
+    setQuickActionsState(next);
+    setQuickActions(next);
+  }
+
+  // The settings list reads in the same order as the row itself — shown tiles
+  // in their row order, switched-off ones collected underneath.
+  const orderedQuickActions = [
+    ...quickActions
+      .map((id) => QUICK_ACTION_META.find((m) => m.id === id))
+      .filter((m): m is (typeof QUICK_ACTION_META)[number] => m != null),
+    ...QUICK_ACTION_META.filter((m) => !quickActions.includes(m.id)),
+  ];
 
   useEffect(() => {
     getActivePlan().then(setPlan).catch(() => {});
@@ -186,6 +216,96 @@ export function Profile({
                 </select>
               </div>
             </div>
+            <div className="border-t border-line" />
+            <div className="flex items-center justify-between px-5 py-4">
+              <div>
+                <div className="text-sm font-semibold text-ink">Daily step goal</div>
+                <div className="mt-0.5 text-xs text-muted">
+                  Currently {formatSteps(stepGoal)} a day
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={MAX_STEPS}
+                  step={500}
+                  value={stepGoalText}
+                  onChange={(e) => {
+                    setStepGoalText(e.target.value);
+                    const n = parseInt(e.target.value, 10);
+                    if (!Number.isNaN(n) && n > 0 && n <= MAX_STEPS) {
+                      setStepGoalState(n);
+                      setStepGoal(n);
+                    }
+                  }}
+                  onBlur={() => setStepGoalText(String(stepGoal))}
+                  className="w-20 rounded-xl border border-line bg-paper px-2 py-1 text-center text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                />
+                <span className="text-sm text-muted">steps</span>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Home quick actions">
+          <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+            <p className="px-5 pt-4 text-xs text-muted">
+              Which tiles sit under Quick actions on Home, and in what order. The
+              row scrolls sideways, so whatever is at the top here is what you see
+              without scrolling.
+            </p>
+            <div className="mt-3">
+              {orderedQuickActions.map((meta, i) => {
+                const on = quickActions.includes(meta.id);
+                const pos = quickActions.indexOf(meta.id);
+                return (
+                  <div key={meta.id}>
+                    {i > 0 && <div className="border-t border-line" />}
+                    <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-ink">
+                          {on ? `${pos + 1}. ${meta.label}` : meta.label}
+                        </div>
+                        <div className="mt-0.5 text-xs text-muted">{meta.hint}</div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {on && (
+                          <>
+                            <MoveButton
+                              label={`Move ${meta.label} earlier`}
+                              disabled={pos === 0}
+                              onClick={() =>
+                                changeQuickActions(moveQuickAction(quickActions, meta.id, -1))
+                              }
+                            />
+                            <MoveButton
+                              down
+                              label={`Move ${meta.label} later`}
+                              disabled={pos === quickActions.length - 1}
+                              onClick={() =>
+                                changeQuickActions(moveQuickAction(quickActions, meta.id, 1))
+                              }
+                            />
+                          </>
+                        )}
+                        <Toggle
+                          on={on}
+                          // The last tile standing can't be switched off — an
+                          // empty row would leave Home with nothing to tap.
+                          disabled={on && quickActions.length <= 1}
+                          label={`Show ${meta.label} on Home`}
+                          onChange={() =>
+                            changeQuickActions(toggleQuickAction(quickActions, meta.id))
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </Section>
 
@@ -229,6 +349,79 @@ export function Profile({
       </div>
 
     </div>
+  );
+}
+
+/** iOS-style switch, for settings that are simply on or off. */
+function Toggle({
+  on,
+  disabled,
+  label,
+  onChange,
+}: {
+  on: boolean;
+  disabled?: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative h-6 w-10 shrink-0 rounded-pill transition-colors disabled:opacity-40 ${
+        on ? 'bg-ink' : 'bg-line'
+      }`}
+    >
+      <span
+        className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-card"
+        style={{
+          left: on ? '18px' : '2px',
+          transition: 'left 180ms cubic-bezier(.22,.85,.36,1)',
+        }}
+      />
+    </button>
+  );
+}
+
+function MoveButton({
+  down = false,
+  disabled,
+  label,
+  onClick,
+}: {
+  down?: boolean;
+  disabled: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-7 w-7 items-center justify-center rounded-full bg-paper text-ink active:bg-line disabled:opacity-25"
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 12 12"
+        fill="none"
+        style={{ transform: down ? 'rotate(180deg)' : undefined }}
+      >
+        <path
+          d="M3 7.5L6 4.5l3 3"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
   );
 }
 

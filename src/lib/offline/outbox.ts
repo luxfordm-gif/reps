@@ -84,6 +84,8 @@ export type OutboxOp =
   | { kind: 'delete_open_sessions' }
   | { kind: 'body_weight'; row: { id: string; weight_kg: number; recorded_on: string } }
   | { kind: 'delete_body_weight'; id: string }
+  | { kind: 'steps'; row: { id: string; steps: number; recorded_on: string } }
+  | { kind: 'delete_steps'; id: string }
   | { kind: 'water'; recorded_on: string; count: number }
   | {
       kind: 'feedback';
@@ -303,6 +305,28 @@ export function enqueue(userId: string, op: OutboxOp): void {
     }
   }
 
+  if (op.kind === 'steps') {
+    // One count per day — a later reading replaces the queued one.
+    const existing = entries.find(
+      (e) => e.op.kind === 'steps' && e.op.row.recorded_on === op.row.recorded_on
+    );
+    if (existing && existing.op.kind === 'steps') {
+      existing.op.row = op.row;
+      save(entries);
+      return;
+    }
+  }
+
+  if (op.kind === 'delete_steps') {
+    const idx = entries.findIndex((e) => e.op.kind === 'steps' && e.op.row.id === op.id);
+    if (idx >= 0) {
+      // Logged and deleted while offline — the server never needs to hear about it.
+      entries.splice(idx, 1);
+      save(entries);
+      return;
+    }
+  }
+
   if (op.kind === 'delete_session' || op.kind === 'delete_open_sessions') {
     // Drop anything queued for a session that's being thrown away.
     const doomedSessions = new Set<string>();
@@ -457,6 +481,28 @@ async function applyOp(op: OutboxOp, userId: string): Promise<void> {
         supabase.from('body_weights').delete().eq('id', op.id).select('id'),
         { label: 'sync:delete_body_weight' }
       );
+      return;
+    case 'steps':
+      await query(
+        supabase
+          .from('step_logs')
+          .upsert(
+            {
+              id: op.row.id,
+              user_id: userId,
+              steps: op.row.steps,
+              recorded_on: op.row.recorded_on,
+            },
+            { onConflict: 'user_id,recorded_on' }
+          )
+          .select('id'),
+        { label: 'sync:steps' }
+      );
+      return;
+    case 'delete_steps':
+      await query(supabase.from('step_logs').delete().eq('id', op.id).select('id'), {
+        label: 'sync:delete_steps',
+      });
       return;
     case 'water':
       await query(
@@ -713,6 +759,10 @@ export function describeEntry(entry: OutboxEntry): string {
       return `Body weight ${op.row.weight_kg} kg`;
     case 'delete_body_weight':
       return 'Deleted body weight';
+    case 'steps':
+      return `Steps ${op.row.steps.toLocaleString('en-GB')}`;
+    case 'delete_steps':
+      return 'Deleted step count';
     case 'water':
       return 'Water count';
     case 'feedback':

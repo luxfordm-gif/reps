@@ -14,6 +14,8 @@ import {
   type WeekSummary,
 } from '../lib/sessionsApi';
 import { adjustWater, getWaterGoal, getWaterUnit } from '../lib/waterApi';
+import { formatSteps, getStepGoal } from '../lib/stepsApi';
+import { getQuickActions, type QuickActionId } from '../lib/quickActions';
 import { getCachedHomeData, loadHomeData, patchHomeCache } from '../lib/homeCache';
 import { SyncStatus } from '../components/SyncStatus';
 import { requestFlush } from '../lib/offline/outbox';
@@ -26,6 +28,7 @@ type Day = FullPlan['training_days'][number];
 interface Props {
   onUploadPlan: () => void;
   onLogBodyWeight: () => void;
+  onLogSteps: () => void;
   // Opens a training day. `sibling` is the other week's version of the same day
   // type, when the plan rotates — DayView offers a switch to it.
   onTapDay: (day: Day, sibling?: Day | null) => void;
@@ -51,6 +54,13 @@ const ACCENTS: Record<string, string> = {
 };
 
 const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
+
+/**
+ * The bar that creeps across a quick action tile as its count rises. One grey
+ * for all of them: the tiles sit on white cards in a greyscale app, and a
+ * colour each turned the row into the loudest thing on the screen.
+ */
+const TILE_FILL = 'bg-[#EAEAEE]';
 
 /** Accent for a day, ignoring any rotation number: "Legs 2" reads as Legs. */
 function accentFor(dayName: string): string {
@@ -116,6 +126,7 @@ function greeting() {
 export function Home({
   onUploadPlan,
   onLogBodyWeight,
+  onLogSteps,
   onTapDay,
   onResumeWorkout,
   profile,
@@ -149,6 +160,27 @@ export function Home({
   const [waterUnit] = useState(() => getWaterUnit());
   const [waterBusy, setWaterBusy] = useState(false);
   const [waterError, setWaterError] = useState<string | null>(null);
+  const [stepCount, setStepCount] = useState(initial?.stepCount ?? 0);
+  const [stepGoal] = useState(() => getStepGoal());
+  // Which tiles the row shows, and in what order — set in Profile. Read once:
+  // changing it there unmounts Home, so it's re-read on the way back.
+  const [quickActions] = useState<QuickActionId[]>(() => getQuickActions());
+  // Where the quick action row is scrolled to, so the edge fades only show on
+  // the side that actually has more tiles. Tiles are as wide as their own
+  // contents, so whether the row overflows at all has to be measured rather
+  // than worked out in advance — `readRowEdges` runs as the row's ref on every
+  // render, and again on every scroll. It only ever sets state when one of the
+  // two answers has actually changed.
+  const [rowEdges, setRowEdges] = useState({ atStart: true, atEnd: true });
+
+  function readRowEdges(el: HTMLDivElement | null) {
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const next = { atStart: el.scrollLeft <= 4, atEnd: el.scrollLeft >= max - 4 };
+    setRowEdges((prev) =>
+      prev.atStart === next.atStart && prev.atEnd === next.atEnd ? prev : next
+    );
+  }
   const [loading, setLoading] = useState(!initial);
   const [active, setActive] = useState<ActiveSessionContext | null>(
     initial?.active ?? null
@@ -182,6 +214,7 @@ export function Home({
         setPlan(data.plan);
         setLastCompleted(data.lastCompleted);
         setWaterCount(data.waterCount);
+        setStepCount(data.stepCount ?? 0);
         setActive(data.active);
         setWeekSummary(data.weekSummary);
         setCompletedThisWeek(data.completedThisWeek);
@@ -308,6 +341,9 @@ export function Home({
     .filter((i): i is number => i != null);
   const showNextDay = shouldShowUpNext(recentSlotPositions, mainSlots.length);
 
+  const showRowStartFade = !rowEdges.atStart;
+  const showRowEndFade = !rowEdges.atEnd;
+
   function openSlot(slot: DaySlot) {
     const due = dueBySlot.get(slot.name);
     if (due) onTapDay(due, siblingVariant(slot, due));
@@ -416,21 +452,54 @@ export function Home({
 
         <div className="mt-7">
           <SectionLabel>Quick actions</SectionLabel>
-          <div className="mt-3 grid grid-cols-[1fr_0.675fr_1fr] gap-2">
-            <WaterAction
-              count={waterCount}
-              goal={waterGoal}
-              unit={waterUnit}
-              busy={waterBusy}
-              onTap={() => handleWaterTap(1)}
-              onLongPress={() => handleWaterTap(-1)}
-            />
-            <CoffeeAction />
-            <QuickAction
-              icon={<ScaleIcon />}
-              label="Log weight"
-              onClick={onLogBodyWeight}
-            />
+          {/* Each tile is as wide as its own contents and no wider, so the
+              padding sits even on both sides of every one of them. That means
+              more tiles than fit, so the row scrolls sideways, bleeding out to
+              both screen edges — the next tile is visibly cut off rather than
+              everything being squeezed, it reads left to right so the cut one
+              still shows its icon and the start of its value, and the edge
+              fades say there's more where that came from. data-no-tab-swipe
+              keeps a sideways drag here from switching tabs. */}
+          <div className="relative -mx-5 mt-3">
+            <div
+              data-no-tab-swipe
+              ref={readRowEdges}
+              onScroll={(e) => readRowEdges(e.currentTarget)}
+              className="flex gap-2 overflow-x-auto overscroll-x-contain px-5 pb-1 [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: 'none' }}
+            >
+              {quickActions.map((id) => (
+                <div key={id} className="shrink-0">
+                  {id === 'water' && (
+                    <WaterAction
+                      count={waterCount}
+                      goal={waterGoal}
+                      unit={waterUnit}
+                      busy={waterBusy}
+                      onTap={() => handleWaterTap(1)}
+                      onLongPress={() => handleWaterTap(-1)}
+                    />
+                  )}
+                  {id === 'coffee' && <CoffeeAction />}
+                  {id === 'steps' && (
+                    <StepsAction count={stepCount} goal={stepGoal} onTap={onLogSteps} />
+                  )}
+                  {id === 'weight' && (
+                    <QuickAction
+                      icon={<ScaleIcon />}
+                      label="Log weight"
+                      onClick={onLogBodyWeight}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+            {showRowStartFade && (
+              <span className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-paper to-transparent" />
+            )}
+            {showRowEndFade && (
+              <span className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-paper to-transparent" />
+            )}
           </div>
           {waterError && (
             <div className="mt-2 rounded-card bg-[#FFEDED] px-3 py-2 text-xs text-[#B42318]">
@@ -578,12 +647,29 @@ function QuickAction({
         hapticBuzz(12);
         onClick?.();
       }}
-      className="flex items-center justify-between rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+      className="flex w-full items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
     >
-      <span>{icon}</span>
-      <span>{label}</span>
+      <span className="shrink-0">{icon}</span>
+      <span className="whitespace-nowrap">{label}</span>
     </button>
   );
+}
+
+/**
+ * Has the finger travelled far enough that this is a scroll, not a tap?
+ *
+ * The quick action tiles sit in a row that scrolls sideways, so a drag that
+ * starts on the water tile is usually someone reaching for the tile off the
+ * edge — it must not land as a drink. 8px is below what anyone holding still
+ * produces and well under the browser's own pan threshold.
+ */
+function movedOffPress(
+  origin: React.RefObject<{ x: number; y: number } | null>,
+  e: React.PointerEvent
+): boolean {
+  const o = origin.current;
+  if (!o) return false;
+  return Math.abs(e.clientX - o.x) > 8 || Math.abs(e.clientY - o.y) > 8;
 }
 
 function hapticBuzz(pattern: number | number[]) {
@@ -617,6 +703,7 @@ function CoffeeAction() {
   const [wiggleKey, setWiggleKey] = useState(0);
   const pressTimer = useRef<number | null>(null);
   const didLongPress = useRef(false);
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null);
 
   function write(next: number) {
     setCount(next);
@@ -648,12 +735,8 @@ function CoffeeAction() {
   }
 
   function start(e: React.PointerEvent<HTMLButtonElement>) {
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
     didLongPress.current = false;
+    pressOrigin.current = { x: e.clientX, y: e.clientY };
     clearTimer();
     pressTimer.current = window.setTimeout(() => {
       pressTimer.current = null;
@@ -663,7 +746,15 @@ function CoffeeAction() {
     }, 600);
   }
 
+  function move(e: React.PointerEvent<HTMLButtonElement>) {
+    if (movedOffPress(pressOrigin, e)) {
+      pressOrigin.current = null;
+      clearTimer();
+    }
+  }
+
   function end() {
+    pressOrigin.current = null;
     if (didLongPress.current) {
       didLongPress.current = false;
       return;
@@ -675,16 +766,22 @@ function CoffeeAction() {
     }
   }
 
+  function cancel() {
+    pressOrigin.current = null;
+    clearTimer();
+  }
+
   // Touch `write` so it's not flagged unused — kept for potential reset use.
   void write;
 
   return (
     <button
       onPointerDown={start}
+      onPointerMove={move}
       onPointerUp={end}
-      onPointerCancel={clearTimer}
+      onPointerCancel={cancel}
       aria-label={`Coffee count: ${count}. Tap to add, press and hold to remove.`}
-      className="flex items-center justify-between rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.97] touch-none select-none"
+      className="flex w-full touch-manipulation select-none items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.97]"
     >
       <style>{`
         @keyframes reps-coffee-wiggle {
@@ -697,7 +794,7 @@ function CoffeeAction() {
       `}</style>
       <span
         key={wiggleKey}
-        className="inline-flex origin-bottom"
+        className="inline-flex shrink-0 origin-bottom"
         style={
           wiggleKey > 0
             ? { animation: 'reps-coffee-wiggle 450ms ease-out' }
@@ -706,7 +803,49 @@ function CoffeeAction() {
       >
         <CoffeeIcon />
       </span>
-      <span className="tabular-nums">{count}</span>
+      <span className="whitespace-nowrap tabular-nums">{count}</span>
+    </button>
+  );
+}
+
+/**
+ * Today's step count against the goal, as a tap-through rather than a counter:
+ * steps come off a phone's health app in one number, so the tile opens the
+ * screen where that number gets typed in instead of incrementing.
+ */
+function StepsAction({
+  count,
+  goal,
+  onTap,
+}: {
+  count: number;
+  goal: number;
+  onTap: () => void;
+}) {
+  const pct = Math.min(1, count / Math.max(1, goal));
+  const reached = count >= goal;
+  return (
+    <button
+      onClick={() => {
+        hapticBuzz(12);
+        onTap();
+      }}
+      aria-label={`Steps today: ${count} of ${goal}. Opens the step log.`}
+      className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+    >
+      <div
+        className={`absolute inset-y-0 left-0 ${TILE_FILL}`}
+        style={{ width: `${pct * 100}%`, transition: 'width 350ms cubic-bezier(.22,.85,.36,1)' }}
+      />
+      <span className="relative shrink-0">
+        <StepsIcon />
+      </span>
+      <span className="relative whitespace-nowrap tabular-nums">
+        {formatSteps(count)}
+        <span className="text-muted">
+          {reached ? ' \u2713' : ` / ${formatSteps(goal)}`}
+        </span>
+      </span>
     </button>
   );
 }
@@ -738,6 +877,7 @@ function WaterAction({
   const pct = Math.min(1, count / Math.max(1, goal));
   const pressTimer = useRef<number | null>(null);
   const didLongPress = useRef(false);
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null);
   const reached = count >= goal;
   const prevReached = useRef(reached);
   const [celebrating, setCelebrating] = useState(false);
@@ -767,13 +907,8 @@ function WaterAction({
   }
 
   function start(e: React.PointerEvent<HTMLButtonElement>) {
-    // Capture the pointer so tiny finger movement doesn't cancel the press.
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore — older browsers may not support pointer capture
-    }
     didLongPress.current = false;
+    pressOrigin.current = { x: e.clientX, y: e.clientY };
     clearTimer();
     pressTimer.current = window.setTimeout(() => {
       pressTimer.current = null;
@@ -783,7 +918,15 @@ function WaterAction({
     }, 600);
   }
 
+  function move(e: React.PointerEvent<HTMLButtonElement>) {
+    if (movedOffPress(pressOrigin, e)) {
+      pressOrigin.current = null;
+      clearTimer();
+    }
+  }
+
   function end() {
+    pressOrigin.current = null;
     // If the long-press already fired, swallow the trailing pointerup.
     if (didLongPress.current) {
       didLongPress.current = false;
@@ -796,17 +939,23 @@ function WaterAction({
     }
   }
 
+  function cancel() {
+    pressOrigin.current = null;
+    clearTimer();
+  }
+
   return (
     <div className="relative">
       <button
         onPointerDown={start}
+        onPointerMove={move}
         onPointerUp={end}
-        onPointerCancel={clearTimer}
+        onPointerCancel={cancel}
         disabled={busy}
-        className="relative flex w-full items-center justify-between overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99] touch-none select-none"
+        className="relative flex w-full touch-manipulation select-none items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
       >
         <div
-          className="absolute inset-y-0 left-0 bg-[#D6E8FF]"
+          className={`absolute inset-y-0 left-0 ${TILE_FILL}`}
           style={{ width: `${pct * 100}%`, transition: 'width 350ms cubic-bezier(.22,.85,.36,1)' }}
         />
         {reached ? (
@@ -815,10 +964,10 @@ function WaterAction({
           </span>
         ) : (
           <>
-            <span className="relative">
-              <DropletIcon />
+            <span className="relative shrink-0">
+              <WaterIcon />
             </span>
-            <span className="relative truncate pl-2 text-right">
+            <span className="relative whitespace-nowrap">
               {count} / {goal} <span className="text-muted">{unit}</span>
             </span>
           </>
@@ -872,39 +1021,65 @@ function Confetti() {
   );
 }
 
-function CoffeeIcon() {
+/*
+ * The quick action icons, traced from the approved mockup.
+ *
+ * Filled outlines rather than strokes. The trace came out at roughly 0.75px
+ * of ink where 1px was intended, which read thin and small on a phone, so each
+ * is stroked along its own outline to carry it to about 1.5px and rendered at
+ * 20px. The stroke width is given in each path's own units — they were traced
+ * at different scales — so the weight matches across the four and grows with
+ * the icon rather than staying put if one is ever rendered larger.
+ *
+ * The traced edges are a staircase of sub-pixel steps: invisible at this size,
+ * and the round joins soften it, but visible if one were blown up. Anything
+ * bigger should be re-exported from the source artwork rather than scaled from
+ * these. The fill is currentColor so each takes its tile's text colour.
+ */
+
+function WaterIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <path
-        d="M4 8h12v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8z"
+        d="M 17.00 2.00 L 16.00 3.00 L 15.00 3.00 L 15.00 4.00 L 14.00 5.00 L 14.00 7.00 L 13.00 8.00 L 13.00 11.00 L 12.00 12.00 L 11.00 12.00 L 10.00 13.00 L 10.00 17.00 L 8.00 19.00 L 8.00 20.00 L 5.00 23.00 L 5.00 24.00 L 4.00 25.00 L 4.00 27.00 L 3.00 28.00 L 3.00 36.00 L 2.00 37.00 L 2.00 39.00 L 3.00 40.00 L 3.00 42.00 L 4.00 43.00 L 4.00 45.00 L 3.00 46.00 L 3.00 49.00 L 2.00 50.00 L 2.00 77.00 L 3.00 78.00 L 3.00 80.00 L 4.00 81.00 L 4.00 82.00 L 7.00 85.00 L 8.00 85.00 L 9.00 86.00 L 11.00 86.00 L 12.00 87.00 L 13.00 86.00 L 24.00 86.00 L 25.00 87.00 L 26.00 86.00 L 39.00 86.00 L 40.00 85.00 L 41.00 85.00 L 44.00 82.00 L 44.00 81.00 L 45.00 80.00 L 45.00 78.00 L 46.00 77.00 L 46.00 49.00 L 45.00 48.00 L 45.00 46.00 L 44.00 45.00 L 44.00 43.00 L 45.00 42.00 L 45.00 28.00 L 44.00 27.00 L 44.00 25.00 L 42.00 23.00 L 42.00 22.00 L 37.00 17.00 L 37.00 13.00 L 36.00 12.00 L 35.00 12.00 L 34.00 11.00 L 34.00 5.00 L 33.00 4.00 L 33.00 3.00 L 32.00 3.00 L 31.00 2.00 Z M 9.00 45.00 L 37.00 45.00 L 38.00 46.00 L 39.00 45.00 L 41.00 47.00 L 41.00 48.00 L 42.00 49.00 L 42.00 78.00 L 37.00 83.00 L 12.00 83.00 L 11.00 82.00 L 10.00 82.00 L 7.00 79.00 L 7.00 78.00 L 6.00 77.00 L 6.00 49.00 L 7.00 48.00 L 7.00 47.00 Z M 15.00 18.00 L 33.00 18.00 L 39.00 24.00 L 39.00 25.00 L 40.00 26.00 L 40.00 27.00 L 41.00 28.00 L 41.00 30.00 L 42.00 31.00 L 42.00 39.00 L 41.00 40.00 L 41.00 41.00 L 40.00 42.00 L 9.00 42.00 L 7.00 40.00 L 7.00 39.00 L 6.00 38.00 L 6.00 32.00 L 7.00 31.00 L 7.00 28.00 L 8.00 27.00 L 8.00 26.00 L 9.00 25.00 L 9.00 24.00 Z M 18.00 7.00 L 19.00 6.00 L 30.00 6.00 L 31.00 7.00 L 31.00 11.00 L 30.00 12.00 L 18.00 12.00 L 17.00 11.00 L 17.00 9.00 L 18.00 8.00 Z"
+        fill="currentColor"
+        fillRule="evenodd"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="2.922"
         strokeLinejoin="round"
-      />
-      <path
-        d="M16 10h2a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-2"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M8 3v2M11 3v2"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
+        transform="translate(4.8078,1.3000) scale(0.171111)"
       />
     </svg>
   );
 }
 
-function DropletIcon() {
+function CoffeeIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <path
-        d="M12 3c2.5 3.8 6.5 7.5 6.5 12a6.5 6.5 0 0 1-13 0C5.5 10.5 9.5 6.8 12 3z"
+        d="M 3.00 36.00 L 2.00 37.00 L 2.00 74.00 L 3.00 75.00 L 3.00 77.00 L 4.00 78.00 L 4.00 79.00 L 6.00 81.00 L 6.00 82.00 L 8.00 84.00 L 9.00 84.00 L 11.00 86.00 L 42.00 86.00 L 43.00 85.00 L 44.00 85.00 L 49.00 80.00 L 49.00 79.00 L 50.00 78.00 L 50.00 77.00 L 51.00 76.00 L 51.00 75.00 L 52.00 74.00 L 52.00 72.00 L 53.00 71.00 L 58.00 71.00 L 59.00 70.00 L 61.00 70.00 L 62.00 69.00 L 63.00 69.00 L 65.00 67.00 L 66.00 67.00 L 68.00 65.00 L 68.00 64.00 L 69.00 63.00 L 69.00 62.00 L 70.00 61.00 L 70.00 59.00 L 71.00 58.00 L 71.00 54.00 L 70.00 53.00 L 70.00 50.00 L 69.00 49.00 L 69.00 48.00 L 66.00 45.00 L 65.00 45.00 L 63.00 43.00 L 60.00 43.00 L 59.00 42.00 L 53.00 42.00 L 52.00 41.00 L 52.00 37.00 L 51.00 36.00 Z M 52.00 47.00 L 53.00 46.00 L 60.00 46.00 L 61.00 47.00 L 62.00 47.00 L 66.00 51.00 L 66.00 53.00 L 67.00 54.00 L 67.00 57.00 L 66.00 58.00 L 66.00 60.00 L 65.00 61.00 L 65.00 62.00 L 61.00 66.00 L 59.00 66.00 L 58.00 67.00 L 53.00 67.00 L 52.00 66.00 Z M 6.00 40.00 L 7.00 39.00 L 8.00 40.00 L 9.00 39.00 L 10.00 40.00 L 46.00 40.00 L 47.00 39.00 L 48.00 40.00 L 48.00 73.00 L 47.00 74.00 L 47.00 76.00 L 45.00 78.00 L 45.00 79.00 L 43.00 81.00 L 42.00 81.00 L 40.00 83.00 L 38.00 83.00 L 37.00 84.00 L 17.00 84.00 L 16.00 83.00 L 14.00 83.00 L 13.00 82.00 L 12.00 82.00 L 7.00 77.00 L 7.00 76.00 L 6.00 75.00 Z M 16.00 5.00 L 15.00 6.00 L 14.00 6.00 L 13.00 7.00 L 13.00 8.00 L 12.00 9.00 L 12.00 16.00 L 13.00 17.00 L 13.00 18.00 L 15.00 20.00 L 15.00 21.00 L 16.00 22.00 L 16.00 24.00 L 15.00 25.00 L 15.00 26.00 L 13.00 28.00 L 13.00 29.00 L 14.00 30.00 L 17.00 30.00 L 19.00 28.00 L 19.00 27.00 L 20.00 26.00 L 20.00 20.00 L 19.00 19.00 L 19.00 18.00 L 17.00 16.00 L 17.00 15.00 L 16.00 14.00 L 16.00 11.00 L 17.00 10.00 L 17.00 9.00 L 18.00 8.00 L 18.00 7.00 Z M 32.00 2.00 L 29.00 5.00 L 29.00 6.00 L 28.00 7.00 L 28.00 13.00 L 29.00 14.00 L 29.00 15.00 L 31.00 17.00 L 31.00 18.00 L 34.00 21.00 L 34.00 25.00 L 33.00 26.00 L 32.00 26.00 L 31.00 27.00 L 31.00 28.00 L 33.00 30.00 L 34.00 30.00 L 37.00 27.00 L 37.00 25.00 L 38.00 24.00 L 38.00 22.00 L 37.00 21.00 L 37.00 19.00 L 36.00 18.00 L 36.00 17.00 L 33.00 14.00 L 33.00 13.00 L 32.00 12.00 L 32.00 8.00 L 33.00 7.00 L 33.00 6.00 L 34.00 5.00 L 34.00 4.00 Z"
+        fill="currentColor"
+        fillRule="evenodd"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="2.788"
         strokeLinejoin="round"
+        transform="translate(2.3655,1.2000) scale(0.179310)"
+      />
+    </svg>
+  );
+}
+
+function StepsIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path
+        d="M 46.00 2.00 L 43.00 5.00 L 43.00 6.00 L 41.00 8.00 L 41.00 9.00 L 40.00 10.00 L 40.00 12.00 L 37.00 15.00 L 35.00 15.00 L 34.00 16.00 L 32.00 16.00 L 31.00 17.00 L 30.00 17.00 L 29.00 16.00 L 27.00 16.00 L 26.00 15.00 L 25.00 15.00 L 23.00 13.00 L 23.00 12.00 L 19.00 8.00 L 16.00 8.00 L 15.00 9.00 L 14.00 9.00 L 12.00 11.00 L 12.00 12.00 L 10.00 14.00 L 10.00 16.00 L 9.00 17.00 L 9.00 18.00 L 8.00 19.00 L 8.00 22.00 L 7.00 23.00 L 7.00 25.00 L 6.00 26.00 L 6.00 30.00 L 5.00 31.00 L 5.00 33.00 L 4.00 34.00 L 4.00 36.00 L 3.00 37.00 L 3.00 40.00 L 2.00 41.00 L 2.00 44.00 L 3.00 45.00 L 3.00 47.00 L 4.00 48.00 L 4.00 49.00 L 5.00 50.00 L 5.00 51.00 L 8.00 54.00 L 9.00 54.00 L 10.00 55.00 L 12.00 55.00 L 13.00 56.00 L 16.00 56.00 L 17.00 57.00 L 56.00 57.00 L 57.00 58.00 L 70.00 58.00 L 71.00 59.00 L 81.00 59.00 L 82.00 58.00 L 90.00 58.00 L 91.00 57.00 L 94.00 57.00 L 95.00 56.00 L 97.00 56.00 L 98.00 55.00 L 99.00 55.00 L 100.00 54.00 L 101.00 54.00 L 103.00 52.00 L 104.00 52.00 L 106.00 50.00 L 106.00 49.00 L 107.00 48.00 L 107.00 46.00 L 108.00 45.00 L 108.00 39.00 L 107.00 38.00 L 107.00 37.00 L 106.00 36.00 L 106.00 35.00 L 104.00 33.00 L 103.00 33.00 L 102.00 32.00 L 100.00 32.00 L 99.00 31.00 L 97.00 31.00 L 96.00 30.00 L 94.00 30.00 L 93.00 29.00 L 91.00 29.00 L 90.00 28.00 L 88.00 28.00 L 87.00 27.00 L 86.00 27.00 L 85.00 26.00 L 84.00 26.00 L 83.00 25.00 L 82.00 25.00 L 81.00 24.00 L 80.00 24.00 L 79.00 23.00 L 78.00 23.00 L 76.00 21.00 L 75.00 21.00 L 73.00 19.00 L 72.00 19.00 L 69.00 16.00 L 68.00 16.00 L 66.00 14.00 L 65.00 14.00 L 62.00 11.00 L 61.00 11.00 L 57.00 7.00 L 56.00 7.00 L 51.00 2.00 Z M 102.00 46.00 L 103.00 45.00 L 104.00 46.00 L 103.00 47.00 Z M 7.00 37.00 L 8.00 36.00 L 9.00 36.00 L 11.00 38.00 L 12.00 38.00 L 13.00 39.00 L 14.00 39.00 L 15.00 40.00 L 16.00 40.00 L 17.00 41.00 L 20.00 41.00 L 21.00 42.00 L 26.00 42.00 L 27.00 43.00 L 36.00 43.00 L 37.00 44.00 L 43.00 44.00 L 44.00 45.00 L 48.00 45.00 L 49.00 46.00 L 53.00 46.00 L 54.00 47.00 L 58.00 47.00 L 59.00 48.00 L 65.00 48.00 L 66.00 49.00 L 89.00 49.00 L 90.00 48.00 L 95.00 48.00 L 96.00 47.00 L 99.00 47.00 L 100.00 46.00 L 102.00 46.00 L 103.00 47.00 L 103.00 48.00 L 100.00 51.00 L 99.00 51.00 L 98.00 52.00 L 97.00 52.00 L 96.00 53.00 L 94.00 53.00 L 93.00 54.00 L 89.00 54.00 L 88.00 55.00 L 58.00 55.00 L 57.00 54.00 L 33.00 54.00 L 32.00 53.00 L 14.00 53.00 L 13.00 52.00 L 12.00 52.00 L 11.00 51.00 L 10.00 51.00 L 8.00 49.00 L 8.00 48.00 L 7.00 47.00 L 7.00 46.00 L 6.00 45.00 L 6.00 39.00 L 7.00 38.00 Z M 48.00 6.00 L 49.00 5.00 L 54.00 10.00 L 55.00 10.00 L 56.00 11.00 L 56.00 12.00 L 54.00 14.00 L 54.00 15.00 L 52.00 17.00 L 51.00 17.00 L 49.00 19.00 L 49.00 20.00 L 48.00 21.00 L 50.00 23.00 L 51.00 22.00 L 52.00 22.00 L 59.00 15.00 L 61.00 15.00 L 63.00 17.00 L 64.00 17.00 L 66.00 19.00 L 65.00 20.00 L 64.00 20.00 L 58.00 26.00 L 58.00 28.00 L 59.00 29.00 L 60.00 29.00 L 66.00 23.00 L 67.00 23.00 L 69.00 21.00 L 70.00 21.00 L 72.00 23.00 L 73.00 23.00 L 75.00 25.00 L 73.00 27.00 L 72.00 27.00 L 67.00 32.00 L 67.00 33.00 L 68.00 34.00 L 70.00 34.00 L 72.00 32.00 L 73.00 32.00 L 78.00 27.00 L 79.00 27.00 L 80.00 28.00 L 81.00 28.00 L 82.00 29.00 L 83.00 29.00 L 84.00 30.00 L 86.00 30.00 L 87.00 31.00 L 88.00 31.00 L 89.00 32.00 L 91.00 32.00 L 92.00 33.00 L 95.00 33.00 L 96.00 34.00 L 98.00 34.00 L 99.00 35.00 L 100.00 35.00 L 101.00 36.00 L 102.00 36.00 L 104.00 38.00 L 104.00 41.00 L 103.00 42.00 L 102.00 42.00 L 101.00 43.00 L 99.00 43.00 L 98.00 44.00 L 95.00 44.00 L 94.00 45.00 L 88.00 45.00 L 87.00 46.00 L 68.00 46.00 L 67.00 45.00 L 61.00 45.00 L 60.00 44.00 L 56.00 44.00 L 55.00 43.00 L 51.00 43.00 L 50.00 42.00 L 46.00 42.00 L 45.00 41.00 L 40.00 41.00 L 39.00 40.00 L 31.00 40.00 L 30.00 39.00 L 23.00 39.00 L 22.00 38.00 L 19.00 38.00 L 18.00 37.00 L 17.00 37.00 L 16.00 36.00 L 15.00 36.00 L 14.00 35.00 L 13.00 35.00 L 12.00 34.00 L 11.00 34.00 L 9.00 32.00 L 9.00 29.00 L 10.00 28.00 L 10.00 25.00 L 11.00 24.00 L 11.00 22.00 L 12.00 21.00 L 12.00 19.00 L 13.00 18.00 L 13.00 17.00 L 14.00 16.00 L 14.00 15.00 L 15.00 14.00 L 15.00 13.00 L 16.00 12.00 L 18.00 12.00 L 21.00 15.00 L 21.00 16.00 L 23.00 18.00 L 24.00 18.00 L 25.00 19.00 L 26.00 19.00 L 27.00 20.00 L 34.00 20.00 L 35.00 19.00 L 37.00 19.00 L 39.00 17.00 L 40.00 17.00 L 41.00 16.00 L 42.00 16.00 L 43.00 15.00 L 43.00 14.00 L 44.00 13.00 L 43.00 12.00 L 44.00 11.00 L 44.00 10.00 L 45.00 9.00 L 45.00 8.00 L 47.00 6.00 Z"
+        fill="currentColor"
+        fillRule="evenodd"
+        stroke="currentColor"
+        strokeWidth="3.426"
+        strokeLinejoin="round"
+        transform="translate(0.9000,4.4757) scale(0.145946)"
       />
     </svg>
   );
@@ -912,24 +1087,16 @@ function DropletIcon() {
 
 function ScaleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <rect
-        x="3"
-        y="4"
-        width="18"
-        height="16"
-        rx="3"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <circle cx="12" cy="13" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+    <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <path
-        d="M12 13l1.8-2.2"
+        d="M 30.00 16.00 L 29.00 17.00 L 27.00 17.00 L 26.00 18.00 L 25.00 18.00 L 22.00 21.00 L 21.00 21.00 L 21.00 22.00 L 18.00 25.00 L 18.00 26.00 L 17.00 27.00 L 17.00 29.00 L 16.00 30.00 L 17.00 31.00 L 20.00 31.00 L 20.00 29.00 L 21.00 28.00 L 21.00 27.00 L 26.00 22.00 L 27.00 22.00 L 28.00 21.00 L 29.00 21.00 L 30.00 20.00 L 32.00 20.00 L 33.00 19.00 L 37.00 19.00 L 38.00 20.00 L 41.00 20.00 L 42.00 21.00 L 43.00 21.00 L 44.00 22.00 L 45.00 22.00 L 49.00 26.00 L 49.00 27.00 L 50.00 28.00 L 50.00 29.00 L 51.00 30.00 L 51.00 31.00 L 54.00 31.00 L 55.00 30.00 L 54.00 29.00 L 54.00 27.00 L 53.00 26.00 L 53.00 25.00 L 47.00 19.00 L 46.00 19.00 L 44.00 17.00 L 42.00 17.00 L 41.00 16.00 Z M 13.00 2.00 L 12.00 3.00 L 10.00 3.00 L 9.00 4.00 L 8.00 4.00 L 7.00 5.00 L 6.00 5.00 L 4.00 7.00 L 4.00 8.00 L 3.00 9.00 L 3.00 10.00 L 2.00 11.00 L 2.00 64.00 L 3.00 65.00 L 3.00 66.00 L 5.00 68.00 L 5.00 69.00 L 6.00 69.00 L 8.00 71.00 L 9.00 71.00 L 10.00 72.00 L 61.00 72.00 L 62.00 71.00 L 63.00 71.00 L 68.00 66.00 L 68.00 64.00 L 69.00 63.00 L 69.00 12.00 L 68.00 11.00 L 68.00 10.00 L 67.00 9.00 L 67.00 8.00 L 63.00 4.00 L 62.00 4.00 L 61.00 3.00 L 59.00 3.00 L 58.00 2.00 Z M 11.00 7.00 L 12.00 6.00 L 58.00 6.00 L 59.00 7.00 L 61.00 7.00 L 64.00 10.00 L 64.00 11.00 L 65.00 12.00 L 65.00 24.00 L 66.00 25.00 L 66.00 28.00 L 65.00 29.00 L 65.00 63.00 L 64.00 64.00 L 64.00 65.00 L 62.00 67.00 L 61.00 67.00 L 59.00 69.00 L 13.00 69.00 L 12.00 68.00 L 10.00 68.00 L 6.00 64.00 L 6.00 62.00 L 5.00 61.00 L 5.00 14.00 L 6.00 13.00 L 6.00 11.00 L 10.00 7.00 Z"
+        fill="currentColor"
+        fillRule="evenodd"
         stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
+        strokeWidth="2.401"
+        strokeLinejoin="round"
+        transform="translate(1.5041,1.4000) scale(0.208219)"
       />
-      <path d="M9 7h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
