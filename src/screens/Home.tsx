@@ -55,22 +55,6 @@ const ACCENTS: Record<string, string> = {
 
 const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
 
-/**
- * How wide each quick action tile wants to be, as a percentage of the content
- * column — roughly what its own contents need, so coffee (a bare number) gets
- * far less room than steps (a count against a goal).
- *
- * All four together come to more than 100%, which is what makes the row
- * scroll. Switch enough of them off and they fit, and then the same numbers
- * are used as grow ratios so the row fills the width instead of trailing off.
- */
-const QUICK_ACTION_SHARE: Record<QuickActionId, number> = {
-  water: 44,
-  coffee: 24,
-  weight: 43,
-  steps: 50,
-};
-
 /** Accent for a day, ignoring any rotation number: "Legs 2" reads as Legs. */
 function accentFor(dayName: string): string {
   return (
@@ -175,15 +159,20 @@ export function Home({
   // changing it there unmounts Home, so it's re-read on the way back.
   const [quickActions] = useState<QuickActionId[]>(() => getQuickActions());
   // Where the quick action row is scrolled to, so the edge fades only show on
-  // the side that actually has more tiles.
-  const [rowAtStart, setRowAtStart] = useState(true);
-  const [rowAtEnd, setRowAtEnd] = useState(false);
+  // the side that actually has more tiles. Tiles are as wide as their own
+  // contents, so whether the row overflows at all has to be measured rather
+  // than worked out in advance — `readRowEdges` runs as the row's ref on every
+  // render, and again on every scroll. It only ever sets state when one of the
+  // two answers has actually changed.
+  const [rowEdges, setRowEdges] = useState({ atStart: true, atEnd: true });
 
-  function handleRowScroll(e: React.UIEvent<HTMLDivElement>) {
-    const el = e.currentTarget;
+  function readRowEdges(el: HTMLDivElement | null) {
+    if (!el) return;
     const max = el.scrollWidth - el.clientWidth;
-    setRowAtStart(el.scrollLeft <= 4);
-    setRowAtEnd(el.scrollLeft >= max - 4);
+    const next = { atStart: el.scrollLeft <= 4, atEnd: el.scrollLeft >= max - 4 };
+    setRowEdges((prev) =>
+      prev.atStart === next.atStart && prev.atEnd === next.atEnd ? prev : next
+    );
   }
   const [loading, setLoading] = useState(!initial);
   const [active, setActive] = useState<ActiveSessionContext | null>(
@@ -345,11 +334,8 @@ export function Home({
     .filter((i): i is number => i != null);
   const showNextDay = shouldShowUpNext(recentSlotPositions, mainSlots.length);
 
-  // Few enough tiles to fit the width: share it out rather than scroll.
-  const quickActionsFit =
-    quickActions.reduce((sum, id) => sum + QUICK_ACTION_SHARE[id], 0) <= 100;
-  const showRowStartFade = !rowAtStart;
-  const showRowEndFade = !quickActionsFit && !rowAtEnd;
+  const showRowStartFade = !rowEdges.atStart;
+  const showRowEndFade = !rowEdges.atEnd;
 
   function openSlot(slot: DaySlot) {
     const due = dueBySlot.get(slot.name);
@@ -459,29 +445,24 @@ export function Home({
 
         <div className="mt-7">
           <SectionLabel>Quick actions</SectionLabel>
-          {/* More tiles than fit: the row scrolls sideways, bleeding out to
-              both screen edges so the next one is visibly cut off rather than
-              everything being squeezed to fit. Each tile reads left to right,
-              so the cut one still shows its icon and the start of its value —
-              and the edge fades say there's more where that came from.
-              data-no-tab-swipe keeps a sideways drag here from switching tabs. */}
+          {/* Each tile is as wide as its own contents and no wider, so the
+              padding sits even on both sides of every one of them. That means
+              more tiles than fit, so the row scrolls sideways, bleeding out to
+              both screen edges — the next tile is visibly cut off rather than
+              everything being squeezed, it reads left to right so the cut one
+              still shows its icon and the start of its value, and the edge
+              fades say there's more where that came from. data-no-tab-swipe
+              keeps a sideways drag here from switching tabs. */}
           <div className="relative -mx-5 mt-3">
             <div
               data-no-tab-swipe
-              onScroll={handleRowScroll}
+              ref={readRowEdges}
+              onScroll={(e) => readRowEdges(e.currentTarget)}
               className="flex gap-2 overflow-x-auto overscroll-x-contain px-5 pb-1 [&::-webkit-scrollbar]:hidden"
               style={{ scrollbarWidth: 'none' }}
             >
               {quickActions.map((id) => (
-                <div
-                  key={id}
-                  className="min-w-0"
-                  style={
-                    quickActionsFit
-                      ? { flex: `${QUICK_ACTION_SHARE[id]} 1 0px` }
-                      : { flex: '0 0 auto', width: `${QUICK_ACTION_SHARE[id]}%` }
-                  }
-                >
+                <div key={id} className="shrink-0">
                   {id === 'water' && (
                     <WaterAction
                       count={waterCount}
@@ -662,7 +643,7 @@ function QuickAction({
       className="flex w-full items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
     >
       <span className="shrink-0">{icon}</span>
-      <span className="truncate">{label}</span>
+      <span className="whitespace-nowrap">{label}</span>
     </button>
   );
 }
@@ -815,7 +796,7 @@ function CoffeeAction() {
       >
         <CoffeeIcon />
       </span>
-      <span className="truncate tabular-nums">{count}</span>
+      <span className="whitespace-nowrap tabular-nums">{count}</span>
     </button>
   );
 }
@@ -852,7 +833,7 @@ function StepsAction({
       <span className="relative shrink-0">
         <FootIcon />
       </span>
-      <span className="relative truncate tabular-nums">
+      <span className="relative whitespace-nowrap tabular-nums">
         {formatSteps(count)}
         <span className="text-muted">
           {reached ? ' \u2713' : ` / ${formatSteps(goal)}`}
@@ -979,7 +960,7 @@ function WaterAction({
             <span className="relative shrink-0">
               <DropletIcon />
             </span>
-            <span className="relative truncate">
+            <span className="relative whitespace-nowrap">
               {count} / {goal} <span className="text-muted">{unit}</span>
             </span>
           </>
