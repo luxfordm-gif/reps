@@ -1066,6 +1066,10 @@ function CoffeeIcon() {
 }
 
 function StepsIcon() {
+  // Redrawn from the supplied trainer for this size. The original is the same
+  // path at every size, and at 18px its detail closes up into a blob — so this
+  // keeps the cues that still read small: a heel counter tall enough to see, a
+  // lace panel, a tapering toe, and the midsole as its own band underneath.
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <g
@@ -1075,10 +1079,10 @@ function StepsIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M3.0 10.85 5.55 6.55c.35-.58 1.12-.72 1.64-.3l1.24 1.0c.49.39 1.18.41 1.69.05l1.31-.94 1.55 1.76c.7.8 1.57 1.45 2.54 1.9l.66.31c.64.3 1.05.94 1.05 1.65 0 1.02-.83 1.85-1.85 1.85H6.0c-1.3 0-2.46-.78-2.95-1.98l-.13-.31c-.1-.24-.07-.5.08-.69z" />
-        <path d="M3.75 10.65c2.35.95 4.95 1.43 7.79 1.43 2.17 0 4-.28 5.48-.84" />
-        <path d="m10.7 7.9 1.35-.82" />
-        <path d="m11.72 8.78 1.33-.78" />
+        <path d="M3.3 11.75V7.6c0-.95 1.1-1.35 1.7-.65l1.75 2c.9-.55 2.1-.35 2.8.5l1.35 1.65c1.55.45 3.15.65 4.75.7.8.03 1.35.55 1.35 1.2" />
+        <path d="M2.5 11.8c0 1.4 1.15 2.4 2.65 2.4h9.7c1.5 0 2.65-1 2.65-2.4" />
+        <path d="m7.5 10.3 1.2-.85" />
+        <path d="m9.2 11.4 1.15-.8" />
       </g>
     </svg>
   );
