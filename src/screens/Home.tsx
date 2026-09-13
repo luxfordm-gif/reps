@@ -57,8 +57,8 @@ const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
 
 /**
  * How wide each quick action tile wants to be, as a percentage of the content
- * column — coffee is a bare number so it needs less room than the ones that
- * print a count against a goal.
+ * column — roughly what its own contents need, so coffee (a bare number) gets
+ * far less room than steps (a count against a goal).
  *
  * All four together come to more than 100%, which is what makes the row
  * scroll. Switch enough of them off and they fit, and then the same numbers
@@ -66,9 +66,9 @@ const FALLBACK_ACCENT = 'bg-[#F0F0F0]';
  */
 const QUICK_ACTION_SHARE: Record<QuickActionId, number> = {
   water: 44,
-  coffee: 30,
+  coffee: 24,
+  weight: 43,
   steps: 50,
-  weight: 44,
 };
 
 /** Accent for a day, ignoring any rotation number: "Legs 2" reads as Legs. */
@@ -174,6 +174,17 @@ export function Home({
   // Which tiles the row shows, and in what order — set in Profile. Read once:
   // changing it there unmounts Home, so it's re-read on the way back.
   const [quickActions] = useState<QuickActionId[]>(() => getQuickActions());
+  // Where the quick action row is scrolled to, so the edge fades only show on
+  // the side that actually has more tiles.
+  const [rowAtStart, setRowAtStart] = useState(true);
+  const [rowAtEnd, setRowAtEnd] = useState(false);
+
+  function handleRowScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const max = el.scrollWidth - el.clientWidth;
+    setRowAtStart(el.scrollLeft <= 4);
+    setRowAtEnd(el.scrollLeft >= max - 4);
+  }
   const [loading, setLoading] = useState(!initial);
   const [active, setActive] = useState<ActiveSessionContext | null>(
     initial?.active ?? null
@@ -337,6 +348,8 @@ export function Home({
   // Few enough tiles to fit the width: share it out rather than scroll.
   const quickActionsFit =
     quickActions.reduce((sum, id) => sum + QUICK_ACTION_SHARE[id], 0) <= 100;
+  const showRowStartFade = !rowAtStart;
+  const showRowEndFade = !quickActionsFit && !rowAtEnd;
 
   function openSlot(slot: DaySlot) {
     const due = dueBySlot.get(slot.name);
@@ -447,47 +460,58 @@ export function Home({
         <div className="mt-7">
           <SectionLabel>Quick actions</SectionLabel>
           {/* More tiles than fit: the row scrolls sideways, bleeding out to
-              both screen edges so the next one is visibly half cut off rather
-              than everything being squeezed to fit. data-no-tab-swipe keeps a
-              sideways drag here from switching tabs. */}
-          <div
-            data-no-tab-swipe
-            className="-mx-5 mt-3 flex gap-2 overflow-x-auto px-5 pb-1 [&::-webkit-scrollbar]:hidden"
-            style={{ scrollbarWidth: 'none' }}
-          >
-            {quickActions.map((id) => (
-              <div
-                key={id}
-                className="min-w-0"
-                style={
-                  quickActionsFit
-                    ? { flex: `${QUICK_ACTION_SHARE[id]} 1 0px` }
-                    : { flex: '0 0 auto', width: `${QUICK_ACTION_SHARE[id]}%` }
-                }
-              >
-                {id === 'water' && (
-                  <WaterAction
-                    count={waterCount}
-                    goal={waterGoal}
-                    unit={waterUnit}
-                    busy={waterBusy}
-                    onTap={() => handleWaterTap(1)}
-                    onLongPress={() => handleWaterTap(-1)}
-                  />
-                )}
-                {id === 'coffee' && <CoffeeAction />}
-                {id === 'steps' && (
-                  <StepsAction count={stepCount} goal={stepGoal} onTap={onLogSteps} />
-                )}
-                {id === 'weight' && (
-                  <QuickAction
-                    icon={<ScaleIcon />}
-                    label="Log weight"
-                    onClick={onLogBodyWeight}
-                  />
-                )}
-              </div>
-            ))}
+              both screen edges so the next one is visibly cut off rather than
+              everything being squeezed to fit. Each tile reads left to right,
+              so the cut one still shows its icon and the start of its value —
+              and the edge fades say there's more where that came from.
+              data-no-tab-swipe keeps a sideways drag here from switching tabs. */}
+          <div className="relative -mx-5 mt-3">
+            <div
+              data-no-tab-swipe
+              onScroll={handleRowScroll}
+              className="flex gap-2 overflow-x-auto overscroll-x-contain px-5 pb-1 [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: 'none' }}
+            >
+              {quickActions.map((id) => (
+                <div
+                  key={id}
+                  className="min-w-0"
+                  style={
+                    quickActionsFit
+                      ? { flex: `${QUICK_ACTION_SHARE[id]} 1 0px` }
+                      : { flex: '0 0 auto', width: `${QUICK_ACTION_SHARE[id]}%` }
+                  }
+                >
+                  {id === 'water' && (
+                    <WaterAction
+                      count={waterCount}
+                      goal={waterGoal}
+                      unit={waterUnit}
+                      busy={waterBusy}
+                      onTap={() => handleWaterTap(1)}
+                      onLongPress={() => handleWaterTap(-1)}
+                    />
+                  )}
+                  {id === 'coffee' && <CoffeeAction />}
+                  {id === 'steps' && (
+                    <StepsAction count={stepCount} goal={stepGoal} onTap={onLogSteps} />
+                  )}
+                  {id === 'weight' && (
+                    <QuickAction
+                      icon={<ScaleIcon />}
+                      label="Log weight"
+                      onClick={onLogBodyWeight}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+            {showRowStartFade && (
+              <span className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-paper to-transparent" />
+            )}
+            {showRowEndFade && (
+              <span className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-paper to-transparent" />
+            )}
           </div>
           {waterError && (
             <div className="mt-2 rounded-card bg-[#FFEDED] px-3 py-2 text-xs text-[#B42318]">
@@ -635,12 +659,29 @@ function QuickAction({
         hapticBuzz(12);
         onClick?.();
       }}
-      className="flex items-center justify-between rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+      className="flex w-full items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
     >
-      <span>{icon}</span>
-      <span>{label}</span>
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
     </button>
   );
+}
+
+/**
+ * Has the finger travelled far enough that this is a scroll, not a tap?
+ *
+ * The quick action tiles sit in a row that scrolls sideways, so a drag that
+ * starts on the water tile is usually someone reaching for the tile off the
+ * edge — it must not land as a drink. 8px is below what anyone holding still
+ * produces and well under the browser's own pan threshold.
+ */
+function movedOffPress(
+  origin: React.RefObject<{ x: number; y: number } | null>,
+  e: React.PointerEvent
+): boolean {
+  const o = origin.current;
+  if (!o) return false;
+  return Math.abs(e.clientX - o.x) > 8 || Math.abs(e.clientY - o.y) > 8;
 }
 
 function hapticBuzz(pattern: number | number[]) {
@@ -674,6 +715,7 @@ function CoffeeAction() {
   const [wiggleKey, setWiggleKey] = useState(0);
   const pressTimer = useRef<number | null>(null);
   const didLongPress = useRef(false);
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null);
 
   function write(next: number) {
     setCount(next);
@@ -705,12 +747,8 @@ function CoffeeAction() {
   }
 
   function start(e: React.PointerEvent<HTMLButtonElement>) {
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
     didLongPress.current = false;
+    pressOrigin.current = { x: e.clientX, y: e.clientY };
     clearTimer();
     pressTimer.current = window.setTimeout(() => {
       pressTimer.current = null;
@@ -720,7 +758,15 @@ function CoffeeAction() {
     }, 600);
   }
 
+  function move(e: React.PointerEvent<HTMLButtonElement>) {
+    if (movedOffPress(pressOrigin, e)) {
+      pressOrigin.current = null;
+      clearTimer();
+    }
+  }
+
   function end() {
+    pressOrigin.current = null;
     if (didLongPress.current) {
       didLongPress.current = false;
       return;
@@ -732,16 +778,22 @@ function CoffeeAction() {
     }
   }
 
+  function cancel() {
+    pressOrigin.current = null;
+    clearTimer();
+  }
+
   // Touch `write` so it's not flagged unused — kept for potential reset use.
   void write;
 
   return (
     <button
       onPointerDown={start}
+      onPointerMove={move}
       onPointerUp={end}
-      onPointerCancel={clearTimer}
+      onPointerCancel={cancel}
       aria-label={`Coffee count: ${count}. Tap to add, press and hold to remove.`}
-      className="flex items-center justify-between rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.97] touch-none select-none"
+      className="flex w-full touch-manipulation select-none items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.97]"
     >
       <style>{`
         @keyframes reps-coffee-wiggle {
@@ -754,7 +806,7 @@ function CoffeeAction() {
       `}</style>
       <span
         key={wiggleKey}
-        className="inline-flex origin-bottom"
+        className="inline-flex shrink-0 origin-bottom"
         style={
           wiggleKey > 0
             ? { animation: 'reps-coffee-wiggle 450ms ease-out' }
@@ -763,7 +815,7 @@ function CoffeeAction() {
       >
         <CoffeeIcon />
       </span>
-      <span className="tabular-nums">{count}</span>
+      <span className="truncate tabular-nums">{count}</span>
     </button>
   );
 }
@@ -791,16 +843,16 @@ function StepsAction({
         onTap();
       }}
       aria-label={`Steps today: ${count} of ${goal}. Opens the step log.`}
-      className="relative flex w-full items-center justify-between overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+      className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
     >
       <div
         className="absolute inset-y-0 left-0 bg-[#E4E0FF]"
         style={{ width: `${pct * 100}%`, transition: 'width 350ms cubic-bezier(.22,.85,.36,1)' }}
       />
-      <span className="relative">
-        <WalkIcon />
+      <span className="relative shrink-0">
+        <FootIcon />
       </span>
-      <span className="relative truncate pl-2 text-right tabular-nums">
+      <span className="relative truncate tabular-nums">
         {formatSteps(count)}
         <span className="text-muted">
           {reached ? ' \u2713' : ` / ${formatSteps(goal)}`}
@@ -837,6 +889,7 @@ function WaterAction({
   const pct = Math.min(1, count / Math.max(1, goal));
   const pressTimer = useRef<number | null>(null);
   const didLongPress = useRef(false);
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null);
   const reached = count >= goal;
   const prevReached = useRef(reached);
   const [celebrating, setCelebrating] = useState(false);
@@ -866,13 +919,8 @@ function WaterAction({
   }
 
   function start(e: React.PointerEvent<HTMLButtonElement>) {
-    // Capture the pointer so tiny finger movement doesn't cancel the press.
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore — older browsers may not support pointer capture
-    }
     didLongPress.current = false;
+    pressOrigin.current = { x: e.clientX, y: e.clientY };
     clearTimer();
     pressTimer.current = window.setTimeout(() => {
       pressTimer.current = null;
@@ -882,7 +930,15 @@ function WaterAction({
     }, 600);
   }
 
+  function move(e: React.PointerEvent<HTMLButtonElement>) {
+    if (movedOffPress(pressOrigin, e)) {
+      pressOrigin.current = null;
+      clearTimer();
+    }
+  }
+
   function end() {
+    pressOrigin.current = null;
     // If the long-press already fired, swallow the trailing pointerup.
     if (didLongPress.current) {
       didLongPress.current = false;
@@ -895,14 +951,20 @@ function WaterAction({
     }
   }
 
+  function cancel() {
+    pressOrigin.current = null;
+    clearTimer();
+  }
+
   return (
     <div className="relative">
       <button
         onPointerDown={start}
+        onPointerMove={move}
         onPointerUp={end}
-        onPointerCancel={clearTimer}
+        onPointerCancel={cancel}
         disabled={busy}
-        className="relative flex w-full items-center justify-between overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99] touch-none select-none"
+        className="relative flex w-full touch-manipulation select-none items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
       >
         <div
           className="absolute inset-y-0 left-0 bg-[#D6E8FF]"
@@ -914,10 +976,10 @@ function WaterAction({
           </span>
         ) : (
           <>
-            <span className="relative">
+            <span className="relative shrink-0">
               <DropletIcon />
             </span>
-            <span className="relative truncate pl-2 text-right">
+            <span className="relative truncate">
               {count} / {goal} <span className="text-muted">{unit}</span>
             </span>
           </>
@@ -1009,24 +1071,19 @@ function DropletIcon() {
   );
 }
 
-function WalkIcon() {
+function FootIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <circle cx="13.5" cy="4" r="2" stroke="currentColor" strokeWidth="1.6" />
       <path
-        d="M8 21l3-5.6-2-2.6 1-4.6 3.6-1.2 2 2.6 2.6 1.2"
+        d="M11.4 9c2.7 0 4.2 1.9 4.2 4.5 0 1.8-.7 3-.7 4.4 0 2.1-1.3 3.4-3.5 3.4s-3.5-1.3-3.5-3.4c0-1.4-.7-2.6-.7-4.4C7.2 10.9 8.7 9 11.4 9z"
         stroke="currentColor"
         strokeWidth="1.6"
-        strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path
-        d="M12 15.4l2.6 2.2.9 3.4"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <circle cx="6.8" cy="6.6" r="1.45" fill="currentColor" />
+      <circle cx="11.3" cy="4.5" r="1.55" fill="currentColor" />
+      <circle cx="15.7" cy="5.4" r="1.4" fill="currentColor" />
+      <circle cx="19" cy="7.8" r="1.25" fill="currentColor" />
     </svg>
   );
 }

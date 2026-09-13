@@ -18,15 +18,15 @@ export interface QuickActionMeta {
 export const QUICK_ACTION_META: QuickActionMeta[] = [
   { id: 'water', label: 'Water', hint: 'Tap to add, hold to remove' },
   { id: 'coffee', label: 'Coffee', hint: 'Tap to add, hold to remove' },
-  { id: 'steps', label: 'Steps', hint: "Opens today's step count" },
   { id: 'weight', label: 'Log weight', hint: 'Opens the body weight log' },
+  { id: 'steps', label: 'Steps', hint: "Opens today's step count" },
 ];
 
 const ALL_IDS: QuickActionId[] = QUICK_ACTION_META.map((a) => a.id);
 
-/** Water and coffee first because they're tapped several times a day; steps
- *  third so it peeks in from the right edge and the row reads as scrollable. */
-export const DEFAULT_QUICK_ACTIONS: QuickActionId[] = ['water', 'coffee', 'steps', 'weight'];
+/** The three tiles that were here before keep their order, with steps added on
+ *  the end — it's the one you scroll to, and the only one that isn't a tap. */
+export const DEFAULT_QUICK_ACTIONS: QuickActionId[] = ['water', 'coffee', 'weight', 'steps'];
 
 const KEY = 'reps.quickActions';
 
