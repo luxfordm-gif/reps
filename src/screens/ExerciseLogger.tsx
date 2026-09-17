@@ -42,10 +42,22 @@ import { restLabel } from '../lib/restDefaults';
 import { formatNameList, groupedSetLabel } from '../lib/supersets';
 import { getLiftWeightUnit, kgToLb, lbToKg, type MachineUnit } from '../lib/units';
 import {
+  getCachedExerciseLoadPositions,
   getCachedExerciseUnit,
+  getExerciseLoadPositions,
   getExerciseUnit,
+  isMissingProfileColumn,
+  setExerciseLoadPositions,
   setExerciseUnit,
 } from '../lib/exercisePrefsApi';
+import {
+  MAX_LOAD_POSITIONS,
+  describePoints,
+  loadedPoints,
+  parsePositionWeights,
+  readPointInputs,
+  type LoadPositions,
+} from '../lib/weightProfile';
 
 // Display: kg as stored; lb rounded to nearest 0.5 to match the input's step.
 // Pin units store and display the same number (1:1 — no physical conversion).
@@ -102,18 +114,31 @@ interface Props {
   onFeedback?: () => void;
 }
 
+/** Points 2 and 3 of a weighted profile — always this long, whatever the machine
+ *  is set to, so switching profiles never has to reshape a row mid-entry. */
+const NO_EXTRA_POINTS: string[] = ['', ''];
+
 interface SetState {
   setIndex: number;
   dropIndex: number; // 0 = main, 1+ = drop
+  /** On a weighted-profile machine this is loading point 1; on every other
+   *  machine it's simply the weight. */
   weight: string;
+  /** Loading points 2 and 3. Only the first (positions - 1) of them are shown,
+   *  read or logged — the rest are dead until the machine says otherwise. */
+  extraWeights: string[];
   reps: string;
   weightSuggested: string;
+  extraSuggested: string[];
   repsSuggested: string;
   repRangeLabel?: string;
   scheme?: 'dropset' | 'back_off' | 'muscle_round' | 'intensifier' | 'amrap';
   schemeDetail?: string;
   completed: boolean;
   loggedId?: string;
+  /** The logged row already carries a per-point breakdown, so an edit has to
+   *  keep it honest — including clearing it when the profile is turned off. */
+  loggedHasPoints?: boolean;
 }
 
 function parseTargetReps(repRange: string): number | null {
@@ -124,12 +149,50 @@ function parseTargetReps(repRange: string): number | null {
   return null;
 }
 
+/** The loading points in play for a row: point 1 is the row's own weight field,
+ *  then as many of points 2 and 3 as the machine actually has. */
+function pointInputsFor(row: SetState, positions: LoadPositions): string[] {
+  if (positions <= 1) return [row.weight];
+  return [row.weight, ...row.extraWeights.slice(0, positions - 1)];
+}
+
+/** The same shape, but last time's numbers — what a field reverts to being a
+ *  suggestion rather than something typed. */
+function pointSuggestionsFor(row: SetState, positions: LoadPositions): string[] {
+  if (positions <= 1) return [row.weightSuggested];
+  return [row.weightSuggested, ...row.extraSuggested.slice(0, positions - 1)];
+}
+
+/** Last time's load, split back over the machine's loading points and rendered in
+ *  the active unit. A set logged before this machine had a profile has no
+ *  breakdown to restore, so its whole weight lands on point 1 for the user to
+ *  spread out again. */
+function pointsFromLogged(
+  logged: LoggedSet | null | undefined,
+  unit: MachineUnit,
+  positions: LoadPositions
+): { weight: string; extras: string[] } {
+  if (!logged || logged.weight == null) {
+    return { weight: '', extras: NO_EXTRA_POINTS };
+  }
+  const fmt = (kg: number) => String(fromKg(kg, unit));
+  const breakdown =
+    positions > 1 ? parsePositionWeights(logged.position_weights, positions) : null;
+  if (!breakdown) return { weight: fmt(logged.weight), extras: NO_EXTRA_POINTS };
+  const strs = breakdown.map((n) => (n == null ? '' : fmt(n)));
+  return {
+    weight: strs[0] ?? '',
+    extras: [strs[1] ?? '', strs[2] ?? ''],
+  };
+}
+
 function buildInitialSets(
   totalSets: number,
   repRange: string,
   lastSets: LoggedSet[],
   notes: string,
-  unit: MachineUnit
+  unit: MachineUnit,
+  positions: LoadPositions
 ): SetState[] {
   const baseTarget = parseTargetReps(repRange);
   const baseTargetStr = baseTarget != null ? String(baseTarget) : '';
@@ -177,7 +240,8 @@ function buildInitialSets(
     // Main set
     const mainExact = lastSets.find((s) => s.set_index === setIndex && s.drop_index === 0);
     const mainLast = mainExact ?? nearestLast(setIndex, 0);
-    const mainWeightSugg = mainLast?.weight != null ? fmtW(mainLast.weight) : '';
+    const mainPoints = pointsFromLogged(mainLast, unit, positions);
+    const mainWeightSugg = mainPoints.weight;
     // Reps only carry over from the set this actually was last time. Borrowed
     // from a neighbouring set, the plan's target is the better suggestion.
     const mainRepsSugg =
@@ -186,8 +250,10 @@ function buildInitialSets(
       setIndex,
       dropIndex: 0,
       weight: mainWeightSugg,
+      extraWeights: mainPoints.extras,
       reps: mainRepsSugg,
       weightSuggested: mainWeightSugg,
+      extraSuggested: mainPoints.extras,
       repsSuggested: mainRepsSugg,
       repRangeLabel: mod?.repRangeOverride,
       scheme: mod?.scheme,
@@ -204,7 +270,8 @@ function buildInitialSets(
         // Same idea for a drop, but only ever from another drop at the same
         // depth — a drop is lighter than its main set by design.
         const dropLast = dropExact ?? nearestLast(setIndex, dropIndex);
-        const wSugg = dropLast?.weight != null ? fmtW(dropLast.weight) : '';
+        const dropPoints = pointsFromLogged(dropLast, unit, positions);
+        const wSugg = dropPoints.weight;
         const rSugg =
           dropExact?.reps != null
             ? String(dropExact.reps)
@@ -215,8 +282,10 @@ function buildInitialSets(
           setIndex,
           dropIndex,
           weight: wSugg,
+          extraWeights: dropPoints.extras,
           reps: rSugg,
           weightSuggested: wSugg,
+          extraSuggested: dropPoints.extras,
           repsSuggested: rSugg,
           completed: false,
         });
@@ -234,14 +303,18 @@ function buildInitialSets(
       const last = lastSets.find(
         (s) => s.set_index === lastSetIndex && s.drop_index === dropIndex
       );
-      const w = last?.weight != null ? fmtW(last.weight) : fmtW(p.weight);
+      const lastPoints = pointsFromLogged(last, unit, positions);
+      const w = last?.weight != null ? lastPoints.weight : fmtW(p.weight);
+      const extras = last?.weight != null ? lastPoints.extras : NO_EXTRA_POINTS;
       const r = last?.reps != null ? String(last.reps) : String(p.reps);
       without.push({
         setIndex: lastSetIndex,
         dropIndex,
         weight: w,
+        extraWeights: extras,
         reps: r,
         weightSuggested: w,
+        extraSuggested: extras,
         repsSuggested: r,
         completed: false,
         scheme: dropIndex === 0 ? 'intensifier' : undefined,
@@ -397,7 +470,9 @@ export function ExerciseLogger({
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
   const [shakeIdx, setShakeIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [calcOpen, setCalcOpen] = useState<number | null>(null);
+  // Which row's calculator is up, and which of its loading points it fills —
+  // point 0 on an ordinary machine, where there's only the one weight.
+  const [calcOpen, setCalcOpen] = useState<{ idx: number; point: number } | null>(null);
   // Seeded from storage so a rest started on the other half of a superset keeps
   // counting down after the handover.
   const [restEndsAt, setRestEndsAt] = useState<number | null>(
@@ -415,6 +490,12 @@ export function ExerciseLogger({
   const [unit, setUnit] = useState<MachineUnit>(() =>
     getCachedExerciseUnit(exercise.normalized_name)
   );
+  // How many numbered loading points this machine has. 1 is every ordinary
+  // machine; 2 or 3 turns each set into a per-point load that adds up to the
+  // weight that gets logged.
+  const [positions, setPositions] = useState<LoadPositions>(() =>
+    getCachedExerciseLoadPositions(exercise.normalized_name)
+  );
   // The user's usual lift unit, read once on mount. Anything else on this
   // machine is an override worth flagging — otherwise a kg-by-default user can
   // land on an lb or pin machine (via a swap, or a pref set weeks ago) and read
@@ -428,6 +509,12 @@ export function ExerciseLogger({
   useEffect(() => {
     unitRef.current = unit;
   }, [unit]);
+  // Same reason as unitRef: the load effect needs the profile that's current
+  // when it resolves, not the one captured when it started.
+  const positionsRef = useRef<LoadPositions>(positions);
+  useEffect(() => {
+    positionsRef.current = positions;
+  }, [positions]);
   const [, setNow] = useState(Date.now());
   const [displayName, setDisplayName] = useState(exercise.name);
   // Effective machine identity for logging + prefill. Starts as the plan
@@ -612,17 +699,21 @@ export function ExerciseLogger({
         prevSets.map((r) => ({
           ...r,
           weight: convertWeightStr(r.weight, prev, next),
+          extraWeights: r.extraWeights.map((w) => convertWeightStr(w, prev, next)),
           weightSuggested: convertWeightStr(r.weightSuggested, prev, next),
+          extraSuggested: r.extraSuggested.map((w) => convertWeightStr(w, prev, next)),
         }))
       );
       return next;
     });
   }
 
-  // Per-machine weight unit: instant read from cache, then reconcile with DB
-  // (in case the user set the unit on another device).
+  // This machine's preferences — the unit it logs in and how many loading points
+  // it has: instant read from the cache, then reconcile with the DB (either may
+  // have been set on another device).
   useEffect(() => {
     changeUnit(getCachedExerciseUnit(effectiveNormalized));
+    changePositions(getCachedExerciseLoadPositions(effectiveNormalized));
     let cancelled = false;
     getExerciseUnit(effectiveNormalized)
       .then((u) => {
@@ -630,6 +721,13 @@ export function ExerciseLogger({
       })
       .catch(() => {
         // Best-effort — fall back to the cached value.
+      });
+    getExerciseLoadPositions(effectiveNormalized)
+      .then((p) => {
+        if (!cancelled) changePositions(p);
+      })
+      .catch(() => {
+        // Best-effort — the cached profile stands.
       });
     return () => {
       cancelled = true;
@@ -641,6 +739,48 @@ export function ExerciseLogger({
     changeUnit(next);
     setExerciseUnit(effectiveNormalized, next).catch(() => {
       // localStorage cache already updated by setExerciseUnit; ignore DB error.
+    });
+  }
+
+  // Switching a machine's profile never loses what's already on screen: turning
+  // it off folds the points back into the one weight they added up to, and
+  // turning it on (or widening it) leaves what's typed on point 1.
+  function changePositions(next: LoadPositions) {
+    setPositions((prev) => {
+      if (prev === next) return prev;
+      if (next === 1) {
+        setSets((prevSets) =>
+          prevSets.map((r) => {
+            // Completed rows fold too: what they logged was the total, so that's
+            // the number the single weight field has to go back to showing.
+            const { total } = readPointInputs(pointInputsFor(r, prev));
+            const folded = total == null ? r.weight : String(total);
+            return {
+              ...r,
+              weight: folded,
+              extraWeights: NO_EXTRA_POINTS,
+              // Folded points are a new number, not last time's suggestion.
+              weightSuggested: folded === r.weightSuggested ? r.weightSuggested : '',
+              extraSuggested: NO_EXTRA_POINTS,
+            };
+          })
+        );
+      }
+      return next;
+    });
+  }
+
+  function handleSelectPositions(next: LoadPositions) {
+    if (next === positions) return;
+    changePositions(next);
+    setExerciseLoadPositions(effectiveNormalized, next).catch((e) => {
+      // Cached first, so the profile holds on this device either way — an
+      // ordinary failed write will sort itself out on the next one. A database
+      // without the profile columns won't, so say so rather than leave sets
+      // logging a breakdown that can never be saved.
+      if (isMissingProfileColumn(e)) {
+        setError('Weight profiles need database migration 0017 to be run first.');
+      }
     });
   }
 
@@ -818,12 +958,14 @@ export function ExerciseLogger({
         // Read the latest unit (may have been reconciled to a different
         // value by the DB after this effect kicked off).
         const u = unitRef.current;
+        const p = positionsRef.current;
         const initial = buildInitialSets(
           exercise.total_sets ?? 1,
           exercise.rep_range,
           last,
           exercise.notes ?? '',
-          u
+          u,
+          p
         );
         // Mark as completed any rows already logged in this session. The DB
         // stores kg, so convert to the active unit for display.
@@ -832,13 +974,15 @@ export function ExerciseLogger({
             (x) => x.setIndex === s.set_index && x.dropIndex === s.drop_index
           );
           if (idx >= 0) {
+            const logged = pointsFromLogged(s, u, p);
             initial[idx] = {
               ...initial[idx],
-              weight:
-                s.weight != null ? String(fromKg(s.weight, u)) : initial[idx].weight,
+              weight: s.weight != null ? logged.weight : initial[idx].weight,
+              extraWeights: s.weight != null ? logged.extras : initial[idx].extraWeights,
               reps: s.reps != null ? String(s.reps) : initial[idx].reps,
               completed: true,
               loggedId: s.id,
+              loggedHasPoints: s.position_weights != null,
             };
           }
         }
@@ -907,6 +1051,24 @@ export function ExerciseLogger({
 
   function update(idx: number, patch: Partial<SetState>) {
     setSets((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  }
+
+  /** Point 1 is the row's own weight field; 2 and 3 live in extraWeights. */
+  function updatePoint(idx: number, point: number, value: string) {
+    if (point === 0) {
+      update(idx, { weight: value });
+      return;
+    }
+    setSets((prev) =>
+      prev.map((s, i) =>
+        i === idx
+          ? {
+              ...s,
+              extraWeights: s.extraWeights.map((w, j) => (j === point - 1 ? value : w)),
+            }
+          : s
+      )
+    );
   }
 
   function triggerShake(idx: number) {
@@ -1025,18 +1187,28 @@ export function ExerciseLogger({
 
   async function handleComplete(idx: number) {
     const set = sets[idx];
-    const weightStr = set.weight.trim();
     const repsStr = set.reps.trim();
+    // On a weighted-profile machine the set's weight is the sum of its loading
+    // points; on every other machine there's a single point to read.
+    const points = readPointInputs(pointInputsFor(set, positions));
     // Weightless exercises have no weight field at all, so they log as 0.
-    const weightNum = weightless ? 0 : weightStr === '' ? NaN : parseFloat(weightStr);
+    const weightNum = weightless
+      ? 0
+      : points.invalid || points.total == null
+        ? NaN
+        : points.total;
     const repsNum = repsStr === '' ? NaN : parseInt(repsStr, 10);
     if (repsStr === '' || Number.isNaN(repsNum)) {
       setError(timed ? 'Enter how long you held it, in seconds' : 'Enter your reps');
       triggerShake(idx);
       return;
     }
-    if (!weightless && (weightStr === '' || Number.isNaN(weightNum))) {
-      setError(`Enter both weight and reps (use 0 ${unit} for body weight)`);
+    if (!weightless && Number.isNaN(weightNum)) {
+      setError(
+        positions > 1
+          ? `Enter the weight on at least one loading point (use 0 ${unit} for body weight)`
+          : `Enter both weight and reps (use 0 ${unit} for body weight)`
+      );
       triggerShake(idx);
       return;
     }
@@ -1053,13 +1225,28 @@ export function ExerciseLogger({
     }
     // DB stores kg always; convert from the active display unit at the boundary.
     const weightKg = toKg(weightNum, unit);
+    // The breakdown rides along with the total on a profile machine. An ordinary
+    // one sends nothing at all, so its sets stay exactly the rows they were.
+    const positionWeightsKg =
+      weightless || positions <= 1
+        ? null
+        : points.values.map((n) => (n == null ? null : toKg(n, unit)));
     setError(null);
     setSavingIdx(idx);
     const isEdit = !!set.loggedId;
     try {
       if (set.loggedId) {
-        await updateLoggedSet(set.loggedId, { weight: weightKg, reps: repsNum });
-        update(idx, { completed: true });
+        await updateLoggedSet(set.loggedId, {
+          weight: weightKg,
+          reps: repsNum,
+          // Only name the column when this set has something to say about it —
+          // either it's on a profile machine now, or it was when it was logged
+          // and the profile has since been turned off.
+          ...(positionWeightsKg != null || set.loggedHasPoints
+            ? { positionWeights: positionWeightsKg }
+            : {}),
+        });
+        update(idx, { completed: true, loggedHasPoints: positionWeightsKg != null });
       } else {
         const logged = await logSet({
           sessionId,
@@ -1069,9 +1256,14 @@ export function ExerciseLogger({
           setIndex: set.setIndex,
           dropIndex: set.dropIndex,
           weight: weightKg,
+          positionWeights: positionWeightsKg,
           reps: repsNum,
         });
-        update(idx, { completed: true, loggedId: logged.id });
+        update(idx, {
+          completed: true,
+          loggedId: logged.id,
+          loggedHasPoints: positionWeightsKg != null,
+        });
       }
       if (!isEdit) {
         // Auto-advance
@@ -1146,6 +1338,8 @@ export function ExerciseLogger({
               onFeedback={onFeedback}
               weightUnit={unit}
               onSelectUnit={handleSelectUnit}
+              loadPositions={positions}
+              onSelectPositions={handleSelectPositions}
             />
           }
           bottomSlot={
@@ -1178,6 +1372,14 @@ export function ExerciseLogger({
           <div className="mt-1 flex items-center gap-2">
             <span className="text-sm text-muted">{exercise.body_part}</span>
             <UnitBadge unit={unit} isOverride={unitIsOverride} />
+            {positions > 1 && (
+              <span
+                title={`Loads at ${positions} numbered points — each set logs a weight per point`}
+                className="inline-flex items-center rounded-pill bg-line px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted"
+              >
+                {positions} pts
+              </span>
+            )}
           </div>
         </div>
 
@@ -1249,12 +1451,14 @@ export function ExerciseLogger({
                 shakeIdx={shakeIdx}
                 unit={unit}
                 unitIsOverride={unitIsOverride}
+                positions={positions}
                 weightless={weightless}
                 timed={timed}
                 onChange={update}
+                onChangePoint={updatePoint}
                 onComplete={handleComplete}
                 onEdit={handleEdit}
-                onOpenCalculator={(idx) => setCalcOpen(idx)}
+                onOpenCalculator={(idx, point) => setCalcOpen({ idx, point })}
               />
             ));
           })()}
@@ -1484,10 +1688,15 @@ export function ExerciseLogger({
 
       <BarbellCalculator
         open={calcOpen !== null}
-        initialKg={calcOpen !== null ? Number(sets[calcOpen]?.weight) || undefined : undefined}
+        initialKg={
+          calcOpen !== null && sets[calcOpen.idx]
+            ? Number(pointInputsFor(sets[calcOpen.idx], positions)[calcOpen.point]) ||
+              undefined
+            : undefined
+        }
         onClose={() => setCalcOpen(null)}
         onConfirm={(kg) => {
-          if (calcOpen !== null) update(calcOpen, { weight: String(kg) });
+          if (calcOpen !== null) updatePoint(calcOpen.idx, calcOpen.point, String(kg));
         }}
       />
       {swapOpen && (
@@ -1628,6 +1837,8 @@ function ExerciseMenu({
   onFeedback,
   weightUnit,
   onSelectUnit,
+  loadPositions,
+  onSelectPositions,
 }: {
   hasNext: boolean;
   onSkip: () => void;
@@ -1641,6 +1852,9 @@ function ExerciseMenu({
   onFeedback?: () => void;
   weightUnit: MachineUnit;
   onSelectUnit: (u: MachineUnit) => void;
+  /** How many numbered loading points this machine has (1 = an ordinary one). */
+  loadPositions: LoadPositions;
+  onSelectPositions: (n: LoadPositions) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1697,6 +1911,32 @@ function ExerciseMenu({
                   {u}
                 </button>
               ))}
+            </div>
+          </div>
+          <div className="border-t border-line/60" />
+          <div className="px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+              Weight profile
+            </div>
+            <div className="mt-2 flex rounded-pill bg-line p-0.5">
+              {(Array.from(
+                { length: MAX_LOAD_POSITIONS },
+                (_, i) => i + 1
+              ) as LoadPositions[]).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => pick(() => onSelectPositions(n))}
+                  className={`flex-1 rounded-pill px-2 py-1 text-xs font-semibold uppercase tracking-wider ${
+                    loadPositions === n ? 'bg-ink text-white' : 'text-muted'
+                  }`}
+                >
+                  {n === 1 ? 'Off' : `${n} pts`}
+                </button>
+              ))}
+            </div>
+            <div className="mt-1.5 text-[11px] leading-snug text-muted">
+              For machines that load at two or three numbered points. Each set
+              takes a weight per point and logs the total.
             </div>
           </div>
           <div className="border-t border-line/60" />
@@ -2475,6 +2715,15 @@ function LastTimeRow({
   }
   const fmt = (s: LoggedSet) =>
     `${s.weight != null ? `${fromKg(s.weight, unit)} ${unit}` : '–'} × ${s.reps ?? '–'}`;
+  // A set logged on a profile machine says how that weight was spread — the
+  // point matters as much as the number when you're setting the machine up.
+  const breakdown = (s: LoggedSet): string | null => {
+    const values = parsePositionWeights(s.position_weights);
+    // Even a single loaded point is worth spelling out: which peg it was on is
+    // half of what you need to set the machine up the same way again.
+    if (!values || loadedPoints(values).length === 0) return null;
+    return describePoints(values, (kg) => String(fromKg(kg, unit)));
+  };
 
   return (
     <div className="mt-4 overflow-hidden rounded-xl bg-paper-card shadow-card">
@@ -2505,14 +2754,28 @@ function LastTimeRow({
               <li key={g.setIndex} className="text-xs text-ink">
                 {g.rows.map((r, i) =>
                   i === 0 ? (
-                    <div key={r.id} className="flex justify-between">
-                      <span className="font-semibold text-muted">Set {g.setIndex}</span>
-                      <span>{fmt(r)}</span>
+                    <div key={r.id}>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-muted">Set {g.setIndex}</span>
+                        <span>{fmt(r)}</span>
+                      </div>
+                      {breakdown(r) && (
+                        <div className="text-right text-[11px] text-muted">
+                          {breakdown(r)}
+                        </div>
+                      )}
                     </div>
                   ) : (
-                    <div key={r.id} className="flex justify-between pl-3 text-muted">
-                      <span>↳ drop</span>
-                      <span>{fmt(r)}</span>
+                    <div key={r.id}>
+                      <div className="flex justify-between pl-3 text-muted">
+                        <span>↳ drop</span>
+                        <span>{fmt(r)}</span>
+                      </div>
+                      {breakdown(r) && (
+                        <div className="text-right text-[11px] text-muted">
+                          {breakdown(r)}
+                        </div>
+                      )}
                     </div>
                   )
                 )}
@@ -2589,9 +2852,11 @@ function SetGroup({
   shakeIdx,
   unit,
   unitIsOverride,
+  positions,
   weightless,
   timed,
   onChange,
+  onChangePoint,
   onComplete,
   onEdit,
   onOpenCalculator,
@@ -2604,15 +2869,24 @@ function SetGroup({
   // Emphasises the in-field unit suffix when this machine isn't logging in the
   // user's default unit.
   unitIsOverride: boolean;
+  // 2 or 3 on a machine that loads at numbered points: the row's weight becomes
+  // the total of a per-point breakdown that opens underneath it.
+  positions: LoadPositions;
   // Bodyweight work: no weight field, and no barbell calculator to open.
   weightless: boolean;
   // Counted in seconds rather than reps.
   timed: boolean;
   onChange: (idx: number, patch: Partial<SetState>) => void;
+  onChangePoint: (idx: number, point: number, value: string) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
-  onOpenCalculator: (idx: number) => void;
+  onOpenCalculator: (idx: number, point: number) => void;
 }) {
+  // Which rows have had their points panel opened or shut by hand. Anything
+  // untouched follows the set being worked on, so the active set arrives ready
+  // to load and the ones behind it stay out of the way.
+  const [pointsOverride, setPointsOverride] = useState<Record<number, boolean>>({});
+  const multiPoint = positions > 1 && !weightless;
   const setIndex = rows[0].row.setIndex;
   const mainRow = rows[0].row;
   const hasDrops = rows.some((r) => r.row.dropIndex > 0);
@@ -2633,12 +2907,20 @@ function SetGroup({
         const isActive = !row.completed && idx === activeIndex;
         const isLastInGroup = ri === rows.length - 1;
         const shaking = shakeIdx === idx;
+        const pointValues = pointInputsFor(row, positions);
+        const pointSuggestions = pointSuggestionsFor(row, positions);
+        const points = readPointInputs(pointValues);
+        // What the set logs: every loaded point added together.
+        const totalStr = points.total == null ? '' : String(points.total);
+        const pointsOpen =
+          multiPoint && (pointsOverride[idx] ?? (idx === activeIndex && !row.completed));
+        const loaded = loadedPoints(points.values);
         // Both numbers in (weight not needed on a weightless movement) — the
         // tick darkens to say it's ready to tap.
         const ready =
           !row.completed &&
           row.reps.trim() !== '' &&
-          (weightless || row.weight.trim() !== '');
+          (weightless || (!points.invalid && points.total != null));
         const showBackOffHeader = isMain && row.scheme === 'back_off' && !!row.repRangeLabel;
         return (
           <div key={idx}>
@@ -2657,7 +2939,39 @@ function SetGroup({
               <div className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
                 {isMain ? `Set ${setIndex}` : 'Drop'}
               </div>
-            {!weightless && (
+            {!weightless && multiPoint && (
+              <>
+                {/* The row still reads "weight × reps" — the weight is just the
+                    total of the points, and tapping it opens the breakdown. */}
+                <div className="relative min-w-[76px] max-w-[112px] flex-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPointsOverride((prev) => ({ ...prev, [idx]: !pointsOpen }))
+                    }
+                    aria-expanded={pointsOpen}
+                    aria-label={`Loading points for set ${setIndex} — total ${
+                      totalStr === '' ? 'not set' : `${totalStr} ${unit}`
+                    }`}
+                    className={`flex w-full items-center rounded-xl border bg-paper py-2 pl-3 pr-7 text-left text-base font-semibold ${
+                      pointsOpen ? 'border-ink' : 'border-line'
+                    } ${row.completed ? 'text-ink/60' : totalStr === '' ? 'text-ink/40' : 'text-ink'}`}
+                  >
+                    {totalStr === '' ? '–' : totalStr}
+                  </button>
+                  <span
+                    aria-hidden
+                    className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
+                      unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
+                    }`}
+                  >
+                    {unitSuffix(unit)}
+                  </span>
+                </div>
+                <span className="shrink-0 text-xs text-muted">×</span>
+              </>
+            )}
+            {!weightless && !multiPoint && (
               <>
                 <div className="relative min-w-[76px] max-w-[112px] flex-1">
                   <input
@@ -2720,13 +3034,14 @@ function SetGroup({
               }`}
             />
             <div className="ml-auto flex shrink-0 items-center gap-3">
-              {row.completed || weightless ? (
+              {row.completed || weightless || multiPoint ? (
                 // Keeps the calculator's slot so the tick sits in the same
-                // column as every other row's.
+                // column as every other row's. On a profile machine the
+                // calculator moves into the points panel, one per point.
                 <div className="h-9 w-9" aria-hidden />
               ) : (
                 <button
-                  onClick={() => onOpenCalculator(idx)}
+                  onClick={() => onOpenCalculator(idx, 0)}
                   aria-label="Open barbell calculator"
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
                 >
@@ -2763,6 +3078,99 @@ function SetGroup({
               )}
             </div>
             </div>
+            {multiPoint && pointsOpen && (
+              <div
+                className={`bg-line/30 px-5 pb-3 pt-2.5 ${
+                  !isLastInGroup ? 'border-b border-line/60' : ''
+                }`}
+              >
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  Loading points
+                </div>
+                <div className="mt-2 space-y-2">
+                  {pointValues.map((value, point) => {
+                    const suggested = pointSuggestions[point] ?? '';
+                    const isSuggestion = value === suggested && suggested !== '';
+                    return (
+                      <div key={point} className="flex items-center gap-2.5">
+                        <span
+                          aria-hidden
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                            value.trim() === ''
+                              ? 'bg-line text-muted'
+                              : 'bg-ink text-white'
+                          }`}
+                        >
+                          {point + 1}
+                        </span>
+                        <div className="relative min-w-[76px] flex-1">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            step="0.5"
+                            value={value}
+                            disabled={row.completed}
+                            onChange={(e) => onChangePoint(idx, point, e.target.value)}
+                            onFocus={(e) => {
+                              if (isSuggestion) onChangePoint(idx, point, '');
+                              e.target.select();
+                            }}
+                            aria-label={`Weight on point ${point + 1} in ${unit}`}
+                            className={`no-spinner w-full rounded-xl border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+                              row.completed
+                                ? 'text-ink/60'
+                                : isSuggestion
+                                  ? 'text-ink/40'
+                                  : 'text-ink'
+                            }`}
+                          />
+                          <span
+                            aria-hidden
+                            className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
+                              unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
+                            }`}
+                          >
+                            {unitSuffix(unit)}
+                          </span>
+                        </div>
+                        {row.completed ? (
+                          <div className="h-9 w-9" aria-hidden />
+                        ) : (
+                          <button
+                            onClick={() => onOpenCalculator(idx, point)}
+                            aria-label={`Open the plate calculator for point ${point + 1}`}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
+                          >
+                            <CalculatorIcon />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* The number the set actually logs, on a row of its own. */}
+                <div className="mt-2.5 flex items-center justify-between border-t border-line/60 pt-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                    Total
+                  </span>
+                  <span className="text-sm font-bold text-ink">
+                    {totalStr === '' ? '–' : `${totalStr} ${unitSuffix(unit)}`}
+                  </span>
+                </div>
+              </div>
+            )}
+            {multiPoint && !pointsOpen && loaded.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPointsOverride((prev) => ({ ...prev, [idx]: true }))}
+                className={`flex w-full items-center gap-1.5 bg-line/20 px-5 py-1.5 text-left text-[11px] font-semibold text-muted active:bg-line/40 ${
+                  !isLastInGroup ? 'border-b border-line/60' : ''
+                }`}
+              >
+                <Chevron rotate={0} />
+                <span>{describePoints(points.values, (n) => String(n))}</span>
+              </button>
+            )}
           </div>
         );
       })}

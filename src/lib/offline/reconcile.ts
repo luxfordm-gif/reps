@@ -171,6 +171,7 @@ export async function reconcileRecentWorkouts(
           set_index: set.set_index,
           drop_index: set.drop_index,
           weight: set.weight,
+          position_weights: set.position_weights,
           reps: set.reps,
           hold_seconds: set.hold_seconds,
           completed_at: set.completed_at,

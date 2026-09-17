@@ -10,6 +10,7 @@ import {
   type CompletedSessionSummary,
   type LoggedSet,
 } from '../lib/sessionsApi';
+import { describePoints, parsePositionWeights } from '../lib/weightProfile';
 
 interface Props {
   onBack: () => void;
@@ -374,6 +375,11 @@ function EditableSetRow({
   const dirty =
     weight !== (set.weight != null ? String(set.weight) : '') ||
     reps !== (set.reps != null ? String(set.reps) : '');
+  // A set logged on a machine with a weighted profile carries the weight it had
+  // on each numbered loading point. This row edits the total, so a new total
+  // can't keep a split that no longer adds up to it.
+  const points = parsePositionWeights(set.position_weights);
+  const weightChanged = weight !== (set.weight != null ? String(set.weight) : '');
 
   async function save() {
     const w = weight ? parseFloat(weight) : null;
@@ -382,11 +388,20 @@ function EditableSetRow({
       setError('Reps capped at 100');
       return;
     }
+    const dropPoints = points != null && weightChanged;
     setError(null);
     setSaving(true);
     try {
-      await updateLoggedSet(set.id, { weight: w, reps: r });
-      onPatch(set.id, { weight: w, reps: r });
+      await updateLoggedSet(set.id, {
+        weight: w,
+        reps: r,
+        ...(dropPoints ? { positionWeights: null } : {}),
+      });
+      onPatch(set.id, {
+        weight: w,
+        reps: r,
+        ...(dropPoints ? { position_weights: null } : {}),
+      });
       setSavedAt(Date.now());
       window.setTimeout(() => setSavedAt((t) => (t && Date.now() - t > 1400 ? null : t)), 1500);
     } catch (e) {
@@ -399,42 +414,50 @@ function EditableSetRow({
   const label = set.drop_index > 0 ? `Set ${set.set_index} · Drop ${set.drop_index}` : `Set ${set.set_index}`;
 
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="w-20 text-xs font-semibold uppercase tracking-wider text-muted">{label}</div>
-      <input
-        type="number"
-        inputMode="decimal"
-        step="0.5"
-        value={weight}
-        onChange={(e) => setWeight(e.target.value)}
-        onFocus={(e) => e.target.select()}
-        placeholder="kg"
-        className="w-20 rounded-xl border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
-      />
-      <span className="text-xs text-muted">×</span>
-      <input
-        type="number"
-        inputMode="numeric"
-        max={100}
-        value={reps}
-        onChange={(e) => setReps(e.target.value)}
-        onFocus={(e) => e.target.select()}
-        placeholder="reps"
-        className="w-16 rounded-xl border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
-      />
-      <div className="flex-1" />
-      {error ? (
-        <span className="text-[11px] text-red-700">{error}</span>
-      ) : savedAt ? (
-        <span className="text-[11px] text-muted">Saved</span>
-      ) : (
-        <button
-          onClick={save}
-          disabled={!dirty || saving}
-          className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-semibold text-white active:opacity-80 disabled:opacity-30"
-        >
-          {saving ? '…' : 'Save'}
-        </button>
+    <div>
+      <div className="flex items-center gap-2.5">
+        <div className="w-20 text-xs font-semibold uppercase tracking-wider text-muted">{label}</div>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.5"
+          value={weight}
+          onChange={(e) => setWeight(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          placeholder="kg"
+          className="w-20 rounded-xl border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+        />
+        <span className="text-xs text-muted">×</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          max={100}
+          value={reps}
+          onChange={(e) => setReps(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          placeholder="reps"
+          className="w-16 rounded-xl border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+        />
+        <div className="flex-1" />
+        {error ? (
+          <span className="text-[11px] text-red-700">{error}</span>
+        ) : savedAt ? (
+          <span className="text-[11px] text-muted">Saved</span>
+        ) : (
+          <button
+            onClick={save}
+            disabled={!dirty || saving}
+            className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-semibold text-white active:opacity-80 disabled:opacity-30"
+          >
+            {saving ? '…' : 'Save'}
+          </button>
+        )}
+      </div>
+      {points && (
+        <div className="mt-1 pl-20 text-[11px] text-muted">
+          {describePoints(points, (kg) => `${kg} kg`)}
+          {weightChanged && ' · saving a new total clears the split'}
+        </div>
       )}
     </div>
   );

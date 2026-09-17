@@ -2,7 +2,12 @@ import { supabase, currentUserId, currentUserIdSync } from './supabase';
 import { getActivePlan, getCachedActivePlan } from './plansApi';
 import { prefetchAlternativesForExercises } from './alternativesApi';
 import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
-import { enqueue, pendingSetIds, requestFlush } from './offline/outbox';
+import {
+  enqueue,
+  pendingSetIds,
+  requestFlush,
+  type QueuedSetPatch,
+} from './offline/outbox';
 import { dropCache, newId, readCache, writeCache } from './offline/storage';
 import {
   completeLocalSession,
@@ -148,6 +153,10 @@ export interface LoggedSet {
   set_index: number;
   drop_index: number;
   weight: number | null;
+  /** Per-point breakdown of `weight` for a machine with a weighted profile —
+   *  kg per numbered loading point, null where nothing was hung. Null itself on
+   *  every set logged on an ordinary single-point machine. */
+  position_weights: (number | null)[] | null;
   reps: number | null;
   hold_seconds: number | null;
   completed_at: string;
@@ -1412,6 +1421,20 @@ async function closeStrayOpenSessions(
   }
 }
 
+/** The row as the server takes it. A set on an ordinary machine leaves
+ *  position_weights out of the payload entirely rather than sending an explicit
+ *  null, so a database that hasn't had migration 0017 run against it yet keeps
+ *  logging sets exactly as before instead of failing on an unknown column. */
+export function setInsertPayload(
+  row: LoggedSet,
+  userId: string
+): Record<string, unknown> {
+  const { position_weights, ...rest } = row;
+  const payload: Record<string, unknown> = { ...rest, user_id: userId };
+  if (position_weights != null) payload.position_weights = position_weights;
+  return payload;
+}
+
 export async function logSet(params: {
   sessionId: string;
   planExerciseId: string;
@@ -1420,6 +1443,8 @@ export async function logSet(params: {
   setIndex: number;
   dropIndex?: number;
   weight?: number | null;
+  /** Only for machines with a weighted profile; `weight` stays the total. */
+  positionWeights?: (number | null)[] | null;
   reps?: number | null;
   holdSeconds?: number | null;
 }): Promise<LoggedSet> {
@@ -1434,6 +1459,7 @@ export async function logSet(params: {
     set_index: params.setIndex,
     drop_index: params.dropIndex ?? 0,
     weight: params.weight ?? null,
+    position_weights: params.positionWeights ?? null,
     reps: params.reps ?? null,
     hold_seconds: params.holdSeconds ?? null,
     completed_at: new Date().toISOString(),
@@ -1442,7 +1468,7 @@ export async function logSet(params: {
     const data = await query(
       supabase
         .from('logged_sets')
-        .insert({ ...row, user_id: userId })
+        .insert(setInsertPayload(row, userId))
         .select()
         .single(),
       { label: 'logSet' }
@@ -1487,10 +1513,16 @@ export async function getAllSessionSets(sessionId: string): Promise<LoggedSet[]>
  *  no local copy of the row to hand back (editing an old workout with no signal). */
 export async function updateLoggedSet(
   id: string,
-  patch: { weight?: number | null; reps?: number | null; holdSeconds?: number | null }
+  patch: {
+    weight?: number | null;
+    positionWeights?: (number | null)[] | null;
+    reps?: number | null;
+    holdSeconds?: number | null;
+  }
 ): Promise<LoggedSet | null> {
-  const update: Record<string, number | null> = {};
+  const update: QueuedSetPatch = {};
   if ('weight' in patch) update.weight = patch.weight ?? null;
+  if ('positionWeights' in patch) update.position_weights = patch.positionWeights ?? null;
   if ('reps' in patch) update.reps = patch.reps ?? null;
   if ('holdSeconds' in patch) update.hold_seconds = patch.holdSeconds ?? null;
   const userId = await currentUserId();
