@@ -2023,7 +2023,7 @@ function ExerciseMenu({
             {profile.kind != null && (
               <div className="mt-2.5 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-muted">
-                  {profile.kind === 'pegs' ? 'Pegs' : 'Positions'}
+                  {profile.kind === 'pegs' ? 'Number of pegs' : 'Number of positions'}
                 </span>
                 <div className="flex items-center gap-2">
                   <StepperButton
@@ -2056,13 +2056,11 @@ function ExerciseMenu({
                 </div>
               </div>
             )}
-            <div className="mt-1.5 text-[11px] leading-snug text-muted">
-              {profile.kind === 'pegs'
-                ? 'Plates on numbered pegs, added up.'
-                : profile.kind === 'curve'
-                  ? 'One weight, on a numbered cam position.'
-                  : 'For machines that load at numbered pegs, or set a cam position.'}
-            </div>
+            {profile.kind == null && (
+              <div className="mt-1.5 text-[11px] leading-snug text-muted">
+                For machines that load at numbered pegs, or set a cam position.
+              </div>
+            )}
           </div>
           <div className="border-t border-line/60" />
           <button
