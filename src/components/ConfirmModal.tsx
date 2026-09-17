@@ -17,11 +17,11 @@ export function ConfirmModal({
 }: Props) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-6 backdrop-blur-sm"
+      className="backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-6 backdrop-blur-sm"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-card bg-paper-card p-6 shadow-card"
+        className="dialog-in w-full max-w-sm rounded-card bg-paper-card p-6 shadow-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center">
@@ -32,13 +32,13 @@ export function ConfirmModal({
         <div className="mt-6 flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
+            className="pressable flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+            className="pressable flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
           >
             {confirmLabel}
           </button>

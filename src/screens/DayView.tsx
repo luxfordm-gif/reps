@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { reorderPlanExercises, type FullPlan, type PlanExerciseRow } from '../lib/plansApi';
-import { hapticBuzz, haptics } from '../lib/haptics';
+import { haptics } from '../lib/haptics';
 import { baseDayName } from '../lib/daySlots';
 import {
   formatNameList,
@@ -118,7 +118,7 @@ export function DayView({
   async function markReferenceDone() {
     if (markingDone) return;
     setMarkingDone(true);
-    hapticBuzz(10);
+    haptics.tap();
     try {
       const sess = await createSession(day.id);
       await completeSession(sess.id);
@@ -163,7 +163,7 @@ export function DayView({
   const [saving, setSaving] = useState(false);
 
   function startEdit(group: BodyPartGroup) {
-    hapticBuzz(10);
+    haptics.tap();
     setExpanded((prev) => new Set(prev).add(group.bodyPart));
     setEditingKey(group.exercises[0]?.id ?? null);
     setDraft(group.exercises);
@@ -176,7 +176,7 @@ export function DayView({
 
   function moveDraft(from: number, to: number) {
     if (to < 0 || to >= draft.length) return;
-    hapticBuzz(10);
+    haptics.tap();
     setDraft((prev) => {
       const next = [...prev];
       const [row] = next.splice(from, 1);
@@ -209,11 +209,11 @@ export function DayView({
         )
         .sort((a, b) => a.position - b.position);
       onDayUpdate?.({ ...day, plan_exercises: nextExercises });
-      hapticBuzz([12, 40, 12]);
+      haptics.commit();
       cancelEdit();
     } catch (e) {
       console.error(e);
-      hapticBuzz([40, 30, 40]);
+      haptics.alert();
     } finally {
       setSaving(false);
     }
@@ -365,7 +365,7 @@ export function DayView({
                     <button
                       key={variant.id}
                       onClick={active ? undefined : onSwitchToSibling}
-                      className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 active:scale-[0.97] ${
+                      className={`pressable rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 ${
                         active ? 'bg-ink text-white shadow-card' : 'text-muted'
                       }`}
                     >
@@ -430,7 +430,7 @@ export function DayView({
                 type="button"
                 onClick={markReferenceDone}
                 disabled={markingDone}
-                className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+                className="pressable mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
               >
                 {markingDone ? 'Saving…' : 'Mark as done'}
               </button>
@@ -440,7 +440,7 @@ export function DayView({
 
         {!referenceOnly && (
         <button
-          className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+          className="pressable mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
           disabled={loadingSession}
           onClick={() => {
             haptics.commit();
@@ -507,7 +507,7 @@ export function DayView({
                         <button
                           onClick={() => saveEdit(group)}
                           disabled={saving}
-                          className="rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
+                          className="pressable rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
                         >
                           {saving ? 'Saving…' : 'Done'}
                         </button>
@@ -705,7 +705,7 @@ function ReorderRow({
           onClick={onUp}
           disabled={disabled || isFirst}
           aria-label="Move up"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
+          className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
         >
           <MoveArrow up />
         </button>
@@ -713,7 +713,7 @@ function ReorderRow({
           onClick={onDown}
           disabled={disabled || isLast}
           aria-label="Move down"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
+          className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
         >
           <MoveArrow />
         </button>

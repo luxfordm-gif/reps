@@ -22,7 +22,7 @@ import { requestFlush } from '../lib/offline/outbox';
 import { warmLastSetsForPlan } from '../lib/sessionsApi';
 import { useNetStatus } from '../lib/offline/net';
 import type { Profile } from '../lib/profileApi';
-import { hapticBuzz } from '../lib/haptics';
+import { haptics } from '../lib/haptics';
 
 type Day = FullPlan['training_days'][number];
 
@@ -303,7 +303,7 @@ export function Home({
             {!offline && (
               <button
                 onClick={onUploadPlan}
-                className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80"
+                className="pressable mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80"
               >
                 Upload your plan
               </button>
@@ -565,7 +565,7 @@ function OnboardingBanner({
       <button
         onClick={onDismiss}
         aria-label="Dismiss"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#7A5A00] active:bg-black/10"
+        className="pressable flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#7A5A00] active:bg-black/10"
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path
@@ -645,10 +645,10 @@ function QuickAction({
   return (
     <button
       onClick={() => {
-        hapticBuzz(12);
+        haptics.tap();
         onClick?.();
       }}
-      className="flex w-full items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+      className="pressable flex w-full items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform"
     >
       <span className="shrink-0">{icon}</span>
       <span className="whitespace-nowrap">{label}</span>
@@ -733,7 +733,7 @@ function CoffeeAction() {
     pressTimer.current = window.setTimeout(() => {
       pressTimer.current = null;
       didLongPress.current = true;
-      hapticBuzz([15, 40, 25]);
+      haptics.commit();
       bump(-1);
     }, 600);
   }
@@ -753,7 +753,7 @@ function CoffeeAction() {
     }
     if (pressTimer.current != null) {
       clearTimer();
-      hapticBuzz(10);
+      haptics.tap();
       bump(1);
     }
   }
@@ -773,7 +773,7 @@ function CoffeeAction() {
       onPointerUp={end}
       onPointerCancel={cancel}
       aria-label={`Coffee count: ${count}. Tap to add, press and hold to remove.`}
-      className="flex w-full touch-manipulation select-none items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.97]"
+      className="pressable flex w-full touch-manipulation select-none items-center gap-2.5 rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform"
     >
       <style>{`
         @keyframes reps-coffee-wiggle {
@@ -819,11 +819,11 @@ function StepsAction({
   return (
     <button
       onClick={() => {
-        hapticBuzz(12);
+        haptics.tap();
         onTap();
       }}
       aria-label={`Steps today: ${count} of ${goal}. Opens the step log.`}
-      className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+      className="pressable relative flex w-full items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform"
     >
       <div
         className={`absolute inset-y-0 left-0 ${TILE_FILL}`}
@@ -905,7 +905,7 @@ function WaterAction({
     pressTimer.current = window.setTimeout(() => {
       pressTimer.current = null;
       didLongPress.current = true;
-      hapticBuzz([15, 40, 25]);
+      haptics.commit();
       onLongPress();
     }, 600);
   }
@@ -926,7 +926,7 @@ function WaterAction({
     }
     if (pressTimer.current != null) {
       clearTimer();
-      hapticBuzz(12);
+      haptics.tap();
       onTap();
     }
   }
@@ -944,7 +944,7 @@ function WaterAction({
         onPointerUp={end}
         onPointerCancel={cancel}
         disabled={busy}
-        className="relative flex w-full touch-manipulation select-none items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform active:scale-[0.99]"
+        className="pressable relative flex w-full touch-manipulation select-none items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform"
       >
         <div
           className={`absolute inset-y-0 left-0 ${TILE_FILL}`}

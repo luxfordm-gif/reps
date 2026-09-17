@@ -124,12 +124,18 @@ h1, h2, h3, h4 {
 }
 
 @media (min-width: 640px) {
-  /* Centred rather than anchored, so it scales in from where it already is
-     instead of arriving from an edge it hasn't got. Never from scale(0) —
-     things in the world don't appear out of nothing. */
+  /* Wide enough that the sheet is centred rather than anchored, so it scales in
+     from where it already is instead of arriving from an edge it hasn't got. */
   .sheet-in {
     animation: modal-in 180ms var(--ease-snap) both;
   }
+}
+
+/* A dialog is centred at every width — it interrupts rather than arrives — so
+   it scales in wherever it is. Never from scale(0): things in the world don't
+   appear out of nothing. */
+.dialog-in {
+  animation: modal-in 180ms var(--ease-snap) both;
 }
 
 @keyframes modal-in {
@@ -174,7 +180,8 @@ h1, h2, h3, h4 {
 
   .animate-pop-in,
   .animate-rise-in,
-  .sheet-in {
+  .sheet-in,
+  .dialog-in {
     animation: reps-fade 160ms ease both;
   }
 

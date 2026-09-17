@@ -71,7 +71,7 @@ export function BottomNav({
 }: Props) {
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-40 px-4 pb-6 pt-3 transition-transform duration-300 ease-out ${
+      className={`fixed inset-x-0 bottom-0 z-40 px-4 pb-6 pt-3 transition-transform duration-pop ease-snap ${
         visible ? 'translate-y-0' : 'pointer-events-none translate-y-[140%]'
       }`}
       aria-hidden={!visible}
@@ -85,10 +85,15 @@ export function BottomNav({
           return (
             <button
               key={tab.id}
+              // No haptic here on purpose. This is the most-pressed control in
+              // the app, and a vibration motor has a spin-up time — there is no
+              // "lighter" below a few milliseconds, only on or off. Switching
+              // tabs already answers with the entire screen changing, so the
+              // buzz was adding nothing but wear.
               onClick={() => onChange?.(tab.id)}
               aria-label={tab.label}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex h-11 items-center justify-center rounded-pill transition-colors ${
+              className={`pressable flex h-11 items-center justify-center rounded-pill transition-colors ${
                 isActive ? 'bg-white text-ink' : 'text-white/65 active:text-white'
               }`}
             >
@@ -101,7 +106,7 @@ export function BottomNav({
             onClick={onFeedback}
             aria-label="Send feedback"
             title="Send feedback"
-            className="flex h-11 items-center justify-center rounded-pill text-white/65 transition-colors active:bg-white/10 active:text-white"
+            className="pressable flex h-11 items-center justify-center rounded-pill text-white/65 transition-colors active:bg-white/10 active:text-white"
           >
             <ChatIcon />
           </button>

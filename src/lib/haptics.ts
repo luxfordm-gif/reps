@@ -15,6 +15,11 @@ export function hapticBuzz(pattern: number | number[]) {
  *
  * Android fires these through the Vibration API. iOS Safari has no equivalent,
  * so there the visual press feedback is doing the whole job.
+ *
+ * There is no fifth, lighter one. A vibration motor has to spin up, so below a
+ * few milliseconds the hardware stops distinguishing — asking for 1ms and 5ms
+ * feel the same. When `tick` is too much for a control, the answer is no haptic
+ * at all, not a smaller number. The tab bar is the standing example.
  */
 export const haptics = {
   /** The lightest one: a selection moving. A chip, a unit, a stepper, a set
