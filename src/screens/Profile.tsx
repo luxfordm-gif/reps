@@ -148,7 +148,7 @@ export function Profile({
             )}
             <button
               onClick={plan && onOpenPlans ? onOpenPlans : onUploadPlan}
-              className="mt-4 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+              className="pressable mt-4 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
             >
               {plan ? 'Switch or manage plans' : 'Upload plan'}
             </button>
@@ -404,7 +404,7 @@ function MoveButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-7 w-7 items-center justify-center rounded-full bg-paper text-ink active:bg-line disabled:opacity-25"
+      className="pressable flex h-7 w-7 items-center justify-center rounded-full bg-paper text-ink active:bg-line disabled:opacity-25"
     >
       <svg
         width="12"
@@ -973,7 +973,7 @@ function EnumEditor<T extends string>({
       <button
         onClick={() => draft && onSave(draft)}
         disabled={busy || !draft || draft === value}
-        className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+        className="pressable mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
       >
         {busy ? 'Saving…' : 'Save'}
       </button>
@@ -1036,7 +1036,7 @@ function MultiEnumEditor<T extends string>({
       <button
         onClick={() => onSave(draft)}
         disabled={busy || sameAsValue}
-        className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+        className="pressable mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
       >
         {busy ? 'Saving…' : 'Save'}
       </button>
@@ -1071,7 +1071,7 @@ function DobEditor({
       <button
         onClick={() => draft && onSave(draft)}
         disabled={busy || !draft || draft === value}
-        className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+        className="pressable mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
       >
         {busy ? 'Saving…' : 'Save'}
       </button>
@@ -1164,7 +1164,7 @@ function WeightEditor({
       <button
         onClick={() => draftKg != null && onSave(parseFloat(draftKg.toFixed(2)))}
         disabled={busy || draftKg == null}
-        className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+        className="pressable mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
       >
         {busy ? 'Saving…' : 'Save'}
       </button>
@@ -1254,7 +1254,7 @@ function HeightEditor({
       <button
         onClick={() => draftCm != null && onSave(parseFloat(draftCm.toFixed(1)))}
         disabled={busy || draftCm == null}
-        className="mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+        className="pressable mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
       >
         {busy ? 'Saving…' : 'Save'}
       </button>

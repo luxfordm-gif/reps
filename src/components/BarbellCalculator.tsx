@@ -16,7 +16,7 @@ import {
   addCustomPlate,
   type Bar,
 } from '../lib/barbell';
-import { hapticBuzz } from '../lib/haptics';
+import { haptics } from '../lib/haptics';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
 
@@ -76,7 +76,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('reps.calc.outputMode', m);
     }
-    hapticBuzz(8);
+    haptics.tick();
   }
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
     if (id === 'custom') {
       setBarId('custom');
       setCustomBarDraft(customBarKg ? String(customBarKg) : '');
-      hapticBuzz(8);
+      haptics.tick();
       return;
     }
     setBarId(id);
@@ -140,7 +140,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         window.localStorage.setItem('reps.calc.outputMode', next);
       }
     }
-    hapticBuzz(8);
+    haptics.tick();
   }
 
   function commitCustomBar(raw: string) {
@@ -153,17 +153,17 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
 
   function addPlate(kg: number) {
     setPlates((p) => addPlateTo(p, kg));
-    hapticBuzz(12);
+    haptics.tick();
   }
 
   function removePlateAt(arrayIndex: number) {
     setPlates((p) => removePlateAtIndex(p, arrayIndex));
-    hapticBuzz(10);
+    haptics.tick();
   }
 
   function removeOneOfSize(kg: number) {
     setPlates((p) => removeOneOfSizeFrom(p, kg));
-    hapticBuzz(10);
+    haptics.tick();
   }
 
   function editQuantityForSize(kg: number) {
@@ -173,7 +173,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
     const n = Math.max(0, Math.min(20, Math.floor(Number(raw))));
     if (!Number.isFinite(n)) return;
     setPlates((p) => setQuantityOfSize(p, kg, n));
-    hapticBuzz(12);
+    haptics.tick();
   }
 
   function addCustomPlatePrompt() {
@@ -190,7 +190,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
     // A peg's "None" is a fact about the machine, not a bar the user picked, so
     // it never becomes the default they meet on their next barbell lift.
     if (!barless) setLastBarId(barId);
-    hapticBuzz([10, 30, 10]);
+    haptics.commit();
     const chosen =
       outputMode === 'oneSide' ? oneSide : outputMode === 'withoutBar' ? oneSide * 2 : total;
     onConfirm(chosen);
@@ -251,7 +251,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
           <button
             onClick={onClose}
             aria-label="Close"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-ink active:opacity-70"
+            className="pressable flex h-9 w-9 items-center justify-center rounded-full text-ink active:opacity-70"
           >
             <CloseIcon />
           </button>
@@ -360,7 +360,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
             ))}
             <button
               onClick={addCustomPlatePrompt}
-              className="flex h-14 w-14 flex-col items-center justify-center justify-self-center rounded-full border border-dashed border-line text-ink active:opacity-70"
+              className="pressable flex h-14 w-14 flex-col items-center justify-center justify-self-center rounded-full border border-dashed border-line text-ink active:opacity-70"
               aria-label="Add custom plate"
             >
               <PlusIcon />
@@ -402,7 +402,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         <div className="sticky bottom-0 mt-3 bg-paper px-4 pb-4 pt-2">
           <button
             onClick={handleConfirm}
-            className="w-full rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
+            className="pressable w-full rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
           >
             Confirm weight
           </button>
@@ -561,7 +561,7 @@ function Chip({
       onPointerUp={end}
       onPointerLeave={cancel}
       onPointerCancel={cancel}
-      className="flex items-center justify-between rounded-pill border border-line bg-paper-card px-2 py-1 text-xs active:opacity-70"
+      className="pressable flex items-center justify-between rounded-pill border border-line bg-paper-card px-2 py-1 text-xs active:opacity-70"
       aria-label={`${count} ${formatKg(kg)}kg plates — tap to remove one`}
     >
       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ink text-label font-bold text-white">

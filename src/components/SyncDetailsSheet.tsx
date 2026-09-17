@@ -52,11 +52,11 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
+        className="sheet-in max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -89,7 +89,7 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
                     discardEntry(entry.id);
                     refresh();
                   }}
-                  className="shrink-0 rounded-pill border border-line px-3 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
+                  className="pressable shrink-0 rounded-pill border border-line px-3 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
                 >
                   Discard
                 </button>
@@ -106,7 +106,7 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
         <div className="mt-6 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
+            className="pressable flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             Close
           </button>
@@ -115,7 +115,7 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
               retryAllNow();
               refresh();
             }}
-            className="flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+            className="pressable flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
           >
             Retry now
           </button>

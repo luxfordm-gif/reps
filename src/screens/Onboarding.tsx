@@ -277,7 +277,7 @@ function StepShell({
         {onBack ? (
           <button
             onClick={onBack}
-            className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
+            className="pressable -ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
             aria-label="Back"
           >
             <BackIcon />
@@ -298,7 +298,7 @@ function StepShell({
       </div>
       <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-line">
         <div
-          className="h-full rounded-full bg-ink transition-all duration-300"
+          className="h-full rounded-full bg-ink transition-[width] duration-sheet ease-snap"
           style={{ width: `${Math.round(progress * 100)}%` }}
         />
       </div>
@@ -342,7 +342,7 @@ function ContinueFooter({
       <button
         onClick={onContinue}
         disabled={!canContinue || busy}
-        className="w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+        className="pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
       >
         {busy ? 'Please wait…' : label}
       </button>
@@ -733,7 +733,7 @@ function StepExperience({
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`flex w-full items-center justify-between rounded-card px-5 py-4 text-left transition-all active:opacity-80 ${
+            className={`flex w-full items-center justify-between rounded-card px-5 py-4 text-left transition-colors duration-pop active:opacity-80 ${
               value === opt.value
                 ? 'border-2 border-ink bg-paper-card shadow-card'
                 : 'border border-line bg-paper-card'
@@ -798,7 +798,7 @@ function ReadyScreen({
           <button
             onClick={onFinish}
             disabled={busy}
-            className="w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+            className="pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
           >
             {busy ? 'Please wait…' : 'Get started'}
           </button>
@@ -833,7 +833,7 @@ function TileOption({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center justify-between rounded-card px-5 py-4 text-left transition-all active:opacity-80 ${
+      className={`flex w-full items-center justify-between rounded-card px-5 py-4 text-left transition-colors duration-pop active:opacity-80 ${
         selected
           ? 'border-2 border-ink bg-paper-card shadow-card'
           : 'border border-line bg-paper-card'

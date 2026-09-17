@@ -38,7 +38,7 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
           <h2 className="text-lg font-bold tracking-tight text-ink">{title}</h2>
           <button
             onClick={onClose}
-            className="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+            className="pressable -mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
             aria-label="Close"
           >
             <CloseIcon />
@@ -216,7 +216,7 @@ export function ExerciseEditorSheet({
         <button
           type="submit"
           disabled={!canSave}
-          className="mt-2 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+          className="pressable mt-2 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
         >
           Save
         </button>
@@ -330,7 +330,7 @@ export function DayEditorSheet({
         <button
           type="submit"
           disabled={!canSave}
-          className="mt-2 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+          className="pressable mt-2 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
         >
           Save
         </button>

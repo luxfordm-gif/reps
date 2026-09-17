@@ -74,7 +74,7 @@ export function SetNewPassword({ onDone }: Props) {
             <button
               type="submit"
               disabled={busy}
-              className="mt-2 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+              className="pressable mt-2 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
             >
               {busy ? 'Saving…' : 'Update password'}
             </button>
