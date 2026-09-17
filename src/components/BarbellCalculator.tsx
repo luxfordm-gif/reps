@@ -88,8 +88,17 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
       setBarId(wanted);
       setOutputMode((m) => (validModesFor(wanted).includes(m) ? m : defaultModeFor(wanted)));
       setRender(true);
-      const id = requestAnimationFrame(() => setVisible(true));
-      return () => cancelAnimationFrame(id);
+  // Two frames, not one: a single requestAnimationFrame fires before the browser
+  // has painted the closed state, so the transition can start from wherever the
+  // style recalc landed — which looks like the sheet jumping in partway.
+      let inner = 0;
+      const outer = requestAnimationFrame(() => {
+        inner = requestAnimationFrame(() => setVisible(true));
+      });
+      return () => {
+        cancelAnimationFrame(outer);
+        cancelAnimationFrame(inner);
+      };
     }
     setVisible(false);
     const t = setTimeout(() => setRender(false), 300);
@@ -208,7 +217,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
 
   return (
     <div
-      className={`fixed inset-x-0 z-50 transition-opacity duration-300 ${
+      className={`fixed inset-x-0 z-50 transition-opacity duration-sheet ease-snap ${
         visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
       style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
@@ -217,8 +226,11 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
     >
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
       <div
-        className={`absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-card bg-paper shadow-card transition-transform duration-300 ease-out ${
-          visible ? 'translate-y-0' : 'translate-y-full'
+        // A fixed rise, not its own height: this sheet grows as the plates
+        // render and re-measures against the visual viewport when the keyboard
+        // comes up, so a percentage travel is chasing a moving target.
+        className={`absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-card bg-paper shadow-card transition-transform duration-sheet ease-snap ${
+          visible ? 'translate-y-0' : 'translate-y-7'
         }`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         onClick={(e) => e.stopPropagation()}

@@ -2266,11 +2266,22 @@ function AlternativeSheet({
   onAdd: () => void;
   onClose: () => void;
 }) {
-  // Slide the panel up on mount for a native sheet feel.
+  // Rises into place on mount. A fixed distance rather than its own height:
+  // the list inside it renders as it opens, and a percentage travel measured
+  // against a height that's still changing is what makes a sheet lurch.
   const [shown, setShown] = useState(false);
+  // Two frames, not one: a single requestAnimationFrame fires before the browser
+  // has painted the closed state, so the transition can start from wherever the
+  // style recalc landed — which looks like the sheet jumping in partway.
   useEffect(() => {
-    const id = window.requestAnimationFrame(() => setShown(true));
-    return () => window.cancelAnimationFrame(id);
+    let inner = 0;
+    const outer = window.requestAnimationFrame(() => {
+      inner = window.requestAnimationFrame(() => setShown(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(outer);
+      window.cancelAnimationFrame(inner);
+    };
   }, []);
 
   return (
@@ -2281,8 +2292,8 @@ function AlternativeSheet({
       onClick={onClose}
     >
       <div
-        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 transition-transform duration-sheet ease-sheet sm:rounded-card ${
-          shown ? 'translate-y-0' : 'translate-y-full'
+        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 transition-transform duration-sheet ease-snap sm:rounded-card ${
+          shown ? 'translate-y-0' : 'translate-y-7'
         }`}
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
