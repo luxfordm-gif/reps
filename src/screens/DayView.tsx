@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { reorderPlanExercises, type FullPlan, type PlanExerciseRow } from '../lib/plansApi';
-import { hapticBuzz } from '../lib/haptics';
+import { hapticBuzz, haptics } from '../lib/haptics';
 import { baseDayName } from '../lib/daySlots';
 import {
   formatNameList,
@@ -443,6 +443,7 @@ export function DayView({
           className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
           disabled={loadingSession}
           onClick={() => {
+            haptics.commit();
             if (inProgress) {
               const target =
                 exercises[inProgress.lastExerciseIdx] ?? groups[0]?.exercises[0];

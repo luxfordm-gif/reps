@@ -38,6 +38,7 @@ import BarbellCalculator from '../components/BarbellCalculator';
 import { SyncStatus } from '../components/SyncStatus';
 import { findCloseMatch, type SimilarityCandidate } from '../lib/stringSimilarity';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
+import { haptics } from '../lib/haptics';
 import { restLabel } from '../lib/restDefaults';
 import { formatNameList, groupedSetLabel } from '../lib/supersets';
 import { getLiftWeightUnit, kgToLb, lbToKg, type MachineUnit } from '../lib/units';
@@ -1124,6 +1125,7 @@ export function ExerciseLogger({
 
   /** Pick (or unpick) the cam position a set was lifted at. */
   function selectCurve(idx: number, point: number) {
+    haptics.select();
     setSets((prev) =>
       prev.map((s, i) =>
         i === idx ? { ...s, curvePoint: s.curvePoint === point ? null : point } : s
@@ -1133,17 +1135,12 @@ export function ExerciseLogger({
 
   function triggerShake(idx: number) {
     setShakeIdx(idx);
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-      try {
-        navigator.vibrate([40, 30, 40]);
-      } catch {
-        // ignore
-      }
-    }
+    haptics.alert();
     window.setTimeout(() => setShakeIdx((cur) => (cur === idx ? null : cur)), 380);
   }
 
   function handleEdit(idx: number) {
+    haptics.tap();
     setError(null);
     clearRest();
     update(idx, { completed: false });
@@ -1312,6 +1309,7 @@ export function ExerciseLogger({
             ? { positionWeights: positionWeightsKg }
             : {}),
         });
+        haptics.commit();
         update(idx, { completed: true, loggedHasPoints: positionWeightsKg != null });
       } else {
         const logged = await logSet({
@@ -1325,6 +1323,7 @@ export function ExerciseLogger({
           positionWeights: positionWeightsKg,
           reps: repsNum,
         });
+        haptics.commit();
         update(idx, {
           completed: true,
           loggedId: logged.id,
@@ -1955,6 +1954,7 @@ function ExerciseMenu({
   }, [open]);
 
   function pick(fn: () => void) {
+    haptics.select();
     setOpen(false);
     fn();
   }
@@ -1962,7 +1962,10 @@ function ExerciseMenu({
   return (
     <div ref={rootRef} className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          haptics.tap();
+          setOpen((v) => !v);
+        }}
         aria-label="More options"
         className="pressable flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
       >
