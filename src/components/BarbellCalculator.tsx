@@ -23,6 +23,9 @@ import { useVisualViewport } from '../lib/useVisualViewport';
 type Props = {
   open: boolean;
   initialKg?: number;
+  /** True on a machine with a weight profile: plates go straight onto a peg, or
+   *  the weight is a stack, so there's no bar in the sum. */
+  barless?: boolean;
   onClose: () => void;
   onConfirm: (totalKg: number) => void;
 };
@@ -53,7 +56,7 @@ function defaultModeFor(barId: string): OutputMode {
   return 'withBar';
 }
 
-export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
+export default function BarbellCalculator({ open, barless, onClose, onConfirm }: Props) {
   const [barId, setBarId] = useState<string>(() => getLastBarId() ?? 'mens');
   const [customBarKg, setCustomBarKgState] = useState<number | null>(() => getCustomBarKg());
   const [plates, setPlates] = useState<number[]>([]);
@@ -78,6 +81,12 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
 
   useEffect(() => {
     if (open) {
+      // Opening on a peg means no bar to account for, so the picker starts on
+      // None rather than whatever bar was last used on a barbell lift — and
+      // going back to a barbell exercise picks that bar up again.
+      const wanted = barless ? 'none' : (getLastBarId() ?? 'mens');
+      setBarId(wanted);
+      setOutputMode((m) => (validModesFor(wanted).includes(m) ? m : defaultModeFor(wanted)));
       setRender(true);
       const id = requestAnimationFrame(() => setVisible(true));
       return () => cancelAnimationFrame(id);
@@ -85,7 +94,7 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
     setVisible(false);
     const t = setTimeout(() => setRender(false), 300);
     return () => clearTimeout(t);
-  }, [open]);
+  }, [open, barless]);
 
   // The page behind stays put while the sheet is up, and the sheet sits in
   // whatever the keyboard has left of the viewport rather than under it —
@@ -169,7 +178,9 @@ export default function BarbellCalculator({ open, onClose, onConfirm }: Props) {
   }
 
   function handleConfirm() {
-    setLastBarId(barId);
+    // A peg's "None" is a fact about the machine, not a bar the user picked, so
+    // it never becomes the default they meet on their next barbell lift.
+    if (!barless) setLastBarId(barId);
     hapticBuzz([10, 30, 10]);
     const chosen =
       outputMode === 'oneSide' ? oneSide : outputMode === 'withoutBar' ? oneSide * 2 : total;

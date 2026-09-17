@@ -1,13 +1,19 @@
-// Tests for weighted profiles: reading a machine's loading points out of the
-// logger's inputs, adding them up into the weight a set logs, and putting a
-// logged breakdown back on the right pegs.
+// Tests for weight profiles: reading a machine's profile, reading its loading
+// points out of the logger's inputs, adding them up into the weight a set logs,
+// and putting a logged breakdown back on the right pegs or cam position.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-weight-profile.mjs
 import {
-  MAX_LOAD_POSITIONS,
+  MAX_PROFILE_POSITIONS,
+  MIN_PROFILE_POSITIONS,
+  clampPositions,
+  curveBreakdown,
+  curvePointOf,
   describePoints,
-  isMultiPoint,
+  hasCurve,
+  hasPegs,
   loadedPoints,
-  parseLoadPositions,
+  parseProfile,
+  parseProfileKind,
   parsePositionWeights,
   readPointInputs,
   resizePoints,
@@ -26,17 +32,37 @@ function check(label, actual, expected) {
   }
 }
 
-console.log('\n=== how many points a machine has ===');
+console.log('\n=== what profile a machine has ===');
 {
-  check('nothing stored is an ordinary machine', parseLoadPositions(null), 1);
-  check('a number comes back as itself', parseLoadPositions(3), 3);
-  check('the cache stores it as a string', parseLoadPositions('2'), 2);
-  check('anything past the third peg is not a profile', parseLoadPositions(4), 1);
-  check('nor is junk', parseLoadPositions('sometimes'), 1);
-  check('three is as many as a machine gets', MAX_LOAD_POSITIONS, 3);
-  check('one point is not a profile', isMultiPoint(1), false);
-  check('two is', isMultiPoint(2), true);
-  check('neither is a machine with no preference', isMultiPoint(null), false);
+  check('an untagged machine has none', parseProfile(null, null), { kind: null, positions: 1 });
+  check('pegs come back with their count', parseProfile('pegs', 3), { kind: 'pegs', positions: 3 });
+  check('so does a curve', parseProfile('curve', 6), { kind: 'curve', positions: 6 });
+  check(
+    'a count with no kind is a machine tagged before curves existed',
+    parseProfile(null, 3),
+    { kind: 'pegs', positions: 3 }
+  );
+  check('a count of one is no profile at all', parseProfile(null, 1), { kind: null, positions: 1 });
+  check(
+    'a kind with no count gets the usual three',
+    parseProfile('curve', null),
+    { kind: 'curve', positions: 3 }
+  );
+  check('a made-up kind is not a profile', parseProfileKind('springs'), null);
+  check('pegs need more than one to be pegs', hasPegs({ kind: 'pegs', positions: 1 }), false);
+  check('two pegs are pegs', hasPegs({ kind: 'pegs', positions: 2 }), true);
+  check('a curve is not pegs', hasPegs({ kind: 'curve', positions: 3 }), false);
+  check('and pegs are not a curve', hasCurve({ kind: 'pegs', positions: 3 }), false);
+}
+
+console.log('\n=== how many positions ===');
+{
+  check('a machine cannot have fewer than two', clampPositions(1), MIN_PROFILE_POSITIONS);
+  check('a Strive-sized six is fine', clampPositions(6), 6);
+  check('a fat-fingered sixty is not', clampPositions(60), MAX_PROFILE_POSITIONS);
+  check('the cache stores it as a string', clampPositions('5'), 5);
+  check('junk falls back to the default', clampPositions('four'), 3);
+  check('a half position is rounded', clampPositions(4.4), 4);
 }
 
 console.log('\n=== adding the points up ===');
@@ -68,7 +94,7 @@ console.log('\n=== reading the logger\'s inputs ===');
   check('an ordinary machine is just the one point', single.total, 40);
 }
 
-console.log('\n=== which pegs are carrying weight ===');
+console.log('\n=== which positions are carrying weight ===');
 {
   check('the loaded ones, by their numbers', loadedPoints([10, null, 20]), [1, 3]);
   check('an empty machine has none', loadedPoints([null, null, null]), []);
@@ -92,15 +118,34 @@ console.log('\n=== restoring a logged breakdown ===');
   check('junk in the column is ignored', parsePositionWeights('not json'), null);
   check('a short array grows to the machine', parsePositionWeights([10], 3), [10, null, null]);
   check(
-    'a fourth peg from somewhere is dropped',
+    'a machine with four pegs keeps all four',
     parsePositionWeights([10, 5, 20, 99]),
-    [10, 5, 20]
+    [10, 5, 20, 99]
   );
+  check(
+    'but nothing past the cap survives',
+    parsePositionWeights([1, 2, 3, 4, 5, 6, 7, 8, 9]).length,
+    MAX_PROFILE_POSITIONS
+  );
+}
+
+console.log('\n=== a curve is a breakdown with one position ===');
+{
+  check(
+    'the whole weight goes on the chosen position',
+    curveBreakdown(6, 3, 30),
+    [null, null, null, 30, null, null]
+  );
+  check('and that is still the set\'s weight', sumPoints(curveBreakdown(6, 3, 30)), 30);
+  check('which position it was reads back', curvePointOf(curveBreakdown(6, 3, 30)), 3);
+  check('the first position is zero, not one', curvePointOf([30, null, null]), 0);
+  check('a set on no position has none', curvePointOf(null), null);
+  check('and a pegs load is not a curve', curvePointOf([10, null, 20]), null);
 }
 
 console.log('\n=== changing the profile ===');
 {
-  check('widening leaves the new points empty', resizePoints(['10'], 3, ''), ['10', '', '']);
+  check('widening leaves the new positions empty', resizePoints(['10'], 3, ''), ['10', '', '']);
   check('narrowing drops what it cannot hold', resizePoints(['10', '5', '20'], 2, ''), ['10', '5']);
 }
 
