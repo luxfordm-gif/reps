@@ -176,14 +176,6 @@ export function Login() {
                   onClick={() => handleOAuth('google')}
                 />
                 <ProviderButton
-                  icon={<AppleIcon />}
-                  label="Continue with Apple"
-                  loadingLabel="Redirecting…"
-                  busy={oauthBusy === 'apple'}
-                  disabled={!!oauthBusy}
-                  onClick={() => handleOAuth('apple')}
-                />
-                <ProviderButton
                   icon={<MailIcon />}
                   label="Continue with email"
                   busy={false}
@@ -396,8 +388,11 @@ function PrimaryButton({
 //   3. Supabase → Authentication → Providers → Google: paste the Client ID
 //      and Client Secret, enable.
 //
-//   Apple
-//   -----
+//   Apple — not offered
+//   -------------------
+//   There is no Apple button, because Sign in with Apple needs a paid Apple
+//   Developer Program membership and this app doesn't have one. The code path
+//   still handles 'apple', so bringing it back is putting the button back plus:
 //   1. Apple Developer → Identifiers → Services ID (e.g. com.reps.web) with
 //      "Sign In with Apple" enabled. Return URL is the Supabase callback above.
 //   2. Create a Key with "Sign In with Apple" enabled, download the .p8.
@@ -473,13 +468,6 @@ function GoogleIcon() {
   );
 }
 
-function AppleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true">
-      <path d="M13.66 9.46c-.02-2.07 1.69-3.06 1.77-3.11-.96-1.4-2.46-1.59-2.99-1.61-1.27-.13-2.48.75-3.13.75-.65 0-1.65-.73-2.71-.71-1.39.02-2.68.81-3.4 2.06-1.45 2.52-.37 6.24 1.04 8.28.69.99 1.5 2.11 2.56 2.07 1.03-.04 1.42-.66 2.66-.66 1.24 0 1.59.66 2.68.64 1.11-.02 1.81-1.01 2.49-2 .79-1.15 1.12-2.27 1.13-2.33-.02-.01-2.17-.83-2.2-3.28zM11.71 3.42c.57-.69.95-1.65.85-2.6-.82.03-1.81.55-2.4 1.24-.53.61-.99 1.59-.87 2.53.91.07 1.85-.46 2.42-1.17z" />
-    </svg>
-  );
-}
 
 function MailIcon() {
   return (

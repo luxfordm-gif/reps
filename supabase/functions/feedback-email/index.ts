@@ -72,10 +72,17 @@ function escapeHtml(s: string): string {
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
 
-  // The database is the only legitimate caller. Anyone else who finds the URL
-  // gets nothing, and can't make us email ourselves junk.
+  // The database is the only legitimate caller. This function is deployed with
+  // --no-verify-jwt, so the shared secret is the whole of its authentication:
+  // if it isn't configured, the endpoint is open to anyone who finds the URL,
+  // and they can make us email ourselves anything. So a missing secret refuses
+  // the request rather than waving it through.
   const expected = Deno.env.get('FEEDBACK_WEBHOOK_SECRET');
-  if (expected && req.headers.get('x-webhook-secret') !== expected) {
+  if (!expected) {
+    console.error('FEEDBACK_WEBHOOK_SECRET is not set — refusing every request');
+    return new Response('not configured', { status: 503 });
+  }
+  if (req.headers.get('x-webhook-secret') !== expected) {
     return new Response('forbidden', { status: 403 });
   }
 
