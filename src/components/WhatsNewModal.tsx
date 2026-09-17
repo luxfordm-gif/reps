@@ -8,11 +8,11 @@ interface Props {
 export function WhatsNewModal({ entry, onDismiss }: Props) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-6 backdrop-blur-sm"
+      className="backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-6 backdrop-blur-sm"
       onClick={onDismiss}
     >
       <div
-        className="w-full max-w-sm rounded-card bg-paper-card p-6 shadow-card"
+        className="dialog-in w-full max-w-sm rounded-card bg-paper-card p-6 shadow-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center">
@@ -33,7 +33,7 @@ export function WhatsNewModal({ entry, onDismiss }: Props) {
         </ul>
         <button
           onClick={onDismiss}
-          className="mt-6 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+          className="pressable mt-6 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
         >
           Got it
         </button>

@@ -121,7 +121,7 @@ export function Login() {
           {showBack && (
             <button
               onClick={handleBack}
-              className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
+              className="pressable -ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
               aria-label="Back"
             >
               <BackIcon />
@@ -376,7 +376,7 @@ function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="mt-2 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+      className="pressable mt-2 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
     >
       {busy ? 'Please wait…' : children}
     </button>
@@ -428,7 +428,7 @@ function ProviderButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center justify-center gap-3 rounded-pill border border-line bg-paper-card py-3.5 text-base font-semibold text-ink transition-opacity active:opacity-80 disabled:opacity-50"
+      className="pressable flex w-full items-center justify-center gap-3 rounded-pill border border-line bg-paper-card py-3.5 text-base font-semibold text-ink transition-opacity active:opacity-80 disabled:opacity-50"
     >
       {icon}
       <span>{busy && loadingLabel ? loadingLabel : label}</span>

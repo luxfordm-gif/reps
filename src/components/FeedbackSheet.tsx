@@ -127,7 +127,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
               <h2 className="text-lg font-bold tracking-tight text-ink">Send feedback</h2>
               <button
                 onClick={onClose}
-                className="-mr-2 -mt-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+                className="pressable -mr-2 -mt-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
                 aria-label="Close"
               >
                 <CloseIcon />
@@ -209,7 +209,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
             <button
               onClick={handleSend}
               disabled={!message.trim() || status === 'sending'}
-              className="mt-4 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+              className="pressable mt-4 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
             >
               {status === 'sending' ? 'Sending…' : 'Send feedback'}
             </button>

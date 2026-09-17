@@ -28,7 +28,7 @@ export function Splash({ visible }: Props) {
       style={{
         opacity: visible ? 1 : 0,
         pointerEvents: visible ? 'auto' : 'none',
-        transition: 'opacity 280ms ease-out',
+        transition: 'opacity 280ms cubic-bezier(0.23, 1, 0.32, 1)',
       }}
     >
       <style>{`

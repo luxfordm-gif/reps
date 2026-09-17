@@ -312,7 +312,7 @@ export function Machines({ onBack }: Props) {
                   );
                   setConfirmDelete(rows);
                 }}
-                className="rounded-pill border border-danger-line bg-paper-card px-4 py-2 text-sm font-semibold text-danger-strong active:bg-danger-soft"
+                className="pressable rounded-pill border border-danger-line bg-paper-card px-4 py-2 text-sm font-semibold text-danger-strong active:bg-danger-soft"
               >
                 Delete…
               </button>
@@ -653,7 +653,7 @@ function MachineEditModal({
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
-              className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
+              className="pressable flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
             >
               Cancel
             </button>
@@ -666,7 +666,7 @@ function MachineEditModal({
                 needsUnitChoice ||
                 (unitChoice === 'fork' && !forkName.trim())
               }
-              className="flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+              className="pressable flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
             >
               {busy ? 'Saving…' : 'Save'}
             </button>
@@ -674,7 +674,7 @@ function MachineEditModal({
 
           <button
             onClick={onDelete}
-            className="w-full rounded-pill border border-danger-line py-3 text-sm font-semibold text-danger-strong active:bg-danger-soft"
+            className="pressable w-full rounded-pill border border-danger-line py-3 text-sm font-semibold text-danger-strong active:bg-danger-soft"
           >
             Delete machine
           </button>
@@ -775,11 +775,11 @@ function MergeMachinesModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 px-0 backdrop-blur-sm sm:items-center sm:px-6"
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/50 px-0 backdrop-blur-sm sm:items-center sm:px-6"
       onClick={onCancel}
     >
       <div
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
+        className="sheet-in max-h-[92vh] w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Merge machines</h2>
@@ -820,14 +820,14 @@ function MergeMachinesModal({
         <div className="mt-5 flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
+            className="pressable flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             Cancel
           </button>
           <button
             onClick={() => onConfirm(survivor)}
             disabled={busy || losers.length === 0}
-            className="flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+            className="pressable flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
           >
             {busy ? 'Merging…' : 'Merge'}
           </button>

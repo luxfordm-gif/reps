@@ -598,7 +598,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                     <button
                       type="button"
                       onClick={() => setDayEditor({ dayIdx })}
-                      className="-mr-2 shrink-0 rounded-pill px-2.5 py-1 text-xs font-semibold text-muted active:text-ink"
+                      className="pressable -mr-2 shrink-0 rounded-pill px-2.5 py-1 text-xs font-semibold text-muted active:text-ink"
                     >
                       Edit day
                     </button>
@@ -713,7 +713,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
             <button
               onClick={handleSave}
               disabled={saving || !planName || problems.length > 0}
-              className="mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+              className="pressable mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save plan'}
             </button>
@@ -792,14 +792,14 @@ function UnreadLineCard({
           type="button"
           onClick={onAdd}
           disabled={addDisabled}
-          className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
+          className="pressable rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
         >
           Add as exercise
         </button>
         <button
           type="button"
           onClick={onIgnore}
-          className="rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
+          className="pressable rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
         >
           Ignore
         </button>
@@ -883,13 +883,13 @@ function WeeklyAlternativeCard({
                 setDraft(alternative.name);
                 setEditing(false);
               }}
-              className="rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
+              className="pressable rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
             >
               Cancel
             </button>
             <button
               onClick={commit}
-              className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80"
+              className="pressable rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80"
             >
               Save
             </button>
@@ -1006,7 +1006,7 @@ function ExerciseReviewRow({
             type="button"
             onClick={onEdit}
             aria-label={`Edit ${exercise.name}`}
-            className="-mr-2 -mt-1 flex h-8 w-8 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+            className="pressable -mr-2 -mt-1 flex h-8 w-8 items-center justify-center rounded-full text-muted active:bg-surface-strong"
           >
             <PencilIcon />
           </button>
@@ -1056,13 +1056,13 @@ function ExerciseReviewRow({
               <div className="mt-2.5 flex gap-2">
                 <button
                   onClick={onSameMachine}
-                  className="flex-1 rounded-pill bg-ink py-1.5 text-xs font-semibold text-white active:opacity-80"
+                  className="pressable flex-1 rounded-pill bg-ink py-1.5 text-xs font-semibold text-white active:opacity-80"
                 >
                   Yes, same machine
                 </button>
                 <button
                   onClick={onDifferentMachine}
-                  className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-pressed"
+                  className="pressable flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-pressed"
                 >
                   No, different
                 </button>
@@ -1128,7 +1128,7 @@ function ExerciseReviewRow({
                     setDraft(exercise.notes ?? '');
                     setEditing(false);
                   }}
-                  className="rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
+                  className="pressable rounded-pill px-3 py-1.5 text-xs font-semibold text-muted active:text-ink"
                 >
                   Cancel
                 </button>
@@ -1137,7 +1137,7 @@ function ExerciseReviewRow({
                     onNotesChange(draft);
                     setEditing(false);
                   }}
-                  className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80"
+                  className="pressable rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:opacity-80"
                 >
                   Save notes
                 </button>

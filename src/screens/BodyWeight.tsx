@@ -26,7 +26,7 @@ import { PageHeader } from '../components/PageHeader';
 import { CalendarPopover } from '../components/Calendar';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { SyncStatus } from '../components/SyncStatus';
-import { hapticBuzz } from '../lib/haptics';
+import { haptics } from '../lib/haptics';
 import { isReachable } from '../lib/offline/net';
 
 interface Props {
@@ -164,7 +164,7 @@ export function BodyWeight({ onBack }: Props) {
         offline: !isReachable(),
         date,
       });
-      hapticBuzz([12, 40, 12]);
+      haptics.commit();
       // Keep the entry that was just saved on screen — the inputs stay showing
       // it, which is also what the next visit would pre-fill anyway.
       setEdited(false);
@@ -479,7 +479,7 @@ function SaveButton({
       onClick={onClick}
       disabled={disabled || state !== 'idle'}
       aria-live="polite"
-      className={`mt-4 flex w-full items-center justify-center gap-2 rounded-pill py-3.5 text-base font-semibold transition-all duration-300 ${
+      className={`pressable mt-4 flex w-full items-center justify-center gap-2 rounded-pill py-3.5 text-base font-semibold transition-all duration-300 ${
         isSaved
           ? 'bg-line text-muted'
           : 'bg-ink text-white active:opacity-80 disabled:opacity-50'

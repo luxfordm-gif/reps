@@ -181,7 +181,7 @@ function HistoryRow({
       )}
       <div
         className={`relative bg-paper-card ${
-          animating || startX == null ? 'transition-transform duration-300 ease-out' : ''
+          animating || startX == null ? 'transition-transform duration-pop ease-snap' : ''
         }`}
         style={{ transform: `translateX(${dx}px)` }}
         onPointerDown={onPointerDown}
@@ -205,7 +205,7 @@ function HistoryRow({
             onClick={onRequestDelete}
             disabled={busy}
             aria-label="Delete workout"
-            className="-mr-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong disabled:opacity-50"
+            className="pressable -mr-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong disabled:opacity-50"
           >
             <TrashIcon />
           </button>
@@ -447,7 +447,7 @@ function EditableSetRow({
           <button
             onClick={save}
             disabled={!dirty || saving}
-            className="rounded-pill bg-ink px-3 py-1.5 text-caption font-semibold text-white active:opacity-80 disabled:opacity-30"
+            className="pressable rounded-pill bg-ink px-3 py-1.5 text-caption font-semibold text-white active:opacity-80 disabled:opacity-30"
           >
             {saving ? '…' : 'Save'}
           </button>
