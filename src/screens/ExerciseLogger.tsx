@@ -1445,7 +1445,7 @@ export function ExerciseLogger({
                     ? `Loads at ${profile.positions} numbered pegs`
                     : `Has ${profile.positions} cam positions`
                 }
-                className="inline-flex items-center rounded-pill bg-line px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted"
+                className="inline-flex items-center rounded-pill bg-line pb-0.5 pl-[9px] pr-2 pt-[3px] text-[10px] font-bold uppercase tracking-[0.12em] text-muted"
               >
                 {profile.kind === 'pegs'
                   ? `${profile.positions} pegs`
@@ -1983,7 +1983,7 @@ function ExerciseMenu({
                 <button
                   key={u}
                   onClick={() => pick(() => onSelectUnit(u))}
-                  className={`flex-1 rounded-pill px-2 py-1 text-xs font-semibold uppercase tracking-wider ${
+                  className={`flex-1 rounded-pill px-2 pb-1 pt-[5px] text-xs font-semibold uppercase tracking-wider ${
                     weightUnit === u ? 'bg-ink text-white' : 'text-muted'
                   }`}
                 >
@@ -2013,7 +2013,7 @@ function ExerciseMenu({
                         : 1,
                     })
                   }
-                  className={`flex-1 rounded-pill px-2 py-1 text-xs font-semibold uppercase tracking-wider ${
+                  className={`flex-1 rounded-pill px-2 pb-1 pt-[5px] text-xs font-semibold uppercase tracking-wider ${
                     profile.kind === kind ? 'bg-ink text-white' : 'text-muted'
                   }`}
                 >
@@ -2978,6 +2978,12 @@ function unitSuffix(unit: MachineUnit): string {
 // Persistent read-out of the unit this machine logs in. Muted when it matches
 // the user's default; filled when it doesn't, so an lb/pin machine announces
 // itself without opening the menu.
+//
+// The odd padding is optical centring, not a typo: a line box reserves room for
+// descenders that capitals never use, so centring it leaves a pixel more air
+// under the letters than over them, and the letter spacing puts a gap after the
+// last letter with nothing to balance it. Every chip in here is nudged the same
+// way — down a pixel, right a pixel.
 function UnitBadge({
   unit,
   isOverride,
@@ -2990,7 +2996,7 @@ function UnitBadge({
       title={`${
         unit === 'pin' ? 'Logged as pin numbers' : `Logged in ${unit}`
       }${isOverride ? ' — not your default unit' : ''}`}
-      className={`inline-flex items-center rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] ${
+      className={`inline-flex items-center rounded-pill pb-0.5 pl-[9px] pr-2 pt-[3px] text-[10px] font-bold uppercase tracking-[0.12em] ${
         isOverride ? 'bg-ink text-white' : 'bg-line text-muted'
       }`}
     >
@@ -3253,7 +3259,7 @@ function SetGroup({
                       <div key={point} className="flex items-center gap-2.5">
                         <span
                           aria-hidden
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full pt-px text-[11px] font-bold ${
                             value.trim() === ''
                               ? 'bg-line text-muted'
                               : 'bg-ink text-white'
@@ -3345,7 +3351,7 @@ function SetGroup({
                           onClick={() => onSelectCurve(idx, point)}
                           aria-pressed={selected}
                           aria-label={`Curve position ${point + 1}`}
-                          className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                          className={`flex h-8 w-8 items-center justify-center rounded-full pt-px text-xs font-bold ${
                             selected
                               ? carried
                                 ? 'border border-ink bg-paper text-ink'
