@@ -1766,6 +1766,7 @@ export function ExerciseLogger({
 
       <BarbellCalculator
         open={calcOpen !== null}
+        barless={profile.kind != null}
         initialKg={
           calcOpen !== null && sets[calcOpen.idx]
             ? Number(pointInputsFor(sets[calcOpen.idx], profile)[calcOpen.point]) ||
