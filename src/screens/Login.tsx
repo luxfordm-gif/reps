@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { hasSignedInBefore } from '../lib/returning';
 import { Logo } from '../components/Logo';
 
 type Mode = 'signin' | 'signup' | 'forgot';
@@ -14,6 +15,9 @@ export function Login() {
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [oauthBusy, setOauthBusy] = useState<'google' | 'apple' | null>(null);
+  // Read once on mount: has this device ever been signed in? Only then does
+  // "Welcome back" mean anything.
+  const [returning] = useState(hasSignedInBefore);
 
   function changeMode(m: Mode) {
     setMode(m);
@@ -96,7 +100,12 @@ export function Login() {
     }
   }
 
-  const { heading, subtitle, primaryLabel } = computeHeadings(mode, step, email);
+  const { heading, subtitle, primaryLabel } = computeHeadings(
+    mode,
+    step,
+    email,
+    returning
+  );
   const showBack = step !== 'choose' || mode === 'forgot';
 
   return (
@@ -127,18 +136,35 @@ export function Login() {
             top, the field is already above the keyboard and nothing moves. */}
         <div
           className={`flex flex-1 flex-col items-center ${
-            step === 'choose' ? 'justify-center' : 'justify-start pt-6'
+            step === 'choose' ? 'justify-center' : 'justify-start pt-2'
           }`}
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)' }}
         >
           <Logo className="h-8 w-auto" />
 
-          <h1 className="mt-8 text-center text-display font-bold leading-tight tracking-tight text-ink">
-            {heading}
-          </h1>
-          <p className="mt-1.5 text-center text-base text-muted">{subtitle}</p>
+          {/* The large title greets you once, on the way in. Past that you are
+              mid-task, so the step says what to do at a size that leaves the
+              field well clear of the keyboard rather than repeating a welcome
+              you have already read. */}
+          {step === 'choose' ? (
+            <>
+              <h1 className="mt-8 text-center text-display font-bold leading-tight tracking-tight text-ink">
+                {heading}
+              </h1>
+              <p className="mt-1.5 text-center text-base text-muted">{subtitle}</p>
+            </>
+          ) : (
+            <>
+              <h1 className="mt-6 text-center text-xl font-bold leading-tight tracking-tight text-ink">
+                {heading}
+              </h1>
+              {subtitle && (
+                <p className="mt-1 text-center text-sm text-muted">{subtitle}</p>
+              )}
+            </>
+          )}
 
-          <div className="mt-8 w-full">
+          <div className={`w-full ${step === 'choose' ? 'mt-8' : 'mt-5'}`}>
             {step === 'choose' && (
               <div className="space-y-2">
                 <ProviderButton
@@ -253,15 +279,18 @@ export function Login() {
   );
 }
 
+/** What the screen says at each step. The landing step greets; the steps after
+ *  it name the task, because by then you are doing it rather than arriving. */
 function computeHeadings(
   mode: Mode,
   step: Step,
-  email: string
+  email: string,
+  returning: boolean
 ): { heading: string; subtitle: string; primaryLabel: string } {
   if (mode === 'forgot') {
     return {
       heading: 'Reset password.',
-      subtitle: "Enter your email and we'll send you a link.",
+      subtitle: "We'll email you a link.",
       primaryLabel: 'Send reset link',
     };
   }
@@ -275,35 +304,43 @@ function computeHeadings(
     }
     if (step === 'email') {
       return {
-        heading: 'Create your account.',
-        subtitle: 'Enter your email to get started.',
+        heading: "What's your email?",
+        subtitle: '',
         primaryLabel: 'Next',
       };
     }
     return {
       heading: 'Pick a password.',
-      subtitle: email || "We'll keep it secure.",
+      subtitle: email,
       primaryLabel: 'Create account',
     };
   }
   // signin
   if (step === 'choose') {
-    return {
-      heading: 'Welcome back.',
-      subtitle: 'Sign in to continue your training.',
-      primaryLabel: 'Next',
-    };
+    // "Welcome back" is a claim about the past, so only a device that has held
+    // a session gets to make it.
+    return returning
+      ? {
+          heading: 'Welcome back.',
+          subtitle: 'Sign in to continue your training.',
+          primaryLabel: 'Next',
+        }
+      : {
+          heading: 'Sign in.',
+          subtitle: 'Pick up your plan where you left it.',
+          primaryLabel: 'Next',
+        };
   }
   if (step === 'email') {
     return {
-      heading: 'Welcome back.',
-      subtitle: 'Enter your email to continue.',
+      heading: "What's your email?",
+      subtitle: '',
       primaryLabel: 'Next',
     };
   }
   return {
-    heading: 'Welcome back.',
-    subtitle: email || 'Enter your password.',
+    heading: 'Enter your password.',
+    subtitle: email,
     primaryLabel: 'Sign in',
   };
 }

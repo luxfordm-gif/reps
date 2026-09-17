@@ -105,7 +105,7 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
       {large && (
         <h1
           ref={largeTitleRef}
-          className="mt-2 text-display font-bold leading-tight tracking-[-0.02em] text-ink"
+          className="mt-1 text-display font-bold leading-tight tracking-[-0.02em] text-ink"
         >
           {title}
         </h1>
