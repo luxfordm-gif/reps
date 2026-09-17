@@ -257,7 +257,7 @@ export function Home({
           className="mx-auto max-w-md px-5"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
         >
-          <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink">
+          <h1 className="text-display font-bold leading-tight tracking-[-0.02em] text-ink">
             {greeting()},
             {greeting().includes(' ') ? (
               <span className="block">{FIRST_NAME}.</span>
@@ -288,7 +288,7 @@ export function Home({
             />
           )}
           <div className={`${showOnboardingBanner ? 'mt-5' : 'mt-12'} rounded-card bg-paper-card p-8 text-center shadow-card`}>
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFE9D6]">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-panel bg-[#FFE9D6]">
               <UploadCloudIcon />
             </div>
             <h2 className="mt-5 text-2xl font-bold tracking-tight text-ink">
@@ -410,7 +410,7 @@ export function Home({
         <SyncStatus className={active || showOnboardingBanner ? 'mt-5' : ''} />
 
         <div className={active || showOnboardingBanner ? 'mt-5' : ''}>
-          <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-ink">
+          <h1 className="text-display font-bold leading-tight tracking-[-0.02em] text-ink">
             {greeting()},
             {greeting().includes(' ') ? (
               <span className="block">{FIRST_NAME}.</span>
@@ -544,7 +544,7 @@ function OnboardingBanner({
         className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left active:opacity-80"
       >
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7A5A00]">
+          <div className="text-label font-semibold uppercase tracking-[0.18em] text-[#7A5A00]">
             Get set up
           </div>
           <div className="mt-0.5 text-base font-bold tracking-tight text-ink">

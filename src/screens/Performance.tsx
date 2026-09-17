@@ -227,12 +227,12 @@ export function Performance() {
                   rows={bodyWeightRange(data.perf.bodyWeights, bwRange).slice().reverse()}
                   bwUnit={bwUnit}
                   controls={
-                    <div className="flex rounded-pill bg-line/60 p-0.5">
+                    <div className="flex rounded-pill bg-surface-strong p-0.5">
                       {([84, 182, 365] as BwRange[]).map((r) => (
                         <button
                           key={r}
                           onClick={() => setBwRange(r)}
-                          className={`rounded-pill px-2.5 py-1 text-[11px] font-semibold ${
+                          className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
                             bwRange === r ? 'bg-ink text-white' : 'text-muted'
                           }`}
                         >
@@ -300,7 +300,7 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
   if (!plan) {
     return (
       <div className="rounded-card bg-ink p-5 text-white shadow-card">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60">
+        <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
           Current plan
         </div>
         <div className="mt-1 text-xl font-bold tracking-tight">No active plan</div>
@@ -314,10 +314,10 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
     <div className="rounded-card bg-ink p-5 text-white shadow-card">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60">
+          <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
             Current plan
           </div>
-          <div className="mt-1 text-[34px] font-bold leading-none tracking-tight">Week {week}</div>
+          <div className="mt-1 text-display font-bold leading-none tracking-tight">Week {week}</div>
           <div className="mt-2 text-sm text-white/70">
             {week === 1 ? 'First week on plan' : `${week} weeks on plan`}
           </div>
@@ -348,10 +348,10 @@ function DotRow({ dots }: { dots: boolean[] }) {
         <div key={i} className="flex flex-col items-center gap-1">
           <span
             className={`h-2.5 w-2.5 rounded-full ${
-              on ? 'bg-ink' : i > TODAY_IDX ? 'bg-line/60' : 'bg-line'
+              on ? 'bg-ink' : i > TODAY_IDX ? 'bg-surface-strong' : 'bg-line'
             }`}
           />
-          <span className="text-[10px] text-muted">{DAY_LETTERS[i]}</span>
+          <span className="text-label text-muted">{DAY_LETTERS[i]}</span>
         </div>
       ))}
     </div>
@@ -415,7 +415,7 @@ function StrengthCard({ strength }: { strength: ReturnType<typeof computeOverall
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm text-ink">Overall strength</div>
-          <div className="mt-0.5 text-[26px] font-bold leading-none tracking-tight text-ink tabular-nums">
+          <div className="mt-0.5 text-2xl font-bold leading-none tracking-tight text-ink tabular-nums">
             {strength.pct != null ? `${strength.pct > 0 ? '+' : ''}${fmtNum(strength.pct)}%` : 'Not enough data yet'}
           </div>
           <div className="mt-1 text-xs text-muted">{hint}</div>
@@ -441,13 +441,13 @@ function MostImprovedCard({
 }) {
   return (
     <div className="rounded-card bg-ink p-5 text-white shadow-card">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60">
+      <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
         Most improved this month
       </div>
       <div className="mt-2 flex items-end justify-between gap-4">
         <div className="min-w-0">
           <div className="truncate text-base font-semibold">{mi.displayName}</div>
-          <div className="mt-1 text-[34px] font-bold leading-none tracking-tight tabular-nums">
+          <div className="mt-1 text-display font-bold leading-none tracking-tight tabular-nums">
             {fmtNum(fromKgFor(mi.toKg, unit))}
             <span className="ml-1 text-base font-semibold text-white/70">{unit}</span>
           </div>
@@ -485,7 +485,7 @@ function TopRecords({ records, onViewAll }: { records: LiftRecord[]; onViewAll: 
             <button
               type="button"
               onClick={onViewAll}
-              className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left active:bg-line/30"
+              className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left active:bg-surface"
             >
               <span className="min-w-0 truncate text-sm text-ink">{r.displayName}</span>
               <span className="flex shrink-0 items-center gap-2 text-sm font-semibold text-ink tabular-nums">

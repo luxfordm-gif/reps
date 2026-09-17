@@ -30,11 +30,11 @@ export function TrainingDayCard({
   onClick,
 }: Props) {
   const surface = isNext
-    ? 'bg-ink text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]'
+    ? 'bg-ink text-white shadow-lift'
     : 'bg-paper-card text-ink shadow-card';
 
   const badge = isNext ? (
-    <span className="absolute -top-2 left-5 rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink shadow-card">
+    <span className="absolute -top-2 left-5 rounded-pill bg-white px-2.5 py-0.5 text-label font-semibold uppercase tracking-[0.12em] text-ink shadow-card">
       {badgeLabel}
     </span>
   ) : null;
@@ -43,7 +43,7 @@ export function TrainingDayCard({
   // square with the day's initial. Completed days dim the photo behind the tick.
   const image = imageForDay(name);
   const tile = image ? (
-    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl">
+    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-control">
       <img src={image} alt="" aria-hidden className="h-full w-full object-cover" />
       {done && (
         <span className="absolute inset-0 flex items-center justify-center bg-black/55">
@@ -53,7 +53,7 @@ export function TrainingDayCard({
     </div>
   ) : (
     <div
-      className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl ${
+      className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-control ${
         isNext ? 'bg-white/15' : accent
       }`}
     >
@@ -75,7 +75,7 @@ export function TrainingDayCard({
           <span className="text-xl font-bold tracking-tight">{name}</span>
           {tag && (
             <span
-              className={`rounded-pill px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+              className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-[0.12em] ${
                 isNext ? 'bg-white/15 text-white/90' : 'bg-line text-muted'
               }`}
             >

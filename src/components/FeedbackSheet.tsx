@@ -127,7 +127,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
               <h2 className="text-lg font-bold tracking-tight text-ink">Send feedback</h2>
               <button
                 onClick={onClose}
-                className="-mr-2 -mt-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-line/60"
+                className="-mr-2 -mt-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
                 aria-label="Close"
               >
                 <CloseIcon />
@@ -157,7 +157,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
               rows={5}
               maxLength={4000}
               placeholder={placeholderFor(kind)}
-              className="mt-3 w-full resize-none rounded-2xl border border-line bg-paper px-4 py-3 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none"
+              className="mt-3 w-full resize-none rounded-panel border border-line bg-paper px-4 py-3 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none"
             />
 
             {previews.length > 0 && (
@@ -167,7 +167,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
                     <img
                       src={p.url}
                       alt={p.file.name}
-                      className="h-20 w-20 rounded-2xl bg-ink/5 object-cover"
+                      className="h-20 w-20 rounded-panel bg-ink/5 object-cover"
                     />
                     <button
                       onClick={() => removeFile(p.file)}
@@ -193,7 +193,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
             {files.length < MAX_ATTACHMENTS && (
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line py-3 text-sm font-semibold text-muted active:bg-line/30"
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-panel border border-dashed border-line py-3 text-sm font-semibold text-muted active:bg-surface"
               >
                 <PaperclipIcon />
                 {files.length === 0 ? 'Add a screenshot' : 'Add another'}
@@ -201,7 +201,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
             )}
 
             {error && (
-              <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+              <p className="mt-3 rounded-panel bg-warn-soft px-4 py-2.5 text-xs text-warn">
                 {error}
               </p>
             )}

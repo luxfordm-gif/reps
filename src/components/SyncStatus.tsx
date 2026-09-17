@@ -47,7 +47,7 @@ export function SyncStatus({ className = '' }: { className?: string }) {
           : 'All synced';
 
   const dotClass = stuck > 0
-    ? 'bg-red-600'
+    ? 'bg-danger-strong'
     : offline
       ? 'bg-muted'
       : syncing || pending > 0
@@ -60,7 +60,7 @@ export function SyncStatus({ className = '' }: { className?: string }) {
   return (
     <>
       <Tag
-        className={`flex w-full items-center gap-2 rounded-pill bg-line/70 px-3 py-1.5 text-left text-xs font-medium text-muted ${className}`}
+        className={`flex w-full items-center gap-2 rounded-pill bg-surface-strong px-3 py-1.5 text-left text-xs font-medium text-muted ${className}`}
         role={stuck > 0 ? undefined : 'status'}
         onClick={stuck > 0 ? () => setDetailsOpen(true) : undefined}
       >

@@ -524,7 +524,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
         )}
 
         {error && (
-          <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mt-4 rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -539,7 +539,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                 type="text"
                 value={planName}
                 onChange={(e) => setPlanName(e.target.value)}
-                className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-base text-ink focus:border-ink focus:outline-none"
+                className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-base text-ink focus:border-ink focus:outline-none"
               />
             </div>
 
@@ -586,7 +586,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                 <div key={`${day.name}#${dayIdx}`} className="rounded-card bg-paper-card shadow-card">
                   <div className="flex items-start justify-between gap-3 border-b border-line/60 px-5 py-3">
                     <div className="min-w-0">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                      <div className="text-label font-semibold uppercase tracking-[0.14em] text-muted">
                         Day {dayIdx + 1}
                         {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
                         {day.weekIndex == null && rotates && ' · Every week'}
@@ -641,7 +641,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                   <button
                     type="button"
                     onClick={() => setEditor({ mode: 'new', dayIdx, prefill: EMPTY_DRAFT })}
-                    className="flex w-full items-center justify-center gap-1.5 border-t border-line/60 py-3 text-sm font-semibold text-ink active:bg-line/30"
+                    className="flex w-full items-center justify-center gap-1.5 border-t border-line/60 py-3 text-sm font-semibold text-ink active:bg-surface"
                   >
                     <PlusIcon /> Add exercise
                   </button>
@@ -649,11 +649,11 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               ))}
 
               {orphanLines.length > 0 && (
-                <div className="rounded-card border border-amber-200 bg-amber-50 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+                <div className="rounded-card border border-warn-line bg-warn-soft p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-warn">
                     {orphanLines.length} {orphanLines.length === 1 ? 'line' : 'lines'} not under any day
                   </div>
-                  <p className="mt-1 text-xs text-amber-800">
+                  <p className="mt-1 text-xs text-warn">
                     These look like exercises but sat under a heading Reps didn't recognise as a
                     day. Add the day they belong to, then add them to it — or ignore them.
                   </p>
@@ -682,14 +682,14 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               <button
                 type="button"
                 onClick={() => setDayEditor('new')}
-                className="flex w-full items-center justify-center gap-1.5 rounded-card border border-dashed border-line py-3.5 text-sm font-semibold text-muted active:bg-line/30"
+                className="flex w-full items-center justify-center gap-1.5 rounded-card border border-dashed border-line py-3.5 text-sm font-semibold text-muted active:bg-surface"
               >
                 <PlusIcon /> Add a day
               </button>
             </div>
 
             {visibleWarnings.length > 0 && (
-              <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <div className="mt-4 rounded-panel bg-warn-soft px-4 py-3 text-sm text-warn">
                 <div className="font-semibold">Warnings</div>
                 <ul className="mt-1 list-inside list-disc">
                   {visibleWarnings.map((w, i) => (
@@ -700,7 +700,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
             )}
 
             {problems.length > 0 && (
-              <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mt-4 rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">
                 <div className="font-semibold">Before this can be saved</div>
                 <ul className="mt-1 list-inside list-disc">
                   {problems.map((w, i) => (
@@ -783,10 +783,10 @@ function UnreadLineCard({
 }) {
   const body = (
     <>
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-800">
+      <div className="text-label font-semibold uppercase tracking-wider text-warn">
         Couldn't read this line
       </div>
-      <div className="mt-1 break-words font-mono text-[11px] text-ink/80">{text}</div>
+      <div className="mt-1 break-words font-mono text-caption text-ink/80">{text}</div>
       <div className="mt-2 flex gap-2">
         <button
           type="button"
@@ -806,8 +806,8 @@ function UnreadLineCard({
       </div>
     </>
   );
-  if (tone === 'plain') return <li className="rounded-xl bg-paper-card px-3 py-2.5">{body}</li>;
-  return <div className="border-t border-line/60 bg-amber-50/60 px-5 py-3">{body}</div>;
+  if (tone === 'plain') return <li className="rounded-control bg-paper-card px-3 py-2.5">{body}</li>;
+  return <div className="border-t border-line/60 bg-warn-soft/60 px-5 py-3">{body}</div>;
 }
 
 function PlusIcon() {
@@ -856,8 +856,8 @@ function WeeklyAlternativeCard({
   }
 
   return (
-    <div className="mt-3 rounded-xl bg-ink/5 px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+    <div className="mt-3 rounded-control bg-ink/5 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-label font-semibold uppercase tracking-wider text-muted">
         <RotateGlyph />
         Alternates weekly with
       </div>
@@ -875,7 +875,7 @@ function WeeklyAlternativeCard({
                 setEditing(false);
               }
             }}
-            className="w-full rounded-lg border border-line bg-paper px-2.5 py-1.5 text-sm text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-control border border-line bg-paper px-2.5 py-1.5 text-sm text-ink focus:border-ink focus:outline-none"
           />
           <div className="mt-2 flex justify-end gap-2">
             <button
@@ -912,7 +912,7 @@ function WeeklyAlternativeCard({
             </button>
             <button
               onClick={() => onChange(null)}
-              className="text-muted active:text-red-600"
+              className="text-muted active:text-danger-strong"
             >
               Remove
             </button>
@@ -987,7 +987,7 @@ function ExerciseReviewRow({
     <div className="px-5 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-[15px] font-semibold text-ink">
+          <div className="truncate text-base font-semibold text-ink">
             {exercise.name}
           </div>
           {exercise.bodyPart && (
@@ -1006,7 +1006,7 @@ function ExerciseReviewRow({
             type="button"
             onClick={onEdit}
             aria-label={`Edit ${exercise.name}`}
-            className="-mr-2 -mt-1 flex h-8 w-8 items-center justify-center rounded-full text-muted active:bg-line/60"
+            className="-mr-2 -mt-1 flex h-8 w-8 items-center justify-center rounded-full text-muted active:bg-surface-strong"
           >
             <PencilIcon />
           </button>
@@ -1015,7 +1015,7 @@ function ExerciseReviewRow({
 
       {(exercise.supersetPartnerNames ?? []).length === 0 &&
         (exercise.supersetWith ?? []).length > 0 && (
-          <div className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs text-ink/80">
+          <div className="mt-2 rounded-control bg-ink/5 px-3 py-2 text-xs text-ink/80">
             The notes superset this with{' '}
             <span className="font-semibold text-ink">
               {formatNameList(exercise.supersetWith ?? [])}
@@ -1026,7 +1026,7 @@ function ExerciseReviewRow({
         )}
 
       {(exercise.supersetPartnerNames ?? []).length > 0 && (
-        <div className="mt-2 rounded-xl bg-ink/5 px-3 py-2 text-xs text-ink/80">
+        <div className="mt-2 rounded-control bg-ink/5 px-3 py-2 text-xs text-ink/80">
           <span className="font-semibold text-ink">
             {groupedSetLabel((exercise.supersetPartnerNames?.length ?? 0) + 1)}
           </span>{' '}
@@ -1043,7 +1043,7 @@ function ExerciseReviewRow({
           {match.decision === 'pending' && (
             // Both names, side by side, then yes or no. The answer decides
             // whether this row inherits the other name's history and PRs.
-            <div className="rounded-xl bg-ink/5 px-3 py-2.5">
+            <div className="rounded-control bg-ink/5 px-3 py-2.5">
               <div className="text-xs font-semibold text-ink">Is this the same machine?</div>
               <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                 <dt className="text-muted">This plan</dt>
@@ -1062,7 +1062,7 @@ function ExerciseReviewRow({
                 </button>
                 <button
                   onClick={onDifferentMachine}
-                  className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-line/40"
+                  className="flex-1 rounded-pill border border-line bg-paper py-1.5 text-xs font-semibold text-ink active:bg-pressed"
                 >
                   No, different
                 </button>
@@ -1104,7 +1104,7 @@ function ExerciseReviewRow({
               </span>
             ))}
             {s.tag && (
-              <span className="ml-1 rounded-pill bg-ink/10 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink">
+              <span className="ml-1 rounded-pill bg-ink/10 px-1.5 text-label font-semibold uppercase tracking-wider text-ink">
                 {s.tag}
               </span>
             )}
@@ -1120,7 +1120,7 @@ function ExerciseReviewRow({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 rows={3}
-                className="w-full rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-ink focus:outline-none"
+                className="w-full rounded-control border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-ink focus:outline-none"
               />
               <div className="mt-2 flex justify-end gap-2">
                 <button
@@ -1149,7 +1149,7 @@ function ExerciseReviewRow({
                 setDraft(exercise.notes ?? '');
                 setEditing(true);
               }}
-              className="block w-full rounded-xl bg-paper px-3 py-2 text-left text-xs text-muted active:bg-line/40"
+              className="block w-full rounded-control bg-paper px-3 py-2 text-left text-xs text-muted active:bg-pressed"
             >
               <span className="font-semibold uppercase tracking-wider">Coach notes</span>
               <div className="mt-1 whitespace-pre-wrap text-ink/80">

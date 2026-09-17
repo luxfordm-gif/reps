@@ -63,7 +63,7 @@ export function WorkoutHistory({ onBack }: Props) {
 
         <div className="mt-6">
           {error && (
-            <div className="rounded-card bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-card bg-danger-soft px-4 py-3 text-sm text-danger">
               {error}
             </div>
           )}
@@ -174,7 +174,7 @@ function HistoryRow({
           onClick={onRequestDelete}
           disabled={busy}
           aria-label="Delete workout"
-          className="absolute inset-y-0 right-0 flex w-20 items-center justify-center bg-red-600 text-white active:opacity-80 disabled:opacity-50"
+          className="absolute inset-y-0 right-0 flex w-20 items-center justify-center bg-danger-strong text-white active:opacity-80 disabled:opacity-50"
         >
           <TrashIcon />
         </button>
@@ -205,7 +205,7 @@ function HistoryRow({
             onClick={onRequestDelete}
             disabled={busy}
             aria-label="Delete workout"
-            className="-mr-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-line/60 disabled:opacity-50"
+            className="-mr-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong disabled:opacity-50"
           >
             <TrashIcon />
           </button>
@@ -280,7 +280,7 @@ function SessionDetail({
 
         <div className="mt-6 space-y-3">
           {error && (
-            <div className="rounded-card bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+            <div className="rounded-card bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
           )}
           {sets == null && !error && (
             <div className="py-10 text-center text-sm text-muted">Loading…</div>
@@ -425,7 +425,7 @@ function EditableSetRow({
           onChange={(e) => setWeight(e.target.value)}
           onFocus={(e) => e.target.select()}
           placeholder="kg"
-          className="w-20 rounded-xl border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+          className="w-20 rounded-control border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
         />
         <span className="text-xs text-muted">×</span>
         <input
@@ -436,25 +436,25 @@ function EditableSetRow({
           onChange={(e) => setReps(e.target.value)}
           onFocus={(e) => e.target.select()}
           placeholder="reps"
-          className="w-16 rounded-xl border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+          className="w-16 rounded-control border border-line bg-paper px-3 py-2 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
         />
         <div className="flex-1" />
         {error ? (
-          <span className="text-[11px] text-red-700">{error}</span>
+          <span className="text-caption text-danger">{error}</span>
         ) : savedAt ? (
-          <span className="text-[11px] text-muted">Saved</span>
+          <span className="text-caption text-muted">Saved</span>
         ) : (
           <button
             onClick={save}
             disabled={!dirty || saving}
-            className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-semibold text-white active:opacity-80 disabled:opacity-30"
+            className="rounded-pill bg-ink px-3 py-1.5 text-caption font-semibold text-white active:opacity-80 disabled:opacity-30"
           >
             {saving ? '…' : 'Save'}
           </button>
         )}
       </div>
       {points && (
-        <div className="mt-1 pl-20 text-[11px] text-muted">
+        <div className="mt-1 pl-20 text-caption text-muted">
           {describePoints(points, (kg) => `${kg} kg`)}
           {weightChanged && ' · a new total clears the split'}
         </div>

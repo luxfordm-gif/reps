@@ -79,7 +79,7 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
                     {nextTry(entry) ? ` · ${nextTry(entry)}` : ''}
                   </p>
                   {entry.lastError && (
-                    <p className="mt-1 break-words text-xs text-red-600">
+                    <p className="mt-1 break-words text-xs text-danger-strong">
                       {entry.lastError.message}
                     </p>
                   )}
@@ -89,7 +89,7 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
                     discardEntry(entry.id);
                     refresh();
                   }}
-                  className="shrink-0 rounded-pill border border-line px-3 py-1.5 text-xs font-semibold text-muted active:bg-line/40"
+                  className="shrink-0 rounded-pill border border-line px-3 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
                 >
                   Discard
                 </button>
@@ -106,7 +106,7 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
         <div className="mt-6 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             Close
           </button>

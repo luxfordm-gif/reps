@@ -210,7 +210,7 @@ export function BodyWeight({ onBack }: Props) {
         <PageHeader title="Body weight" onBack={onBack} />
 
         <div className="mt-3">
-          <div className="text-[15px] font-semibold tracking-tight text-ink">
+          <div className="text-base font-semibold tracking-tight text-ink">
             {todayEntry ? 'Logged today' : "Log today's weight"}
           </div>
           {todayEntry && (
@@ -259,7 +259,7 @@ export function BodyWeight({ onBack }: Props) {
                   setKgInput(e.target.value);
                 }}
                 placeholder="e.g. 82.4"
-                className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+                className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
               />
               <div className="pb-3 text-base font-medium text-muted">kg</div>
             </div>
@@ -276,7 +276,7 @@ export function BodyWeight({ onBack }: Props) {
                     setStInput(e.target.value);
                   }}
                   placeholder="14"
-                  className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+                  className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
                 />
                 <div className="mt-1 text-xs font-medium uppercase tracking-wider text-muted">
                   Stones
@@ -293,7 +293,7 @@ export function BodyWeight({ onBack }: Props) {
                     setLbInput(e.target.value);
                   }}
                   placeholder="5"
-                  className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+                  className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
                 />
                 <div className="mt-1 text-xs font-medium uppercase tracking-wider text-muted">
                   Pounds
@@ -307,7 +307,7 @@ export function BodyWeight({ onBack }: Props) {
               ≈ {unit === 'kg' ? formatStoneLb(inputKg) : `${inputKg.toFixed(1)} kg`}
             </div>
           )}
-          {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
+          {error && <div className="mt-3 text-sm text-danger">{error}</div>}
           <SaveButton
             state={saving ? 'saving' : savedNow ? 'saved' : 'idle'}
             disabled={inputKg == null}
@@ -535,7 +535,7 @@ function DateField({
     <button
       type="button"
       onClick={onToggle}
-      className="mt-3 flex w-full items-center justify-between rounded-2xl bg-paper px-4 py-3 text-left active:bg-line/60"
+      className="mt-3 flex w-full items-center justify-between rounded-panel bg-paper px-4 py-3 text-left active:bg-surface-strong"
     >
       <div className="flex items-center gap-2.5">
         <CalendarIcon />

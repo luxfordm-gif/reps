@@ -1430,7 +1430,7 @@ export function ExerciseLogger({
             href={googleImagesUrl(displayName)}
             target="_blank"
             rel="noopener noreferrer"
-            className="block break-words text-[24px] font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
+            className="block break-words text-2xl font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
             style={{ textWrap: 'balance' } as React.CSSProperties}
           >
             {displayName}
@@ -1445,7 +1445,7 @@ export function ExerciseLogger({
                     ? `Loads at ${profile.positions} numbered pegs`
                     : `Has ${profile.positions} cam positions`
                 }
-                className="inline-flex items-center rounded-pill bg-line pb-0.5 pl-[9px] pr-2 pt-[3px] text-[10px] font-bold uppercase tracking-[0.12em] text-muted"
+                className="inline-flex items-center rounded-pill bg-line pb-0.5 pl-[9px] pr-2 pt-[3px] text-label font-bold uppercase tracking-[0.12em] text-muted"
               >
                 {profile.kind === 'pegs'
                   ? `${profile.positions} pegs`
@@ -1467,7 +1467,7 @@ export function ExerciseLogger({
             <SwapGlyph />
             {activeAltId !== null ? 'Alternative' : 'Alternatives'}
             <span
-              className={`rounded-full px-1.5 text-[10px] leading-tight ${
+              className={`rounded-full px-1.5 text-label leading-tight ${
                 activeAltId !== null ? 'bg-white/20' : 'bg-paper text-muted'
               }`}
             >
@@ -1542,7 +1542,7 @@ export function ExerciseLogger({
           })()}
         </div>
 
-        {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
+        {error && <div className="mt-3 text-sm text-danger">{error}</div>}
 
         {!USE_REST_OVERLAY && restActive && (
           <div className="mt-6">
@@ -1565,7 +1565,7 @@ export function ExerciseLogger({
 
         {inRound && !restActive && (
           <div className="mt-5 rounded-card bg-paper-card px-4 py-3 text-center shadow-card">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+            <div className="text-label font-semibold uppercase tracking-[0.18em] text-muted">
               {groupedSetLabel(roundNames.length + 1)}
             </div>
             <div className="mt-1 text-sm text-ink">
@@ -1587,7 +1587,7 @@ export function ExerciseLogger({
             never be undone. */}
         {USE_REST_OVERLAY && !restActive && restSeconds === 0 && (
           <div className="mt-5 flex flex-col items-center gap-2">
-            <div className="text-[11px] text-muted">
+            <div className="text-caption text-muted">
               No rest between sets on this one.
             </div>
             <RestPicker value={restSeconds} onChange={setRestSeconds} compact />
@@ -1619,7 +1619,7 @@ export function ExerciseLogger({
                 maxLength={2000}
                 rows={4}
                 placeholder="Trainer's instructions for this exercise…"
-                className="w-full resize-y rounded-xl border border-line bg-paper-card px-3 py-2.5 text-sm leading-relaxed text-ink focus:border-ink focus:outline-none"
+                className="w-full resize-y rounded-control border border-line bg-paper-card px-3 py-2.5 text-sm leading-relaxed text-ink focus:border-ink focus:outline-none"
               />
               <div className="mt-2 flex items-center gap-2">
                 <button
@@ -1638,7 +1638,7 @@ export function ExerciseLogger({
                     coachSaving ||
                     (savedCoach === '' && coachDraft === '')
                   }
-                  className="rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
+                  className="rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-pressed disabled:opacity-40"
                 >
                   Clear
                 </button>
@@ -1672,7 +1672,7 @@ export function ExerciseLogger({
                 maxLength={2000}
                 rows={4}
                 placeholder="Form cues, machine settings, weekly tweaks…"
-                className="w-full resize-y rounded-xl border border-line bg-paper-card px-3 py-2.5 text-sm leading-relaxed text-ink focus:border-ink focus:outline-none"
+                className="w-full resize-y rounded-control border border-line bg-paper-card px-3 py-2.5 text-sm leading-relaxed text-ink focus:border-ink focus:outline-none"
               />
               <div className="mt-2 flex items-center gap-2">
                 <button
@@ -1691,7 +1691,7 @@ export function ExerciseLogger({
                     personalSaving ||
                     (savedPersonal === '' && personalDraft === '')
                   }
-                  className="rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-line/40 disabled:opacity-40"
+                  className="rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-pressed disabled:opacity-40"
                 >
                   Clear
                 </button>
@@ -1964,7 +1964,7 @@ function ExerciseMenu({
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="More options"
-        className="flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-line/60"
+        className="flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <circle cx="5" cy="12" r="1.6" fill="currentColor" />
@@ -1975,7 +1975,7 @@ function ExerciseMenu({
       {open && (
         <div className="absolute right-0 top-11 z-40 w-56 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
           <div className="px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+            <div className="text-label font-semibold uppercase tracking-[0.12em] text-muted">
               Weight unit
             </div>
             <div className="mt-2 flex rounded-pill bg-line p-0.5">
@@ -1994,7 +1994,7 @@ function ExerciseMenu({
           </div>
           <div className="border-t border-line/60" />
           <div className="px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+            <div className="text-label font-semibold uppercase tracking-[0.12em] text-muted">
               Weight profile
             </div>
             <div className="mt-2 flex rounded-pill bg-line p-0.5">
@@ -2023,7 +2023,7 @@ function ExerciseMenu({
             </div>
             {profile.kind != null && (
               <div className="mt-2.5 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-muted">
+                <span className="text-caption font-semibold text-muted">
                   {profile.kind === 'pegs' ? 'Number of pegs' : 'Number of positions'}
                 </span>
                 <div className="flex items-center gap-2">
@@ -2058,7 +2058,7 @@ function ExerciseMenu({
               </div>
             )}
             {profile.kind == null && (
-              <div className="mt-1.5 text-[11px] leading-snug text-muted">
+              <div className="mt-1.5 text-caption leading-snug text-muted">
                 For machines that load at numbered pegs, or set a cam position.
               </div>
             )}
@@ -2066,35 +2066,35 @@ function ExerciseMenu({
           <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onSwap)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
           >
             Swap machine
           </button>
           <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onAddAlternative)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
           >
             Add alternative
           </button>
           <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onEditName)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
           >
             Edit exercise name
           </button>
           <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onOverview)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
           >
             Back to overview
           </button>
           <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onHome)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
           >
             Back to home
           </button>
@@ -2103,7 +2103,7 @@ function ExerciseMenu({
             <>
               <button
                 onClick={() => pick(onFeedback)}
-                className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+                className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
               >
                 Send feedback
               </button>
@@ -2112,14 +2112,14 @@ function ExerciseMenu({
           )}
           <button
             onClick={() => pick(onSkip)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-line/40"
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
           >
             {hasNext ? 'Skip exercise' : 'Skip & finish workout'}
           </button>
           <div className="border-t border-line/60" />
           <button
             onClick={() => pick(onEndWorkout)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-red-600 active:bg-red-50"
+            className="block w-full px-4 py-3 text-left text-sm font-semibold text-danger-strong active:bg-danger-soft"
           >
             End workout
           </button>
@@ -2147,7 +2147,7 @@ function StepperButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-sm font-bold text-ink active:bg-line/60 disabled:opacity-30"
+      className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-sm font-bold text-ink active:bg-surface-strong disabled:opacity-30"
     >
       {children}
     </button>
@@ -2278,7 +2278,7 @@ function AlternativeSheet({
       onClick={onClose}
     >
       <div
-        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-paper p-5 transition-transform duration-300 ease-out sm:rounded-3xl ${
+        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 transition-transform duration-300 ease-out sm:rounded-card ${
           shown ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
@@ -2291,17 +2291,17 @@ function AlternativeSheet({
         </p>
 
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper-card">
+          <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
             <li>
               <button
                 onClick={() => onSelect(null)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-line/40"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-pressed"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block break-words text-sm font-semibold text-ink">
                     {primaryName}
                   </span>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  <span className="text-label font-semibold uppercase tracking-wider text-muted">
                     Plan default
                   </span>
                 </span>
@@ -2318,7 +2318,7 @@ function AlternativeSheet({
                 <li key={alt.id} className="flex items-center">
                   <button
                     onClick={() => onSelect(alt)}
-                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left active:bg-line/40"
+                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left active:bg-pressed"
                   >
                     <span className="block min-w-0 flex-1 break-words text-sm font-semibold text-ink">
                       {alt.name}
@@ -2332,7 +2332,7 @@ function AlternativeSheet({
                   <button
                     onClick={() => onRemove(alt.id)}
                     aria-label={`Remove ${alt.name}`}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center text-muted active:text-red-600"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center text-muted active:text-danger-strong"
                   >
                     <TrashGlyph />
                   </button>
@@ -2344,7 +2344,7 @@ function AlternativeSheet({
 
         <button
           onClick={onAdd}
-          className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+          className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
         >
           <span className="text-base leading-none">+</span> Add alternative
         </button>
@@ -2431,7 +2431,7 @@ function AddAlternativeModal({
       onClick={onCancel}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 sm:rounded-card"
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2451,19 +2451,19 @@ function AddAlternativeModal({
               below.
             </div>
           ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper-card">
+            <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
               {machines.map((m) => (
                 <li key={m.normalizedName}>
                   <button
                     onClick={() => submit(m.displayName, m.normalizedName)}
                     disabled={submitting}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-line/40 disabled:opacity-50"
+                    className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed disabled:opacity-50"
                   >
                     <span className="text-sm font-semibold text-ink">
                       {m.displayName}
                     </span>
                     {m.setCount > 0 && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                      <span className="text-label font-semibold uppercase tracking-wider text-muted">
                         history
                       </span>
                     )}
@@ -2474,7 +2474,7 @@ function AddAlternativeModal({
           )}
         </div>
 
-        <p className="mt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+        <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
           Add a new exercise
         </p>
         <div className="mt-2 flex items-center gap-2">
@@ -2482,7 +2482,7 @@ function AddAlternativeModal({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="New exercise name"
-            className="min-w-0 flex-1 rounded-xl border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+            className="min-w-0 flex-1 rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
           />
           <button
             onClick={chooseNew}
@@ -2494,7 +2494,7 @@ function AddAlternativeModal({
         </div>
 
         {submitError && (
-          <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mt-3 rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">
             {submitError}
           </div>
         )}
@@ -2590,7 +2590,7 @@ function SwapMachineModal({
       onClick={onCancel}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 sm:rounded-card"
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2611,18 +2611,18 @@ function SwapMachineModal({
                   below.
                 </div>
               ) : (
-                <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-paper-card">
+                <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
                   {machines.map((m) => (
                     <li key={m.normalizedName}>
                       <button
                         onClick={() => chooseExisting(m)}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-line/40"
+                        className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed"
                       >
                         <span className="text-sm font-semibold text-ink">
                           {m.displayName}
                         </span>
                         {m.setCount > 0 && (
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                          <span className="text-label font-semibold uppercase tracking-wider text-muted">
                             history
                           </span>
                         )}
@@ -2633,7 +2633,7 @@ function SwapMachineModal({
               )}
             </div>
 
-            <p className="mt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+            <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
               Add a new exercise
             </p>
             <div className="mt-2 flex items-center gap-2">
@@ -2641,7 +2641,7 @@ function SwapMachineModal({
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="New exercise name"
-                className="min-w-0 flex-1 rounded-xl border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+                className="min-w-0 flex-1 rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
               />
               <button
                 onClick={chooseNew}
@@ -2669,7 +2669,7 @@ function SwapMachineModal({
                 ? 'New exercise — it starts fresh and baselines from this workout.'
                 : "Pulls up that machine's own history so you can pick up where you left off."}
             </p>
-            <p className="mt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+            <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
               Is this a one-off?
             </p>
             <div className="mt-2 grid gap-2">
@@ -2685,7 +2685,7 @@ function SwapMachineModal({
                 onClick={() =>
                   pending && onConfirm({ ...pending, scope: 'oneoff' })
                 }
-                className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+                className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
               >
                 Just this workout
               </button>
@@ -2731,7 +2731,7 @@ function RenameExerciseModal({
       onClick={onCancel}
     >
       <div
-        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-card bg-paper p-5 sm:rounded-card"
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2743,9 +2743,9 @@ function RenameExerciseModal({
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-4 w-full rounded-xl border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+          className="mt-4 w-full rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
         />
-        <p className="mt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+        <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
           Is this the same machine?
         </p>
         <div className="mt-2 grid gap-2">
@@ -2759,7 +2759,7 @@ function RenameExerciseModal({
           <button
             onClick={() => onConfirm(trimmed, true)}
             disabled={!valid}
-            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink disabled:opacity-40 active:bg-line/40"
+            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink disabled:opacity-40 active:bg-pressed"
           >
             Different machine — reset to baseline
           </button>
@@ -2796,7 +2796,7 @@ function DidYouMeanModal({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-md rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        className="w-full max-w-md rounded-t-card bg-paper p-5 sm:rounded-card"
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2805,7 +2805,7 @@ function DidYouMeanModal({
           Looks like you already have an exercise with a similar name.
         </p>
 
-        <label className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-paper-card px-3 py-3">
+        <label className="mt-4 flex items-start gap-3 rounded-control border border-line bg-paper-card px-3 py-3">
           <input
             type="checkbox"
             checked={confirmed}
@@ -2828,7 +2828,7 @@ function DidYouMeanModal({
           </button>
           <button
             onClick={onKeepTyped}
-            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             No — keep “{typedName}”
           </button>
@@ -2880,14 +2880,14 @@ function LastTimeRow({
   };
 
   return (
-    <div className="mt-4 overflow-hidden rounded-xl bg-paper-card shadow-card">
+    <div className="mt-4 overflow-hidden rounded-control bg-paper-card shadow-card">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between px-3.5 py-2.5 text-left active:bg-line/40"
+        className="flex w-full items-center justify-between px-3.5 py-2.5 text-left active:bg-pressed"
       >
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+        <span className="text-label font-semibold uppercase tracking-[0.12em] text-muted">
           Last time
         </span>
         <span className="flex items-center gap-2 text-xs font-medium text-ink">
@@ -2914,7 +2914,7 @@ function LastTimeRow({
                         <span>{fmt(r)}</span>
                       </div>
                       {breakdown(r) && (
-                        <div className="text-right text-[11px] text-muted">
+                        <div className="text-right text-caption text-muted">
                           {breakdown(r)}
                         </div>
                       )}
@@ -2926,7 +2926,7 @@ function LastTimeRow({
                         <span>{fmt(r)}</span>
                       </div>
                       {breakdown(r) && (
-                        <div className="text-right text-[11px] text-muted">
+                        <div className="text-right text-caption text-muted">
                           {breakdown(r)}
                         </div>
                       )}
@@ -2955,9 +2955,9 @@ function Stat({
 }) {
   return (
     <div
-      className={`rounded-2xl bg-paper-card ${compact ? 'p-2' : 'p-3'} text-center shadow-card`}
+      className={`rounded-panel bg-paper-card ${compact ? 'p-2' : 'p-3'} text-center shadow-card`}
     >
-      <div className={`text-[10px] font-semibold uppercase tracking-wider text-muted`}>
+      <div className={`text-label font-semibold uppercase tracking-wider text-muted`}>
         {label}
       </div>
       <div
@@ -2996,7 +2996,7 @@ function UnitBadge({
       title={`${
         unit === 'pin' ? 'Logged as pin numbers' : `Logged in ${unit}`
       }${isOverride ? ' — not your default unit' : ''}`}
-      className={`inline-flex items-center rounded-pill pb-0.5 pl-[9px] pr-2 pt-[3px] text-[10px] font-bold uppercase tracking-[0.12em] ${
+      className={`inline-flex items-center rounded-pill pb-0.5 pl-[9px] pr-2 pt-[3px] text-label font-bold uppercase tracking-[0.12em] ${
         isOverride ? 'bg-ink text-white' : 'bg-line text-muted'
       }`}
     >
@@ -3065,7 +3065,7 @@ function SetGroup({
           ? 'Dropset · no rest between drops'
           : null;
   return (
-    <div className="overflow-hidden rounded-2xl bg-paper-card shadow-card">
+    <div className="overflow-hidden rounded-panel bg-paper-card shadow-card">
       {rows.map(({ row, idx }, ri) => {
         const isMain = row.dropIndex === 0;
         const isActive = !row.completed && idx === activeIndex;
@@ -3089,15 +3089,15 @@ function SetGroup({
         return (
           <div key={idx}>
             {showBackOffHeader && (
-              <div className="px-5 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="px-5 pt-2.5 text-label font-semibold uppercase tracking-[0.14em] text-muted">
                 Back off · {row.repRangeLabel}
               </div>
             )}
             <div
               className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
-                !isMain ? 'bg-line/30' : ''
+                !isMain ? 'bg-surface' : ''
               } ${
-                isActive ? 'ring-1 ring-inset ring-ink rounded-2xl' : ''
+                isActive ? 'ring-1 ring-inset ring-ink rounded-panel' : ''
               } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
             >
               <div className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
@@ -3117,7 +3117,7 @@ function SetGroup({
                     aria-label={`Points for set ${setIndex} — total ${
                       totalStr === '' ? 'not set' : `${totalStr} ${unit}`
                     }`}
-                    className={`flex w-full items-center rounded-xl border bg-paper py-2 pl-3 pr-7 text-left text-base font-semibold ${
+                    className={`flex w-full items-center rounded-control border bg-paper py-2 pl-3 pr-7 text-left text-base font-semibold ${
                       pointsOpen ? 'border-ink' : 'border-line'
                     } ${row.completed ? 'text-ink/60' : totalStr === '' ? 'text-ink/40' : 'text-ink'}`}
                   >
@@ -3125,7 +3125,7 @@ function SetGroup({
                   </button>
                   <span
                     aria-hidden
-                    className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
+                    className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-label leading-none ${
                       unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
                     }`}
                   >
@@ -3152,7 +3152,7 @@ function SetGroup({
                       e.target.select();
                     }}
                     aria-label={`Weight in ${unit}`}
-                    className={`no-spinner w-full rounded-xl border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+                    className={`no-spinner w-full rounded-control border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-pressed ${
                       row.completed
                         ? 'text-ink/60'
                         : row.weight === row.weightSuggested && row.weightSuggested !== ''
@@ -3162,7 +3162,7 @@ function SetGroup({
                   />
                   <span
                     aria-hidden
-                    className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
+                    className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-label leading-none ${
                       unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
                     }`}
                   >
@@ -3189,7 +3189,7 @@ function SetGroup({
               placeholder={timed ? 'secs' : 'reps'}
               className={`${
                 weightless ? 'min-w-[76px] flex-1' : 'w-16 shrink-0'
-              } rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+              } rounded-control border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-pressed ${
                 row.completed
                   ? 'text-ink/60'
                   : row.reps === row.repsSuggested && row.repsSuggested !== ''
@@ -3244,11 +3244,11 @@ function SetGroup({
             </div>
             {multiPoint && pointsOpen && (
               <div
-                className={`bg-line/30 px-5 pb-3 pt-2.5 ${
+                className={`bg-surface px-5 pb-3 pt-2.5 ${
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="text-label font-semibold uppercase tracking-[0.14em] text-muted">
                   Points
                 </div>
                 <div className="mt-2 space-y-2">
@@ -3259,7 +3259,7 @@ function SetGroup({
                       <div key={point} className="flex items-center gap-2.5">
                         <span
                           aria-hidden
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full pt-px text-[11px] font-bold ${
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full pt-px text-caption font-bold ${
                             value.trim() === ''
                               ? 'bg-line text-muted'
                               : 'bg-ink text-white'
@@ -3280,7 +3280,7 @@ function SetGroup({
                               e.target.select();
                             }}
                             aria-label={`Weight on point ${point + 1} in ${unit}`}
-                            className={`no-spinner w-full rounded-xl border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-line/40 ${
+                            className={`no-spinner w-full rounded-control border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-pressed ${
                               row.completed
                                 ? 'text-ink/60'
                                 : isSuggestion
@@ -3290,7 +3290,7 @@ function SetGroup({
                           />
                           <span
                             aria-hidden
-                            className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] leading-none ${
+                            className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-label leading-none ${
                               unitIsOverride ? 'font-bold text-ink' : 'font-semibold text-muted'
                             }`}
                           >
@@ -3314,7 +3314,7 @@ function SetGroup({
                 </div>
                 {/* The number the set actually logs, on a row of its own. */}
                 <div className="mt-2.5 flex items-center justify-between border-t border-line/60 pt-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  <span className="text-label font-semibold uppercase tracking-[0.14em] text-muted">
                     Total
                   </span>
                   <span className="text-sm font-bold text-ink">
@@ -3325,11 +3325,11 @@ function SetGroup({
             )}
             {curved && (
               <div
-                className={`flex items-center gap-2.5 bg-line/25 px-5 py-2 ${
+                className={`flex items-center gap-2.5 bg-surface px-5 py-2 ${
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
-                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                <span className="shrink-0 text-label font-semibold uppercase tracking-[0.14em] text-muted">
                   Curve
                 </span>
                 {row.completed ? (
@@ -3371,7 +3371,7 @@ function SetGroup({
               <button
                 type="button"
                 onClick={() => setPointsOverride((prev) => ({ ...prev, [idx]: true }))}
-                className={`flex w-full items-center gap-1.5 bg-line/20 px-5 py-1.5 text-left text-[11px] font-semibold text-muted active:bg-line/40 ${
+                className={`flex w-full items-center gap-1.5 bg-surface px-5 py-1.5 text-left text-caption font-semibold text-muted active:bg-pressed ${
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
@@ -3383,7 +3383,7 @@ function SetGroup({
         );
       })}
       {footerLabel && (hasDrops || scheme === 'muscle_round' || scheme === 'intensifier') && (
-        <div className="border-t border-line/60 bg-line/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+        <div className="border-t border-line/60 bg-surface px-3 py-1.5 text-label font-semibold uppercase tracking-wider text-muted">
           {footerLabel}
         </div>
       )}
@@ -3416,10 +3416,10 @@ function RestTimer({
   return (
     <div className="flex items-center gap-4">
       <div className="flex flex-col">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink">
+        <span className="text-label font-semibold uppercase tracking-[0.12em] text-ink">
           Rest
         </span>
-        <span className="mt-0.5 text-[11px] text-muted">Next set in</span>
+        <span className="mt-0.5 text-caption text-muted">Next set in</span>
       </div>
       <div className="relative">
         <svg width="120" height="120" viewBox="0 0 120 120">
@@ -3559,7 +3559,7 @@ function RestOverlay({
 
         {elapsedLabel && (
           <div className="mt-3 flex flex-col items-center">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+            <div className="text-label font-semibold uppercase tracking-[0.18em] text-white/50">
               Workout time
             </div>
             <div className="mt-1 font-mono text-base font-semibold tabular-nums">
@@ -3596,10 +3596,10 @@ function RestOverlay({
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="font-mono text-[64px] font-bold leading-none tabular-nums">
+              <div className="font-mono text-display-xl font-bold leading-none tabular-nums">
                 {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
               </div>
-              <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+              <div className="mt-3 text-label font-semibold uppercase tracking-[0.18em] text-white/60">
                 Until next set
               </div>
             </div>
@@ -3607,7 +3607,7 @@ function RestOverlay({
 
           {nextSetName && (
             <div className="mt-6 flex flex-col items-center">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+              <div className="text-label font-semibold uppercase tracking-[0.18em] text-white/50">
                 Next set
               </div>
               <div className="mt-1 text-lg font-bold tracking-tight">{nextSetName}</div>
@@ -3620,7 +3620,7 @@ function RestOverlay({
           )}
 
           <div className="mt-5 flex flex-col items-center">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+            <div className="text-label font-semibold uppercase tracking-[0.18em] text-white/50">
               Default rest time
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
@@ -3685,7 +3685,7 @@ function MiniRestBar({
         aria-label="Expand rest timer"
         className="pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-pill bg-[#0A0A0A] py-2 pl-4 pr-3 text-white shadow-card active:opacity-80"
       >
-        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+        <span className="text-label font-semibold uppercase tracking-[0.18em] text-white/60">
           Rest
         </span>
         <span className="font-mono text-base font-bold tabular-nums">
@@ -3726,7 +3726,7 @@ function RoundAction({
       <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/30 text-white">
         {children}
       </div>
-      <div className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70">
+      <div className="whitespace-nowrap text-label font-semibold uppercase tracking-[0.14em] text-white/70">
         {label}
       </div>
     </button>
@@ -3750,7 +3750,7 @@ function FastForward() {
 function WorkoutProgressBar({ value }: { value: number }) {
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
   return (
-    <div className="h-px w-full overflow-hidden bg-line/60">
+    <div className="h-px w-full overflow-hidden bg-surface-strong">
       <div
         className="h-full bg-ink"
         style={{
@@ -3801,7 +3801,7 @@ function RestPicker({
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
       {!compact && (
-        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
+        <span className="mr-1 text-label font-semibold uppercase tracking-wider text-muted">
           Rest
         </span>
       )}
@@ -3811,7 +3811,7 @@ function RestPicker({
           <button
             key={s}
             onClick={() => onChange(s)}
-            className={`rounded-pill px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+            className={`rounded-pill px-2.5 py-1 text-caption font-semibold transition-colors ${
               active ? 'bg-ink text-white' : 'bg-line text-muted active:text-ink'
             }`}
           >

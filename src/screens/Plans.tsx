@@ -103,7 +103,7 @@ export function Plans({ onBack, onUpload, onAfterActivate }: Props) {
         <PageHeader title="Your plans" onBack={onBack} />
 
         {error && (
-          <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mt-4 rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -150,7 +150,7 @@ export function Plans({ onBack, onUpload, onAfterActivate }: Props) {
 
             <button
               onClick={onUpload}
-              className="mt-6 w-full rounded-pill border border-line bg-paper-card py-4 text-base font-semibold text-ink active:bg-line/40"
+              className="mt-6 w-full rounded-pill border border-line bg-paper-card py-4 text-base font-semibold text-ink active:bg-pressed"
             >
               Upload a new plan
             </button>
@@ -219,7 +219,7 @@ function PlanCard({
     >
       <div className="p-5">
         <div
-          className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${
+          className={`text-label font-semibold uppercase tracking-[0.18em] ${
             dark ? 'text-white/70' : 'text-muted'
           }`}
         >
@@ -237,7 +237,7 @@ function PlanCard({
               }}
               autoFocus
               maxLength={80}
-              className={`flex-1 rounded-xl border px-3 py-1.5 text-lg font-bold tracking-tight focus:outline-none ${
+              className={`flex-1 rounded-control border px-3 py-1.5 text-lg font-bold tracking-tight focus:outline-none ${
                 dark
                   ? 'border-white/30 bg-white/10 text-white'
                   : 'border-line bg-paper text-ink focus:border-ink'
@@ -257,7 +257,7 @@ function PlanCard({
               onClick={onEditStart}
               aria-label="Rename plan"
               className={`shrink-0 rounded-full p-2 ${
-                dark ? 'active:bg-white/15' : 'active:bg-line/40'
+                dark ? 'active:bg-white/15' : 'active:bg-pressed'
               }`}
             >
               <PencilIcon />
@@ -280,7 +280,7 @@ function PlanCard({
           className={`mt-4 flex w-full items-center justify-between rounded-pill px-4 py-2.5 text-sm font-semibold ${
             dark
               ? 'bg-white/10 text-white active:bg-white/15'
-              : 'border border-line bg-paper-card text-ink active:bg-line/40'
+              : 'border border-line bg-paper-card text-ink active:bg-pressed'
           }`}
         >
           <span>{expanded ? 'Hide exercises' : 'See exercises'}</span>
@@ -334,14 +334,14 @@ function DayRow({
   const exercises = day.plan_exercises ?? [];
   return (
     <div
-      className={`overflow-hidden rounded-2xl ${
+      className={`overflow-hidden rounded-panel ${
         dark ? 'bg-white/5' : 'bg-paper'
       }`}
     >
       <button
         onClick={() => setOpen((o) => !o)}
         className={`flex w-full items-center justify-between px-4 py-3 text-left ${
-          dark ? 'active:bg-white/10' : 'active:bg-line/40'
+          dark ? 'active:bg-white/10' : 'active:bg-pressed'
         }`}
       >
         <div>
@@ -427,7 +427,7 @@ function SwitchPlanDialog({
           <button
             onClick={onRestart}
             disabled={busy}
-            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40 disabled:opacity-50"
+            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed disabled:opacity-50"
           >
             Start again from week 1
           </button>

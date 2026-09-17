@@ -353,10 +353,10 @@ export function DayView({
 
         {siblingDay && day.week_index != null && onSwitchToSibling && (
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+            <span className="text-label font-semibold uppercase tracking-[0.18em] text-muted">
               Rotation
             </span>
-            <div className="flex rounded-pill bg-line/60 p-0.5">
+            <div className="flex rounded-pill bg-surface-strong p-0.5">
               {[day, siblingDay]
                 .sort((a, b) => (a.week_index ?? 0) - (b.week_index ?? 0))
                 .map((variant) => {
@@ -381,7 +381,7 @@ export function DayView({
           <button
             onClick={handleWarmNow}
             disabled={warming}
-            className="mt-3 flex w-full items-center gap-2 rounded-pill bg-line/70 px-3 py-1.5 text-left text-xs font-medium text-muted disabled:opacity-60"
+            className="mt-3 flex w-full items-center gap-2 rounded-pill bg-surface-strong px-3 py-1.5 text-left text-xs font-medium text-muted disabled:opacity-60"
           >
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted" />
             <span className="truncate">
@@ -396,7 +396,7 @@ export function DayView({
 
         {referenceOnly && (
           <div className="mt-6 rounded-card bg-paper-card px-5 py-4 shadow-card">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+            <div className="text-label font-semibold uppercase tracking-[0.18em] text-muted">
               Reference
             </div>
             <div className="mt-1 text-sm text-ink">
@@ -633,7 +633,7 @@ function ExerciseRow({
               {exercise.total_sets ?? '–'} × {exercise.rep_range}
             </span>
             {schemeLabel && (
-              <span className="rounded-pill bg-ink px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
+              <span className="rounded-pill bg-ink px-2 py-0.5 text-label font-semibold uppercase tracking-wider text-white">
                 {schemeLabel}
               </span>
             )}
@@ -664,7 +664,7 @@ function ExerciseRow({
             <Chevron rotate={notesOpen ? 90 : 0} small />
           </button>
           {notesOpen && (
-            <div className="mt-2 rounded-xl bg-paper p-3 text-xs leading-relaxed text-ink">
+            <div className="mt-2 rounded-control bg-paper p-3 text-xs leading-relaxed text-ink">
               {exercise.notes}
             </div>
           )}
