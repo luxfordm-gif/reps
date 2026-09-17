@@ -2292,8 +2292,10 @@ function AlternativeSheet({
       onClick={onClose}
     >
       <div
-        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 transition-transform duration-sheet ease-snap sm:rounded-card ${
-          shown ? 'translate-y-0' : 'translate-y-7'
+        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 transition-transform sm:rounded-card ${
+          shown
+            ? 'translate-y-0 duration-[300ms] ease-sheet'
+            : 'translate-y-10 duration-pop ease-snap'
         }`}
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
@@ -2456,7 +2458,7 @@ function AddAlternativeModal({
           always defaults back to the original.
         </p>
 
-        <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        <div className="mt-4 h-[42vh] min-h-0 flex-1 overflow-y-auto">
           {machines === null ? (
             <div className="py-6 text-center text-sm text-muted">Loading…</div>
           ) : machines.length === 0 ? (
@@ -2616,7 +2618,7 @@ function SwapMachineModal({
               or add a brand-new exercise.
             </p>
 
-            <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+            <div className="mt-4 h-[42vh] min-h-0 flex-1 overflow-y-auto">
               {machines === null ? (
                 <div className="py-6 text-center text-sm text-muted">Loading…</div>
               ) : machines.length === 0 ? (

@@ -217,8 +217,8 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
 
   return (
     <div
-      className={`fixed inset-x-0 z-50 transition-opacity duration-sheet ease-snap ${
-        visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      className={`fixed inset-x-0 z-50 transition-opacity ease-snap ${
+        visible ? 'opacity-100 duration-pop' : 'pointer-events-none opacity-0 duration-press'
       }`}
       style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
       aria-modal="true"
@@ -229,8 +229,16 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         // A fixed rise, not its own height: this sheet grows as the plates
         // render and re-measures against the visual viewport when the keyboard
         // comes up, so a percentage travel is chasing a moving target.
-        className={`absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-card bg-paper shadow-card transition-transform duration-sheet ease-snap ${
-          visible ? 'translate-y-0' : 'translate-y-7'
+        //
+        // Arriving and leaving are not the same job. Coming in, it travels far
+        // enough and slowly enough to be seen — a sheet that fades in over a
+        // fifth of a second has not arrived, it has simply appeared. Going out,
+        // the decision is already made and the screen behind it is what's
+        // wanted, so it gets out of the way at nearly twice the speed.
+        className={`absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-card bg-paper shadow-card transition-transform ${
+          visible
+            ? 'translate-y-0 duration-[300ms] ease-sheet'
+            : 'translate-y-10 duration-pop ease-snap'
         }`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         onClick={(e) => e.stopPropagation()}
