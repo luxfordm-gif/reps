@@ -54,6 +54,8 @@ export interface QueuedSetRow {
   set_index: number;
   drop_index: number;
   weight: number | null;
+  /** Per-point breakdown for a weighted-profile machine; null on ordinary ones. */
+  position_weights: (number | null)[] | null;
   reps: number | null;
   hold_seconds: number | null;
   completed_at: string;
@@ -65,6 +67,7 @@ export type UpdatableTable = 'plan_exercises';
 
 export interface QueuedSetPatch {
   weight?: number | null;
+  position_weights?: (number | null)[] | null;
   reps?: number | null;
   hold_seconds?: number | null;
 }
@@ -406,15 +409,18 @@ async function applyOp(op: OutboxOp, userId: string): Promise<void> {
         { label: 'sync:create_session' }
       );
       return;
-    case 'log_set':
+    case 'log_set': {
+      // Same as the live insert: an ordinary machine's set doesn't mention
+      // position_weights at all (see setInsertPayload).
+      const { position_weights, ...rest } = op.row;
+      const payload: Record<string, unknown> = { ...rest, user_id: userId };
+      if (position_weights != null) payload.position_weights = position_weights;
       await query(
-        supabase
-          .from('logged_sets')
-          .upsert({ ...op.row, user_id: userId }, { onConflict: 'id' })
-          .select('id'),
+        supabase.from('logged_sets').upsert(payload, { onConflict: 'id' }).select('id'),
         { label: 'sync:log_set' }
       );
       return;
+    }
     case 'update_set':
       await query(
         supabase.from('logged_sets').update(op.patch).eq('id', op.id).select('id'),
