@@ -255,7 +255,7 @@ export function Home({
       <div className="min-h-screen bg-paper pb-28">
         <div
           className="mx-auto max-w-md px-5"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
         >
           <h1 className="text-display font-bold leading-tight tracking-[-0.02em] text-ink">
             {greeting()},
@@ -279,7 +279,7 @@ export function Home({
       <div className="min-h-screen bg-paper pb-28">
         <div
           className="mx-auto max-w-md px-5"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
         >
           {showOnboardingBanner && (
             <OnboardingBanner
@@ -373,7 +373,7 @@ export function Home({
     <div className="min-h-screen bg-paper pb-28">
       <div
         className="mx-auto max-w-md px-5"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 44px)' }}
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
       >
         {showOnboardingBanner && (
           <OnboardingBanner
