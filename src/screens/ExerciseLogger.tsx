@@ -2458,7 +2458,7 @@ function AddAlternativeModal({
           always defaults back to the original.
         </p>
 
-        <div className="mt-4 h-[42vh] min-h-0 flex-1 overflow-y-auto">
+        <div className="mt-4 h-[42vh] min-h-0 overflow-y-auto">
           {machines === null ? (
             <div className="py-6 text-center text-sm text-muted">Loading…</div>
           ) : machines.length === 0 ? (
@@ -2618,7 +2618,7 @@ function SwapMachineModal({
               or add a brand-new exercise.
             </p>
 
-            <div className="mt-4 h-[42vh] min-h-0 flex-1 overflow-y-auto">
+            <div className="mt-4 h-[42vh] min-h-0 overflow-y-auto">
               {machines === null ? (
                 <div className="py-6 text-center text-sm text-muted">Loading…</div>
               ) : machines.length === 0 ? (
