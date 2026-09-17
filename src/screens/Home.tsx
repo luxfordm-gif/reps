@@ -22,6 +22,7 @@ import { requestFlush } from '../lib/offline/outbox';
 import { warmLastSetsForPlan } from '../lib/sessionsApi';
 import { useNetStatus } from '../lib/offline/net';
 import type { Profile } from '../lib/profileApi';
+import { hapticBuzz } from '../lib/haptics';
 
 type Day = FullPlan['training_days'][number];
 
@@ -672,15 +673,6 @@ function movedOffPress(
   return Math.abs(e.clientX - o.x) > 8 || Math.abs(e.clientY - o.y) > 8;
 }
 
-function hapticBuzz(pattern: number | number[]) {
-  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-    try {
-      navigator.vibrate(pattern);
-    } catch {
-      // ignore — some platforms (notably iOS Safari) don't support vibration
-    }
-  }
-}
 
 function todayKey() {
   const d = new Date();
