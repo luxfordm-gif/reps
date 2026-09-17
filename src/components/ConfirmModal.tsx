@@ -25,14 +25,14 @@ export function ConfirmModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center">
-          <img src="/icon-192.png" alt="" className="h-12 w-12 rounded-2xl" />
+          <img src="/icon-192.png" alt="" className="h-12 w-12 rounded-panel" />
         </div>
         <h2 className="mt-4 text-center text-xl font-bold tracking-tight text-ink">{title}</h2>
         {message && <p className="mt-2 text-center text-sm text-muted">{message}</p>}
         <div className="mt-6 flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             {cancelLabel}
           </button>

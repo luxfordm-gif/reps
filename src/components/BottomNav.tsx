@@ -78,7 +78,7 @@ export function BottomNav({
     >
       <nav
         aria-label="Main"
-        className="mx-auto grid max-w-md grid-flow-col auto-cols-fr items-center rounded-pill bg-ink p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+        className="mx-auto grid max-w-md grid-flow-col auto-cols-fr items-center rounded-pill bg-ink p-1.5 shadow-lift"
       >
         {TABS.map((tab) => {
           const isActive = tab.id === active;

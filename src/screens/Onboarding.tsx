@@ -277,7 +277,7 @@ function StepShell({
         {onBack ? (
           <button
             onClick={onBack}
-            className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-line/60"
+            className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
             aria-label="Back"
           >
             <BackIcon />
@@ -310,7 +310,7 @@ function StepShell({
 function StepHeading({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <>
-      <h1 className="text-[32px] font-bold leading-tight tracking-tight text-ink">{title}</h1>
+      <h1 className="text-display font-bold leading-tight tracking-tight text-ink">{title}</h1>
       {subtitle && <p className="mt-1.5 text-base text-muted">{subtitle}</p>}
     </>
   );
@@ -334,7 +334,7 @@ function ContinueFooter({
   return (
     <div className="mt-auto pt-6">
       {error && (
-        <div className="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="mb-3 rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
       )}
       <p className="mb-3 text-center text-xs text-muted">
         {helperText ?? 'Your data is private and secure.'}
@@ -427,7 +427,7 @@ function StepBirthday({
             onChange={(e) => onChange(e.target.value)}
             min={minDOBISO()}
             max={maxDOBISO()}
-            className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-xl font-semibold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-xl font-semibold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
         </label>
       </div>
@@ -509,7 +509,7 @@ function StepWeight({
               value={kgInput}
               onChange={(e) => setKgInput(e.target.value)}
               placeholder="e.g. 72.0"
-              className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+              className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
             />
             <div className="pb-3 text-base font-medium text-muted">kg</div>
           </div>
@@ -616,7 +616,7 @@ function StepHeight({
               value={cmInput}
               onChange={(e) => setCmInput(e.target.value)}
               placeholder="e.g. 178"
-              className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+              className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
             />
             <div className="pb-3 text-base font-medium text-muted">cm</div>
           </div>
@@ -786,14 +786,14 @@ function ReadyScreen({
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#E8F5E9]">
             <CheckIcon />
           </div>
-          <h1 className="mt-6 text-[32px] font-bold leading-tight tracking-tight text-ink">
+          <h1 className="mt-6 text-display font-bold leading-tight tracking-tight text-ink">
             You're ready.
           </h1>
           <p className="mt-2 text-base text-muted">{motivationalLine}</p>
         </div>
         <div className="pt-6">
           {error && (
-            <div className="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+            <div className="mb-3 rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
           )}
           <button
             onClick={onFinish}
@@ -906,7 +906,7 @@ function NumberCell({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+        className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
       />
       <div className="mt-1 text-xs font-medium uppercase tracking-wider text-muted">{caption}</div>
     </div>

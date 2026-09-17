@@ -112,7 +112,7 @@ export function Login() {
           {showBack && (
             <button
               onClick={handleBack}
-              className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-line/60"
+              className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
               aria-label="Back"
             >
               <BackIcon />
@@ -133,7 +133,7 @@ export function Login() {
         >
           <Logo className="h-8 w-auto" />
 
-          <h1 className="mt-8 text-center text-[32px] font-bold leading-tight tracking-tight text-ink">
+          <h1 className="mt-8 text-center text-display font-bold leading-tight tracking-tight text-ink">
             {heading}
           </h1>
           <p className="mt-1.5 text-center text-base text-muted">{subtitle}</p>
@@ -312,10 +312,10 @@ function Messages({ error, info }: { error: string | null; info: string | null }
   return (
     <>
       {error && (
-        <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
       )}
       {info && (
-        <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm text-green-800">{info}</div>
+        <div className="rounded-panel bg-good-soft px-4 py-3 text-sm text-good">{info}</div>
       )}
     </>
   );
@@ -497,7 +497,7 @@ function Field({
         autoComplete={autoComplete}
         autoFocus={autoFocus}
         required
-        className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-base text-ink placeholder:text-muted focus:border-ink focus:outline-none"
+        className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-base text-ink placeholder:text-muted focus:border-ink focus:outline-none"
       />
     </label>
   );

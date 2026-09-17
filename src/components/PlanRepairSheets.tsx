@@ -38,7 +38,7 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
           <h2 className="text-lg font-bold tracking-tight text-ink">{title}</h2>
           <button
             onClick={onClose}
-            className="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-line/60"
+            className="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
             aria-label="Close"
           >
             <CloseIcon />
@@ -51,8 +51,8 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
 }
 
 const inputClass =
-  'mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none';
-const labelClass = 'block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted';
+  'mt-1 w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none';
+const labelClass = 'block text-caption font-semibold uppercase tracking-[0.12em] text-muted';
 
 // --- Exercise --------------------------------------------------------------------
 
@@ -102,9 +102,9 @@ export function ExerciseEditorSheet({
   return (
     <SheetFrame title={title} onClose={onClose}>
       {sourceText && (
-        <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="mt-3 rounded-control bg-warn-soft px-3 py-2 text-xs text-warn">
           <div className="font-semibold">From the PDF</div>
-          <div className="mt-0.5 break-words font-mono text-[11px]">{sourceText}</div>
+          <div className="mt-0.5 break-words font-mono text-caption">{sourceText}</div>
         </div>
       )}
 
@@ -223,8 +223,8 @@ export function ExerciseEditorSheet({
 
         {onDelete &&
           (confirmDelete ? (
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-red-50 px-3 py-2.5">
-              <span className="text-xs text-red-700">Remove this exercise from the plan?</span>
+            <div className="flex items-center justify-between gap-3 rounded-control bg-danger-soft px-3 py-2.5">
+              <span className="text-xs text-danger">Remove this exercise from the plan?</span>
               <div className="flex shrink-0 gap-2">
                 <button
                   type="button"
@@ -236,7 +236,7 @@ export function ExerciseEditorSheet({
                 <button
                   type="button"
                   onClick={onDelete}
-                  className="rounded-pill bg-red-600 px-3 py-1.5 text-xs font-semibold text-white"
+                  className="rounded-pill bg-danger-strong px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   Remove
                 </button>
@@ -246,7 +246,7 @@ export function ExerciseEditorSheet({
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="w-full py-2 text-center text-sm font-semibold text-red-600 active:opacity-70"
+              className="w-full py-2 text-center text-sm font-semibold text-danger-strong active:opacity-70"
             >
               Remove exercise
             </button>
@@ -337,8 +337,8 @@ export function DayEditorSheet({
 
         {onDelete &&
           (confirmDelete ? (
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-red-50 px-3 py-2.5">
-              <span className="text-xs text-red-700">
+            <div className="flex items-center justify-between gap-3 rounded-control bg-danger-soft px-3 py-2.5">
+              <span className="text-xs text-danger">
                 {exerciseCount > 0
                   ? `Remove this day and its ${exerciseCount} ${exerciseCount === 1 ? 'exercise' : 'exercises'}?`
                   : 'Remove this day?'}
@@ -354,7 +354,7 @@ export function DayEditorSheet({
                 <button
                   type="button"
                   onClick={onDelete}
-                  className="rounded-pill bg-red-600 px-3 py-1.5 text-xs font-semibold text-white"
+                  className="rounded-pill bg-danger-strong px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   Remove
                 </button>
@@ -364,7 +364,7 @@ export function DayEditorSheet({
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="w-full py-2 text-center text-sm font-semibold text-red-600 active:opacity-70"
+              className="w-full py-2 text-center text-sm font-semibold text-danger-strong active:opacity-70"
             >
               Remove day
             </button>

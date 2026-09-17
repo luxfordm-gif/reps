@@ -107,12 +107,12 @@ export function NotesAccordion({
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
             rows={4}
-            className="mt-3 w-full resize-y rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none"
+            className="mt-3 w-full resize-y rounded-control border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none"
           />
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-[11px] text-muted">
+            <span className="text-caption text-muted">
               {error ? (
-                <span className="text-red-700">{error}</span>
+                <span className="text-danger">{error}</span>
               ) : saving ? (
                 'Saving…'
               ) : savedAt ? (

@@ -225,7 +225,7 @@ export function Machines({ onBack }: Props) {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-card border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mt-4 rounded-card border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -285,7 +285,7 @@ export function Machines({ onBack }: Props) {
 
       {selectMode && selectedCount > 0 && (
         <div
-          className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper-card px-5 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.06)]"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper-card px-5 py-3 shadow-hairline-up"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
         >
           <div className="mx-auto flex max-w-md items-center gap-3">
@@ -312,7 +312,7 @@ export function Machines({ onBack }: Props) {
                   );
                   setConfirmDelete(rows);
                 }}
-                className="rounded-pill border border-red-200 bg-paper-card px-4 py-2 text-sm font-semibold text-red-600 active:bg-red-50"
+                className="rounded-pill border border-danger-line bg-paper-card px-4 py-2 text-sm font-semibold text-danger-strong active:bg-danger-soft"
               >
                 Delete…
               </button>
@@ -419,7 +419,7 @@ function Row({
     <>
       <button
         onClick={selectMode ? onToggleSelect : onOpen}
-        className="flex w-full items-center gap-3 px-5 py-3.5 text-left active:bg-line/40"
+        className="flex w-full items-center gap-3 px-5 py-3.5 text-left active:bg-pressed"
       >
         {selectMode && (
           <span
@@ -444,13 +444,13 @@ function Row({
           <div className="truncate text-sm font-semibold text-ink">
             {machine.displayName}
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted">
             {machine.bodyPart && (
-              <span className="rounded-pill bg-line/60 px-2 py-0.5 font-semibold tracking-wide">
+              <span className="rounded-pill bg-surface-strong px-2 py-0.5 font-semibold tracking-wide">
                 {machine.bodyPart}
               </span>
             )}
-            <span className="rounded-pill bg-line/60 px-2 py-0.5 font-semibold uppercase tracking-wider">
+            <span className="rounded-pill bg-surface-strong px-2 py-0.5 font-semibold uppercase tracking-wider">
               {machine.unit}
             </span>
             <span>
@@ -549,7 +549,7 @@ function MachineEditModal({
       onClick={onClose}
     >
       <div
-        className="max-h-full w-full overflow-y-auto rounded-t-3xl bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
+        className="max-h-full w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Edit machine</h2>
@@ -561,7 +561,7 @@ function MachineEditModal({
                 setName(e.target.value);
                 setNameChoice(null);
               }}
-              className="w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+              className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
             />
           </Field>
 
@@ -569,7 +569,7 @@ function MachineEditModal({
             <select
               value={bodyPart ?? ''}
               onChange={(e) => setBodyPart(e.target.value || null)}
-              className="w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+              className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
             >
               <option value="">— Unset —</option>
               {BODY_PART_OPTIONS.map((bp) => (
@@ -642,7 +642,7 @@ function MachineEditModal({
                     <input
                       value={forkName}
                       onChange={(e) => setForkName(e.target.value)}
-                      className="w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                      className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
                     />
                   </Field>
                 </div>
@@ -653,7 +653,7 @@ function MachineEditModal({
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
-              className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+              className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
             >
               Cancel
             </button>
@@ -674,7 +674,7 @@ function MachineEditModal({
 
           <button
             onClick={onDelete}
-            className="w-full rounded-pill border border-red-200 py-3 text-sm font-semibold text-red-600 active:bg-red-50"
+            className="w-full rounded-pill border border-danger-line py-3 text-sm font-semibold text-danger-strong active:bg-danger-soft"
           >
             Delete machine
           </button>
@@ -705,8 +705,8 @@ function Prompt({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-paper p-3">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+    <div className="rounded-panel border border-line bg-paper p-3">
+      <div className="text-caption font-semibold uppercase tracking-[0.12em] text-muted">
         {label}
       </div>
       <div className="mt-1 text-sm font-semibold text-ink">{question}</div>
@@ -729,7 +729,7 @@ function ChoiceRow({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left ${
+      className={`flex w-full items-start gap-3 rounded-control border px-3 py-2.5 text-left ${
         selected ? 'border-ink bg-paper-card' : 'border-line bg-paper-card'
       }`}
     >
@@ -779,7 +779,7 @@ function MergeMachinesModal({
       onClick={onCancel}
     >
       <div
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
+        className="max-h-[92vh] w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Merge machines</h2>
@@ -800,7 +800,7 @@ function MergeMachinesModal({
           ))}
         </div>
 
-        <div className="mt-4 rounded-xl bg-paper p-3 text-xs text-muted">
+        <div className="mt-4 rounded-control bg-paper p-3 text-xs text-muted">
           {losers.length === 0 ? (
             'Select at least one other machine to merge in.'
           ) : (
@@ -820,7 +820,7 @@ function MergeMachinesModal({
         <div className="mt-5 flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-line/40"
+            className="flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             Cancel
           </button>

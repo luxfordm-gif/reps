@@ -33,7 +33,7 @@ export function Tile({
         {onClick && <ChevronRight />}
       </div>
       <div className="mt-3 truncate text-sm text-ink">{label}</div>
-      <div className="mt-0.5 whitespace-nowrap text-[26px] font-bold leading-none tracking-tight text-ink tabular-nums">
+      <div className="mt-0.5 whitespace-nowrap text-2xl font-bold leading-none tracking-tight text-ink tabular-nums">
         {value}
       </div>
       {hint && <div className="mt-1 truncate text-xs text-muted">{hint}</div>}
@@ -42,7 +42,7 @@ export function Tile({
   );
   const cls = 'rounded-card bg-paper-card p-4 shadow-card';
   return onClick ? (
-    <button type="button" onClick={onClick} className={`${cls} w-full text-left active:bg-line/30`}>
+    <button type="button" onClick={onClick} className={`${cls} w-full text-left active:bg-surface`}>
       {body}
     </button>
   ) : (

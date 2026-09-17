@@ -198,7 +198,7 @@ export function Profile({
                       setWaterGoal(n);
                     }
                   }}
-                  className="w-14 rounded-xl border border-line bg-paper px-2 py-1 text-center text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                  className="w-14 rounded-control border border-line bg-paper px-2 py-1 text-center text-sm font-semibold text-ink focus:border-ink focus:outline-none"
                 />
                 <select
                   value={waterUnit}
@@ -207,7 +207,7 @@ export function Profile({
                     setWaterUnitState(u);
                     setWaterUnit(u);
                   }}
-                  className="rounded-xl border border-line bg-paper py-1 pl-3 pr-7 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                  className="rounded-control border border-line bg-paper py-1 pl-3 pr-7 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
                 >
                   <option value="bottles">bottles</option>
                   <option value="glasses">glasses</option>
@@ -241,7 +241,7 @@ export function Profile({
                     }
                   }}
                   onBlur={() => setStepGoalText(String(stepGoal))}
-                  className="w-20 rounded-xl border border-line bg-paper px-2 py-1 text-center text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                  className="w-20 rounded-control border border-line bg-paper px-2 py-1 text-center text-sm font-semibold text-ink focus:border-ink focus:outline-none"
                 />
                 <span className="text-sm text-muted">steps</span>
               </div>
@@ -313,7 +313,7 @@ export function Profile({
           <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
             <button
               onClick={onOpenHistory}
-              className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"
+              className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-pressed"
             >
               <div className="text-sm font-semibold text-ink">Workout history</div>
               <ChevronRight />
@@ -321,7 +321,7 @@ export function Profile({
             <div className="border-t border-line" />
             <button
               onClick={onOpenMachines}
-              className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"
+              className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-pressed"
             >
               <div>
                 <div className="text-sm font-semibold text-ink">Manage machines</div>
@@ -341,7 +341,7 @@ export function Profile({
         <Section title="Account">
           <button
             onClick={signOut}
-            className="w-full rounded-card bg-paper-card px-5 py-4 text-left text-sm font-semibold text-red-600 shadow-card active:bg-red-50"
+            className="w-full rounded-card bg-paper-card px-5 py-4 text-left text-sm font-semibold text-danger-strong shadow-card active:bg-danger-soft"
           >
             Sign out
           </button>
@@ -499,7 +499,7 @@ function CoachExportRow() {
   return (
     <button
       onClick={exportWeek}
-      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-line/40"
+      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-pressed"
     >
       <div className="text-sm font-semibold text-ink">
         {copied ? 'Copied' : "Copy this week's notes for coach"}
@@ -566,7 +566,7 @@ function CoachWeeklySummaryRow() {
   return (
     <button
       onClick={exportSummary}
-      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-line/40"
+      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-pressed"
     >
       <div className="text-sm font-semibold text-ink">
         {copied ? 'Copied' : "Copy weekly summary for coach"}
@@ -921,7 +921,7 @@ function DetailRow({
   return (
     <button
       onClick={onEdit}
-      className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-line/40"
+      className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-pressed"
     >
       <div className="min-w-0">
         <div className="flex items-center">
@@ -959,7 +959,7 @@ function EnumEditor<T extends string>({
           <button
             key={opt.value}
             onClick={() => setDraft(opt.value)}
-            className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-semibold transition-colors ${
+            className={`flex w-full items-center justify-between rounded-panel px-4 py-3 text-left text-sm font-semibold transition-colors ${
               draft === opt.value
                 ? 'border-2 border-ink bg-paper-card text-ink'
                 : 'border border-line bg-paper-card text-ink'
@@ -1007,7 +1007,7 @@ function MultiEnumEditor<T extends string>({
             <button
               key={opt.value}
               onClick={() => toggle(opt.value)}
-              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-semibold transition-colors ${
+              className={`flex w-full items-center justify-between rounded-panel px-4 py-3 text-left text-sm font-semibold transition-colors ${
                 selected
                   ? 'border-2 border-ink bg-paper-card text-ink'
                   : 'border border-line bg-paper-card text-ink'
@@ -1066,7 +1066,7 @@ function DobEditor({
         value={draft}
         max={max}
         onChange={(e) => setDraft(e.target.value)}
-        className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3 text-base font-semibold text-ink focus:border-ink focus:outline-none"
+        className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-base font-semibold text-ink focus:border-ink focus:outline-none"
       />
       <button
         onClick={() => draft && onSave(draft)}
@@ -1135,7 +1135,7 @@ function WeightEditor({
             value={kgInput}
             onChange={(e) => setKgInput(e.target.value)}
             placeholder="72.0"
-            className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
           <div className="pb-2 text-sm font-medium text-muted">kg</div>
         </div>
@@ -1148,7 +1148,7 @@ function WeightEditor({
             value={stInput}
             onChange={(e) => setStInput(e.target.value)}
             placeholder="11"
-            className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
           <input
             type="number"
@@ -1157,7 +1157,7 @@ function WeightEditor({
             value={lbInput}
             onChange={(e) => setLbInput(e.target.value)}
             placeholder="5"
-            className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
         </div>
       )}
@@ -1225,7 +1225,7 @@ function HeightEditor({
             value={cmInput}
             onChange={(e) => setCmInput(e.target.value)}
             placeholder="178"
-            className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
           <div className="pb-2 text-sm font-medium text-muted">cm</div>
         </div>
@@ -1238,7 +1238,7 @@ function HeightEditor({
             value={ftInput}
             onChange={(e) => setFtInput(e.target.value)}
             placeholder="5"
-            className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
           <input
             type="number"
@@ -1247,7 +1247,7 @@ function HeightEditor({
             value={inInput}
             onChange={(e) => setInInput(e.target.value)}
             placeholder="10"
-            className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
         </div>
       )}

@@ -105,7 +105,7 @@ export function Calendar({ value, onChange, maxISO }: Props) {
         {DOW.map((d, i) => (
           <div
             key={i}
-            className="flex h-6 items-center justify-center text-[10px] font-semibold uppercase tracking-wider text-muted"
+            className="flex h-6 items-center justify-center text-label font-semibold uppercase tracking-wider text-muted"
           >
             {d}
           </div>
@@ -122,14 +122,14 @@ export function Calendar({ value, onChange, maxISO }: Props) {
               type="button"
               disabled={isFuture}
               onClick={() => onChange(cellIso)}
-              className={`flex h-8 w-full items-center justify-center rounded-lg text-[13px] transition-colors ${
+              className={`flex h-8 w-full items-center justify-center rounded-control text-sm transition-colors ${
                 isSelected
                   ? 'bg-ink font-semibold text-white'
                   : isFuture
                     ? 'text-muted/30'
                     : isToday
-                      ? 'font-semibold text-ink ring-1 ring-inset ring-ink active:bg-line/60'
-                      : 'text-ink active:bg-line/60'
+                      ? 'font-semibold text-ink ring-1 ring-inset ring-ink active:bg-surface-strong'
+                      : 'text-ink active:bg-surface-strong'
               }`}
             >
               {d}
@@ -152,7 +152,7 @@ export function CalendarPopover({ open, value, onSelect, maxISO }: PopoverProps)
   if (!open) return null;
   return (
     <div
-      className="mt-2 overflow-hidden rounded-2xl bg-paper-card p-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-line"
+      className="mt-2 overflow-hidden rounded-panel bg-paper-card p-3 shadow-lift-soft ring-1 ring-line"
       role="dialog"
     >
       <Calendar value={value} maxISO={maxISO} onChange={onSelect} />

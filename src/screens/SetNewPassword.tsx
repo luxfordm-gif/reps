@@ -46,7 +46,7 @@ export function SetNewPassword({ onDone }: Props) {
         >
           <Logo className="h-16 w-auto self-start" />
 
-          <h1 className="mt-10 text-[32px] font-bold leading-tight tracking-tight text-ink">
+          <h1 className="mt-10 text-display font-bold leading-tight tracking-tight text-ink">
             Set a new password.
           </h1>
           <p className="mt-1.5 text-base text-muted">
@@ -67,7 +67,7 @@ export function SetNewPassword({ onDone }: Props) {
               autoComplete="new-password"
             />
             {error && (
-              <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">
                 {error}
               </div>
             )}
@@ -107,7 +107,7 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         autoComplete={autoComplete}
         required
-        className="w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-base text-ink focus:border-ink focus:outline-none"
+        className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-base text-ink focus:border-ink focus:outline-none"
       />
     </label>
   );

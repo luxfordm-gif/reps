@@ -117,7 +117,7 @@ export function RecordsBoard({ records, expanded, onToggle, renderDetail }: Prop
                         type="button"
                         onClick={() => onToggle(r.normalizedName)}
                         aria-expanded={open}
-                        className="w-full text-left active:bg-line/30"
+                        className="w-full text-left active:bg-surface"
                       >
                         <RecordRow
                           record={r}
@@ -153,7 +153,7 @@ function RecordRow({
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-semibold text-ink">{record.displayName}</span>
           {isNew && (
-            <span className="shrink-0 rounded-pill bg-ink px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+            <span className="shrink-0 rounded-pill bg-ink px-1.5 py-0.5 text-label font-bold uppercase tracking-wider text-white">
               New
             </span>
           )}
@@ -165,7 +165,7 @@ function RecordRow({
           <div className="whitespace-nowrap text-lg font-bold leading-tight tracking-tight text-ink tabular-nums">
             {headline(record)}
           </div>
-          <div className="whitespace-nowrap text-[11px] text-muted tabular-nums">
+          <div className="whitespace-nowrap text-caption text-muted tabular-nums">
             {headlineDetail(record)}
           </div>
         </div>

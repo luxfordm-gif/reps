@@ -48,7 +48,7 @@ export function WeeklyProgress({
     selected != null ? dayDetails[selected] ?? [] : [];
 
   return (
-    <div className="rounded-card bg-ink p-5 text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+    <div className="rounded-card bg-ink p-5 text-white shadow-lift">
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
           Weekly Progress
@@ -114,7 +114,7 @@ export function WeeklyProgress({
                 )}
               </div>
               <div
-                className={`text-[10px] font-medium ${
+                className={`text-label font-medium ${
                   isSelected || isToday ? 'text-white' : 'text-white/45'
                 }`}
               >
@@ -125,7 +125,7 @@ export function WeeklyProgress({
         })}
       </div>
 
-      <div className="mt-4 min-h-[3.25rem] rounded-xl bg-white/10 px-3.5 py-2.5 text-xs text-white">
+      <div className="mt-4 min-h-[3.25rem] rounded-control bg-white/10 px-3.5 py-2.5 text-xs text-white">
         {selected != null && selectedDetails.length > 0 ? (
           <>
             <div className="font-semibold uppercase tracking-[0.12em] text-white/60">

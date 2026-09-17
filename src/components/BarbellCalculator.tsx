@@ -217,7 +217,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
     >
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
       <div
-        className={`absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-3xl bg-paper shadow-card transition-transform duration-300 ease-out ${
+        className={`absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-card bg-paper shadow-card transition-transform duration-300 ease-out ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
@@ -242,7 +242,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         <div className="border-t border-line/60" />
 
         <div className="px-4 pt-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          <div className="text-label font-semibold uppercase tracking-wider text-muted">
             Select barbell
           </div>
           <div className="mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
@@ -252,7 +252,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
                 <button
                   key={t.id}
                   onClick={() => selectBar(t.id)}
-                  className={`relative flex h-[90px] w-[88px] flex-none snap-start flex-col items-center justify-between rounded-2xl bg-paper-card p-2 text-center transition-colors border-2 ${
+                  className={`relative flex h-[90px] w-[88px] flex-none snap-start flex-col items-center justify-between rounded-panel bg-paper-card p-2 text-center transition-colors border-2 ${
                     selected ? 'border-ink' : 'border-line/60'
                   }`}
                 >
@@ -265,8 +265,8 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
                     <BarTileIcon kind={t.icon} />
                   </div>
                   <div>
-                    <div className="text-[11px] font-semibold leading-tight text-ink">{t.label.split(' · ')[0]}</div>
-                    <div className="text-[10px] text-muted">
+                    <div className="text-caption font-semibold leading-tight text-ink">{t.label.split(' · ')[0]}</div>
+                    <div className="text-label text-muted">
                       {t.icon === 'other'
                         ? customBarKg
                           ? `${formatKg(customBarKg)}kg`
@@ -281,7 +281,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
             })}
           </div>
           {barId === 'custom' && (
-            <div className="mt-2 flex items-center gap-2 rounded-2xl border-2 border-line/60 bg-paper-card p-3">
+            <div className="mt-2 flex items-center gap-2 rounded-panel border-2 border-line/60 bg-paper-card p-3">
               <label className="text-xs font-semibold text-ink" htmlFor="custom-bar-kg">
                 Bar weight
               </label>
@@ -294,7 +294,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
                 placeholder="e.g. 20"
                 value={customBarDraft}
                 onChange={(e) => commitCustomBar(e.target.value)}
-                className="w-24 rounded-xl border border-line bg-paper px-3 py-2 text-base font-semibold text-ink focus:border-ink focus:outline-none"
+                className="w-24 rounded-control border border-line bg-paper px-3 py-2 text-base font-semibold text-ink focus:border-ink focus:outline-none"
               />
               <span className="text-xs text-muted">kg</span>
             </div>
@@ -304,7 +304,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         <div className="border-t border-line/60 mt-3" />
 
         <div className="px-4 pt-5">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          <div className="text-label font-semibold uppercase tracking-wider text-muted">
             Build your load (one side)
           </div>
           <div className="mt-1 text-xs text-muted">
@@ -352,7 +352,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         </div>
 
         <div className="px-4 pt-5">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          <div className="text-label font-semibold uppercase tracking-wider text-muted">
             Tap to choose what to log
           </div>
           <div className={`mt-2 grid gap-2 ${barId === 'none' ? 'grid-cols-2' : 'grid-cols-3'}`}>
@@ -407,7 +407,7 @@ function TotalButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex flex-col items-start rounded-2xl p-3 text-left transition-colors border-2 ${
+      className={`relative flex flex-col items-start rounded-panel p-3 text-left transition-colors border-2 ${
         active ? 'bg-ink border-ink' : 'bg-paper-card border-line/60 active:bg-paper-card/70'
       }`}
     >
@@ -417,7 +417,7 @@ function TotalButton({
         </div>
       )}
       <div
-        className={`text-[10px] font-semibold uppercase tracking-wider ${
+        className={`text-label font-semibold uppercase tracking-wider ${
           active ? 'text-white/80' : 'text-muted'
         }`}
       >
@@ -544,7 +544,7 @@ function Chip({
       className="flex items-center justify-between rounded-pill border border-line bg-paper-card px-2 py-1 text-xs active:opacity-70"
       aria-label={`${count} ${formatKg(kg)}kg plates — tap to remove one`}
     >
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ink text-[10px] font-bold text-white">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ink text-label font-bold text-white">
         {formatKg(kg)}
       </span>
       <span className="ml-2 mr-1 text-ink">× {count}</span>

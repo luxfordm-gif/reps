@@ -176,7 +176,7 @@ export function Steps({ onBack }: Props) {
         <PageHeader title="Steps" onBack={onBack} />
 
         <div className="mt-3">
-          <div className="text-[15px] font-semibold tracking-tight text-ink">
+          <div className="text-base font-semibold tracking-tight text-ink">
             {todayEntry ? 'Logged today' : "Log today's steps"}
           </div>
           <p className="mt-1 text-sm text-muted">
@@ -220,7 +220,7 @@ export function Steps({ onBack }: Props) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="e.g. 7240"
-              className="no-spinner w-full rounded-2xl border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+              className="no-spinner w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
             />
             <div className="pb-3 text-base font-medium text-muted">steps</div>
           </div>
@@ -233,11 +233,11 @@ export function Steps({ onBack }: Props) {
             </div>
           )}
           {tooBig && (
-            <div className="mt-3 text-sm text-red-700">
+            <div className="mt-3 text-sm text-danger">
               That's more than {formatSteps(MAX_STEPS)} — check the number.
             </div>
           )}
-          {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
+          {error && <div className="mt-3 text-sm text-danger">{error}</div>}
           <SaveButton
             state={saving ? 'saving' : savedNow ? 'saved' : 'idle'}
             disabled={inputSteps == null}
@@ -462,7 +462,7 @@ function DateField({
     <button
       type="button"
       onClick={onToggle}
-      className="mt-3 flex w-full items-center justify-between rounded-2xl bg-paper px-4 py-3 text-left active:bg-line/60"
+      className="mt-3 flex w-full items-center justify-between rounded-panel bg-paper px-4 py-3 text-left active:bg-surface-strong"
     >
       <div className="flex items-center gap-2.5">
         <CalendarIcon />

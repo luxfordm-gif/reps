@@ -106,7 +106,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
             <CheckIcon />
           </div>
 
-          <h1 className="mt-6 text-[40px] font-bold leading-[1.05] tracking-tight text-ink">
+          <h1 className="mt-6 text-display-lg font-bold leading-[1.05] tracking-tight text-ink">
             {pickedHeadline}
           </h1>
           <p className="mt-2 text-base text-muted">
@@ -366,7 +366,7 @@ function Medal({ kind }: { kind: RecapMedal | null }) {
   return (
     <span
       aria-label={`${kind} medal`}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-bold"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold"
       style={{
         backgroundImage: `linear-gradient(145deg, ${m.from}, ${m.to})`,
         boxShadow: `inset 0 0 0 1px ${m.ring}, 0 1px 2px rgba(0,0,0,0.08)`,
@@ -382,7 +382,7 @@ function MedalBadge({ kind }: { kind: RecapMedal }) {
   const m = MEDALS[kind];
   return (
     <span
-      className="rounded-pill px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+      className="rounded-pill px-1.5 py-0.5 text-label font-bold uppercase tracking-wider"
       style={{ backgroundColor: m.badgeBg, color: m.badgeInk }}
     >
       {m.label}
@@ -395,8 +395,8 @@ function SkeletonTile() {
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
       <div className="h-9 w-9 rounded-full bg-paper" />
-      <div className="mt-3 h-3 w-16 rounded-pill bg-line/70" />
-      <div className="mt-2 h-6 w-12 rounded-pill bg-line/70" />
+      <div className="mt-3 h-3 w-16 rounded-pill bg-surface-strong" />
+      <div className="mt-2 h-6 w-12 rounded-pill bg-surface-strong" />
       <div className="mt-2 h-2.5 w-20 rounded-pill bg-line/50" />
     </div>
   );
