@@ -456,7 +456,7 @@ function EditableSetRow({
       {points && (
         <div className="mt-1 pl-20 text-[11px] text-muted">
           {describePoints(points, (kg) => `${kg} kg`)}
-          {weightChanged && ' · saving a new total clears the split'}
+          {weightChanged && ' · a new total clears the split'}
         </div>
       )}
     </div>
