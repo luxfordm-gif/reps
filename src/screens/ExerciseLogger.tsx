@@ -42,21 +42,29 @@ import { restLabel } from '../lib/restDefaults';
 import { formatNameList, groupedSetLabel } from '../lib/supersets';
 import { getLiftWeightUnit, kgToLb, lbToKg, type MachineUnit } from '../lib/units';
 import {
-  getCachedExerciseLoadPositions,
+  getCachedExerciseProfile,
   getCachedExerciseUnit,
-  getExerciseLoadPositions,
+  getExerciseProfile,
   getExerciseUnit,
   isMissingProfileColumn,
-  setExerciseLoadPositions,
+  setExerciseProfile,
   setExerciseUnit,
 } from '../lib/exercisePrefsApi';
 import {
-  MAX_LOAD_POSITIONS,
+  DEFAULT_PROFILE_POSITIONS,
+  MAX_PROFILE_POSITIONS,
+  MIN_PROFILE_POSITIONS,
+  clampPositions,
+  curveBreakdown,
+  curvePointOf,
   describePoints,
+  hasCurve,
+  hasPegs,
   loadedPoints,
   parsePositionWeights,
   readPointInputs,
-  type LoadPositions,
+  type LoadProfileKind,
+  type MachineProfile,
 } from '../lib/weightProfile';
 
 // Display: kg as stored; lb rounded to nearest 0.5 to match the input's step.
@@ -114,22 +122,26 @@ interface Props {
   onFeedback?: () => void;
 }
 
-/** Points 2 and 3 of a weighted profile — always this long, whatever the machine
- *  is set to, so switching profiles never has to reshape a row mid-entry. */
-const NO_EXTRA_POINTS: string[] = ['', ''];
+/** Pegs 2 upwards — always as long as a machine could ever be, whatever this one
+ *  is set to, so changing a profile never has to reshape a row mid-entry. */
+const NO_EXTRA_POINTS: string[] = new Array(MAX_PROFILE_POSITIONS - 1).fill('');
 
 interface SetState {
   setIndex: number;
   dropIndex: number; // 0 = main, 1+ = drop
-  /** On a weighted-profile machine this is loading point 1; on every other
-   *  machine it's simply the weight. */
+  /** On a pegs machine this is peg 1; on every other machine — curve included,
+   *  where the cam changes the lift rather than the load — it's the weight. */
   weight: string;
-  /** Loading points 2 and 3. Only the first (positions - 1) of them are shown,
-   *  read or logged — the rest are dead until the machine says otherwise. */
+  /** Pegs 2 upwards. Only the first (positions - 1) of them are shown, read or
+   *  logged — the rest are dead until the machine says otherwise. */
   extraWeights: string[];
+  /** Which cam position this set is on, 0-based, on a curve machine. Null until
+   *  one is picked: a set still logs without it, it just can't say where. */
+  curvePoint: number | null;
   reps: string;
   weightSuggested: string;
   extraSuggested: string[];
+  curveSuggested: number | null;
   repsSuggested: string;
   repRangeLabel?: string;
   scheme?: 'dropset' | 'back_off' | 'muscle_round' | 'intensifier' | 'amrap';
@@ -149,40 +161,61 @@ function parseTargetReps(repRange: string): number | null {
   return null;
 }
 
-/** The loading points in play for a row: point 1 is the row's own weight field,
- *  then as many of points 2 and 3 as the machine actually has. */
-function pointInputsFor(row: SetState, positions: LoadPositions): string[] {
-  if (positions <= 1) return [row.weight];
-  return [row.weight, ...row.extraWeights.slice(0, positions - 1)];
+/** The weight fields in play for a row: on a pegs machine, peg 1 (the row's own
+ *  weight field) plus as many more as the machine has; on anything else — curve
+ *  machines included — the single weight. */
+function pointInputsFor(row: SetState, profile: MachineProfile): string[] {
+  if (!hasPegs(profile)) return [row.weight];
+  return [row.weight, ...row.extraWeights.slice(0, profile.positions - 1)];
 }
 
 /** The same shape, but last time's numbers — what a field reverts to being a
  *  suggestion rather than something typed. */
-function pointSuggestionsFor(row: SetState, positions: LoadPositions): string[] {
-  if (positions <= 1) return [row.weightSuggested];
-  return [row.weightSuggested, ...row.extraSuggested.slice(0, positions - 1)];
+function pointSuggestionsFor(row: SetState, profile: MachineProfile): string[] {
+  if (!hasPegs(profile)) return [row.weightSuggested];
+  return [row.weightSuggested, ...row.extraSuggested.slice(0, profile.positions - 1)];
 }
 
-/** Last time's load, split back over the machine's loading points and rendered in
- *  the active unit. A set logged before this machine had a profile has no
- *  breakdown to restore, so its whole weight lands on point 1 for the user to
- *  spread out again. */
-function pointsFromLogged(
+interface SeededLoad {
+  weight: string;
+  extras: string[];
+  curvePoint: number | null;
+}
+
+/** Last time's load, put back the way the machine holds it and rendered in the
+ *  active unit: spread over the pegs it was on, or the one weight with the cam
+ *  position it was lifted at. A set logged before the machine had a profile has
+ *  no breakdown to restore, so its whole weight lands on peg 1 (or on no cam
+ *  position) for the user to place again. */
+function seedFromLogged(
   logged: LoggedSet | null | undefined,
   unit: MachineUnit,
-  positions: LoadPositions
-): { weight: string; extras: string[] } {
+  profile: MachineProfile
+): SeededLoad {
   if (!logged || logged.weight == null) {
-    return { weight: '', extras: NO_EXTRA_POINTS };
+    return { weight: '', extras: NO_EXTRA_POINTS, curvePoint: null };
   }
   const fmt = (kg: number) => String(fromKg(kg, unit));
   const breakdown =
-    positions > 1 ? parsePositionWeights(logged.position_weights, positions) : null;
-  if (!breakdown) return { weight: fmt(logged.weight), extras: NO_EXTRA_POINTS };
+    profile.kind != null
+      ? parsePositionWeights(logged.position_weights, profile.positions)
+      : null;
+  if (hasCurve(profile)) {
+    const point = curvePointOf(breakdown);
+    return {
+      weight: fmt(logged.weight),
+      extras: NO_EXTRA_POINTS,
+      curvePoint: point != null && point < profile.positions ? point : null,
+    };
+  }
+  if (!hasPegs(profile) || !breakdown) {
+    return { weight: fmt(logged.weight), extras: NO_EXTRA_POINTS, curvePoint: null };
+  }
   const strs = breakdown.map((n) => (n == null ? '' : fmt(n)));
   return {
     weight: strs[0] ?? '',
-    extras: [strs[1] ?? '', strs[2] ?? ''],
+    extras: NO_EXTRA_POINTS.map((_, i) => strs[i + 1] ?? ''),
+    curvePoint: null,
   };
 }
 
@@ -192,7 +225,7 @@ function buildInitialSets(
   lastSets: LoggedSet[],
   notes: string,
   unit: MachineUnit,
-  positions: LoadPositions
+  profile: MachineProfile
 ): SetState[] {
   const baseTarget = parseTargetReps(repRange);
   const baseTargetStr = baseTarget != null ? String(baseTarget) : '';
@@ -240,7 +273,7 @@ function buildInitialSets(
     // Main set
     const mainExact = lastSets.find((s) => s.set_index === setIndex && s.drop_index === 0);
     const mainLast = mainExact ?? nearestLast(setIndex, 0);
-    const mainPoints = pointsFromLogged(mainLast, unit, positions);
+    const mainPoints = seedFromLogged(mainLast, unit, profile);
     const mainWeightSugg = mainPoints.weight;
     // Reps only carry over from the set this actually was last time. Borrowed
     // from a neighbouring set, the plan's target is the better suggestion.
@@ -251,9 +284,11 @@ function buildInitialSets(
       dropIndex: 0,
       weight: mainWeightSugg,
       extraWeights: mainPoints.extras,
+      curvePoint: mainPoints.curvePoint,
       reps: mainRepsSugg,
       weightSuggested: mainWeightSugg,
       extraSuggested: mainPoints.extras,
+      curveSuggested: mainPoints.curvePoint,
       repsSuggested: mainRepsSugg,
       repRangeLabel: mod?.repRangeOverride,
       scheme: mod?.scheme,
@@ -270,7 +305,7 @@ function buildInitialSets(
         // Same idea for a drop, but only ever from another drop at the same
         // depth — a drop is lighter than its main set by design.
         const dropLast = dropExact ?? nearestLast(setIndex, dropIndex);
-        const dropPoints = pointsFromLogged(dropLast, unit, positions);
+        const dropPoints = seedFromLogged(dropLast, unit, profile);
         const wSugg = dropPoints.weight;
         const rSugg =
           dropExact?.reps != null
@@ -283,9 +318,11 @@ function buildInitialSets(
           dropIndex,
           weight: wSugg,
           extraWeights: dropPoints.extras,
+          curvePoint: dropPoints.curvePoint,
           reps: rSugg,
           weightSuggested: wSugg,
           extraSuggested: dropPoints.extras,
+          curveSuggested: dropPoints.curvePoint,
           repsSuggested: rSugg,
           completed: false,
         });
@@ -303,7 +340,7 @@ function buildInitialSets(
       const last = lastSets.find(
         (s) => s.set_index === lastSetIndex && s.drop_index === dropIndex
       );
-      const lastPoints = pointsFromLogged(last, unit, positions);
+      const lastPoints = seedFromLogged(last, unit, profile);
       const w = last?.weight != null ? lastPoints.weight : fmtW(p.weight);
       const extras = last?.weight != null ? lastPoints.extras : NO_EXTRA_POINTS;
       const r = last?.reps != null ? String(last.reps) : String(p.reps);
@@ -312,9 +349,11 @@ function buildInitialSets(
         dropIndex,
         weight: w,
         extraWeights: extras,
+        curvePoint: lastPoints.curvePoint,
         reps: r,
         weightSuggested: w,
         extraSuggested: extras,
+        curveSuggested: lastPoints.curvePoint,
         repsSuggested: r,
         completed: false,
         scheme: dropIndex === 0 ? 'intensifier' : undefined,
@@ -490,11 +529,10 @@ export function ExerciseLogger({
   const [unit, setUnit] = useState<MachineUnit>(() =>
     getCachedExerciseUnit(exercise.normalized_name)
   );
-  // How many numbered loading points this machine has. 1 is every ordinary
-  // machine; 2 or 3 turns each set into a per-point load that adds up to the
-  // weight that gets logged.
-  const [positions, setPositions] = useState<LoadPositions>(() =>
-    getCachedExerciseLoadPositions(exercise.normalized_name)
+  // This machine's weight profile: pegs to spread plates over, a cam position to
+  // pick, or nothing at all, which is every ordinary machine.
+  const [profile, setProfile] = useState<MachineProfile>(() =>
+    getCachedExerciseProfile(exercise.normalized_name)
   );
   // The user's usual lift unit, read once on mount. Anything else on this
   // machine is an override worth flagging — otherwise a kg-by-default user can
@@ -511,10 +549,10 @@ export function ExerciseLogger({
   }, [unit]);
   // Same reason as unitRef: the load effect needs the profile that's current
   // when it resolves, not the one captured when it started.
-  const positionsRef = useRef<LoadPositions>(positions);
+  const profileRef = useRef<MachineProfile>(profile);
   useEffect(() => {
-    positionsRef.current = positions;
-  }, [positions]);
+    profileRef.current = profile;
+  }, [profile]);
   const [, setNow] = useState(Date.now());
   const [displayName, setDisplayName] = useState(exercise.name);
   // Effective machine identity for logging + prefill. Starts as the plan
@@ -708,12 +746,12 @@ export function ExerciseLogger({
     });
   }
 
-  // This machine's preferences — the unit it logs in and how many loading points
-  // it has: instant read from the cache, then reconcile with the DB (either may
+  // This machine's preferences — the unit it logs in and the weight profile it
+  // has: instant read from the cache, then reconcile with the DB (either may
   // have been set on another device).
   useEffect(() => {
     changeUnit(getCachedExerciseUnit(effectiveNormalized));
-    changePositions(getCachedExerciseLoadPositions(effectiveNormalized));
+    changeProfile(getCachedExerciseProfile(effectiveNormalized));
     let cancelled = false;
     getExerciseUnit(effectiveNormalized)
       .then((u) => {
@@ -722,9 +760,9 @@ export function ExerciseLogger({
       .catch(() => {
         // Best-effort — fall back to the cached value.
       });
-    getExerciseLoadPositions(effectiveNormalized)
+    getExerciseProfile(effectiveNormalized)
       .then((p) => {
-        if (!cancelled) changePositions(p);
+        if (!cancelled) changeProfile(p);
       })
       .catch(() => {
         // Best-effort — the cached profile stands.
@@ -742,26 +780,38 @@ export function ExerciseLogger({
     });
   }
 
-  // Switching a machine's profile never loses what's already on screen: turning
-  // it off folds the points back into the one weight they added up to, and
-  // turning it on (or widening it) leaves what's typed on point 1.
-  function changePositions(next: LoadPositions) {
-    setPositions((prev) => {
-      if (prev === next) return prev;
-      if (next === 1) {
+  // Changing a machine's profile never loses what's already on screen: leaving
+  // pegs behind folds them into the one weight they added up to, and a cam
+  // position that the machine no longer has is dropped rather than re-pointed.
+  function changeProfile(next: MachineProfile) {
+    setProfile((prev) => {
+      if (prev.kind === next.kind && prev.positions === next.positions) return prev;
+      const leavingPegs = hasPegs(prev) && !hasPegs(next);
+      const losingCurve =
+        !hasCurve(next) || next.positions < prev.positions;
+      if (leavingPegs || losingCurve) {
         setSets((prevSets) =>
           prevSets.map((r) => {
             // Completed rows fold too: what they logged was the total, so that's
             // the number the single weight field has to go back to showing.
-            const { total } = readPointInputs(pointInputsFor(r, prev));
-            const folded = total == null ? r.weight : String(total);
+            const folded = leavingPegs
+              ? (readPointInputs(pointInputsFor(r, prev)).total ?? null)
+              : null;
+            const weight = folded == null ? r.weight : String(folded);
+            const curvePoint =
+              hasCurve(next) && r.curvePoint != null && r.curvePoint < next.positions
+                ? r.curvePoint
+                : null;
             return {
               ...r,
-              weight: folded,
-              extraWeights: NO_EXTRA_POINTS,
-              // Folded points are a new number, not last time's suggestion.
-              weightSuggested: folded === r.weightSuggested ? r.weightSuggested : '',
-              extraSuggested: NO_EXTRA_POINTS,
+              weight,
+              extraWeights: leavingPegs ? NO_EXTRA_POINTS : r.extraWeights,
+              curvePoint,
+              // A folded total is a new number, not last time's suggestion.
+              weightSuggested:
+                weight === r.weightSuggested ? r.weightSuggested : leavingPegs ? '' : r.weightSuggested,
+              extraSuggested: leavingPegs ? NO_EXTRA_POINTS : r.extraSuggested,
+              curveSuggested: curvePoint == null ? null : r.curveSuggested,
             };
           })
         );
@@ -770,16 +820,16 @@ export function ExerciseLogger({
     });
   }
 
-  function handleSelectPositions(next: LoadPositions) {
-    if (next === positions) return;
-    changePositions(next);
-    setExerciseLoadPositions(effectiveNormalized, next).catch((e) => {
+  function handleSelectProfile(next: MachineProfile) {
+    if (next.kind === profile.kind && next.positions === profile.positions) return;
+    changeProfile(next);
+    setExerciseProfile(effectiveNormalized, next).catch((e) => {
       // Cached first, so the profile holds on this device either way — an
       // ordinary failed write will sort itself out on the next one. A database
       // without the profile columns won't, so say so rather than leave sets
       // logging a breakdown that can never be saved.
       if (isMissingProfileColumn(e)) {
-        setError('Weight profiles need migration 0017 run first.');
+        setError('Weight profiles need migrations 0017 and 0018 run first.');
       }
     });
   }
@@ -958,7 +1008,7 @@ export function ExerciseLogger({
         // Read the latest unit (may have been reconciled to a different
         // value by the DB after this effect kicked off).
         const u = unitRef.current;
-        const p = positionsRef.current;
+        const p = profileRef.current;
         const initial = buildInitialSets(
           exercise.total_sets ?? 1,
           exercise.rep_range,
@@ -974,11 +1024,12 @@ export function ExerciseLogger({
             (x) => x.setIndex === s.set_index && x.dropIndex === s.drop_index
           );
           if (idx >= 0) {
-            const logged = pointsFromLogged(s, u, p);
+            const logged = seedFromLogged(s, u, p);
             initial[idx] = {
               ...initial[idx],
               weight: s.weight != null ? logged.weight : initial[idx].weight,
               extraWeights: s.weight != null ? logged.extras : initial[idx].extraWeights,
+              curvePoint: s.weight != null ? logged.curvePoint : initial[idx].curvePoint,
               reps: s.reps != null ? String(s.reps) : initial[idx].reps,
               completed: true,
               loggedId: s.id,
@@ -1067,6 +1118,15 @@ export function ExerciseLogger({
               extraWeights: s.extraWeights.map((w, j) => (j === point - 1 ? value : w)),
             }
           : s
+      )
+    );
+  }
+
+  /** Pick (or unpick) the cam position a set was lifted at. */
+  function selectCurve(idx: number, point: number) {
+    setSets((prev) =>
+      prev.map((s, i) =>
+        i === idx ? { ...s, curvePoint: s.curvePoint === point ? null : point } : s
       )
     );
   }
@@ -1188,9 +1248,10 @@ export function ExerciseLogger({
   async function handleComplete(idx: number) {
     const set = sets[idx];
     const repsStr = set.reps.trim();
-    // On a weighted-profile machine the set's weight is the sum of its loading
-    // points; on every other machine there's a single point to read.
-    const points = readPointInputs(pointInputsFor(set, positions));
+    // On a pegs machine the set's weight is the sum of what's on each peg; on
+    // every other machine — a curve's cam changes the lift, not the load — there
+    // is one weight to read.
+    const points = readPointInputs(pointInputsFor(set, profile));
     // Weightless exercises have no weight field at all, so they log as 0.
     const weightNum = weightless
       ? 0
@@ -1205,8 +1266,8 @@ export function ExerciseLogger({
     }
     if (!weightless && Number.isNaN(weightNum)) {
       setError(
-        positions > 1
-          ? 'Enter the weight on at least one point'
+        hasPegs(profile)
+          ? 'Enter the weight on at least one peg'
           : `Enter both weight and reps (use 0 ${unit} for body weight)`
       );
       triggerShake(idx);
@@ -1225,12 +1286,17 @@ export function ExerciseLogger({
     }
     // DB stores kg always; convert from the active display unit at the boundary.
     const weightKg = toKg(weightNum, unit);
-    // The breakdown rides along with the total on a profile machine. An ordinary
-    // one sends nothing at all, so its sets stay exactly the rows they were.
-    const positionWeightsKg =
-      weightless || positions <= 1
-        ? null
-        : points.values.map((n) => (n == null ? null : toKg(n, unit)));
+    // The breakdown rides along with the total on a profile machine: what's on
+    // each peg, or the whole weight against the cam position it was lifted at.
+    // An ordinary machine sends nothing at all, and neither does a curve set
+    // that hasn't been told which position it was on — the weight still logs.
+    const positionWeightsKg = weightless
+      ? null
+      : hasPegs(profile)
+        ? points.values.map((n) => (n == null ? null : toKg(n, unit)))
+        : hasCurve(profile) && set.curvePoint != null
+          ? curveBreakdown(profile.positions, set.curvePoint, weightKg)
+          : null;
     setError(null);
     setSavingIdx(idx);
     const isEdit = !!set.loggedId;
@@ -1338,8 +1404,8 @@ export function ExerciseLogger({
               onFeedback={onFeedback}
               weightUnit={unit}
               onSelectUnit={handleSelectUnit}
-              loadPositions={positions}
-              onSelectPositions={handleSelectPositions}
+              profile={profile}
+              onSelectProfile={handleSelectProfile}
             />
           }
           bottomSlot={
@@ -1372,12 +1438,18 @@ export function ExerciseLogger({
           <div className="mt-1 flex items-center gap-2">
             <span className="text-sm text-muted">{exercise.body_part}</span>
             <UnitBadge unit={unit} isOverride={unitIsOverride} />
-            {positions > 1 && (
+            {profile.kind != null && (
               <span
-                title={`Loads at ${positions} numbered points`}
+                title={
+                  profile.kind === 'pegs'
+                    ? `Loads at ${profile.positions} numbered pegs`
+                    : `Has ${profile.positions} cam positions`
+                }
                 className="inline-flex items-center rounded-pill bg-line px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted"
               >
-                {positions} pts
+                {profile.kind === 'pegs'
+                  ? `${profile.positions} pegs`
+                  : `curve 1–${profile.positions}`}
               </span>
             )}
           </div>
@@ -1428,7 +1500,12 @@ export function ExerciseLogger({
         </div>
 
         {lastSets.length > 0 && lastTopSet && (
-          <LastTimeRow lastSets={lastSets} lastTopSet={lastTopSet} unit={unit} />
+          <LastTimeRow
+            lastSets={lastSets}
+            lastTopSet={lastTopSet}
+            unit={unit}
+            profile={profile}
+          />
         )}
 
         <div className="mt-6 space-y-3">
@@ -1451,13 +1528,14 @@ export function ExerciseLogger({
                 shakeIdx={shakeIdx}
                 unit={unit}
                 unitIsOverride={unitIsOverride}
-                positions={positions}
+                profile={profile}
                 weightless={weightless}
                 timed={timed}
                 onChange={update}
                 onChangePoint={updatePoint}
                 onComplete={handleComplete}
                 onEdit={handleEdit}
+                onSelectCurve={selectCurve}
                 onOpenCalculator={(idx, point) => setCalcOpen({ idx, point })}
               />
             ));
@@ -1690,7 +1768,7 @@ export function ExerciseLogger({
         open={calcOpen !== null}
         initialKg={
           calcOpen !== null && sets[calcOpen.idx]
-            ? Number(pointInputsFor(sets[calcOpen.idx], positions)[calcOpen.point]) ||
+            ? Number(pointInputsFor(sets[calcOpen.idx], profile)[calcOpen.point]) ||
               undefined
             : undefined
         }
@@ -1837,8 +1915,8 @@ function ExerciseMenu({
   onFeedback,
   weightUnit,
   onSelectUnit,
-  loadPositions,
-  onSelectPositions,
+  profile,
+  onSelectProfile,
 }: {
   hasNext: boolean;
   onSkip: () => void;
@@ -1852,9 +1930,9 @@ function ExerciseMenu({
   onFeedback?: () => void;
   weightUnit: MachineUnit;
   onSelectUnit: (u: MachineUnit) => void;
-  /** How many numbered loading points this machine has (1 = an ordinary one). */
-  loadPositions: LoadPositions;
-  onSelectPositions: (n: LoadPositions) => void;
+  /** What this machine does with weight: pegs, a cam position, or neither. */
+  profile: MachineProfile;
+  onSelectProfile: (p: MachineProfile) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1919,23 +1997,71 @@ function ExerciseMenu({
               Weight profile
             </div>
             <div className="mt-2 flex rounded-pill bg-line p-0.5">
-              {(Array.from(
-                { length: MAX_LOAD_POSITIONS },
-                (_, i) => i + 1
-              ) as LoadPositions[]).map((n) => (
+              {([null, 'pegs', 'curve'] as (LoadProfileKind | null)[]).map((kind) => (
                 <button
-                  key={n}
-                  onClick={() => pick(() => onSelectPositions(n))}
+                  key={kind ?? 'off'}
+                  // Changing kind keeps the count, so a 6-position machine
+                  // mis-tagged as pegs is one tap from being right.
+                  onClick={() =>
+                    onSelectProfile({
+                      kind,
+                      positions: kind
+                        ? profile.positions > 1
+                          ? profile.positions
+                          : DEFAULT_PROFILE_POSITIONS
+                        : 1,
+                    })
+                  }
                   className={`flex-1 rounded-pill px-2 py-1 text-xs font-semibold uppercase tracking-wider ${
-                    loadPositions === n ? 'bg-ink text-white' : 'text-muted'
+                    profile.kind === kind ? 'bg-ink text-white' : 'text-muted'
                   }`}
                 >
-                  {n === 1 ? 'Off' : `${n} pts`}
+                  {kind === null ? 'Off' : kind === 'pegs' ? 'Pegs' : 'Curve'}
                 </button>
               ))}
             </div>
+            {profile.kind != null && (
+              <div className="mt-2.5 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-muted">
+                  {profile.kind === 'pegs' ? 'Pegs' : 'Positions'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <StepperButton
+                    label="One fewer"
+                    disabled={profile.positions <= MIN_PROFILE_POSITIONS}
+                    onClick={() =>
+                      onSelectProfile({
+                        kind: profile.kind,
+                        positions: clampPositions(profile.positions - 1),
+                      })
+                    }
+                  >
+                    −
+                  </StepperButton>
+                  <span className="w-5 text-center text-sm font-bold text-ink">
+                    {profile.positions}
+                  </span>
+                  <StepperButton
+                    label="One more"
+                    disabled={profile.positions >= MAX_PROFILE_POSITIONS}
+                    onClick={() =>
+                      onSelectProfile({
+                        kind: profile.kind,
+                        positions: clampPositions(profile.positions + 1),
+                      })
+                    }
+                  >
+                    +
+                  </StepperButton>
+                </div>
+              </div>
+            )}
             <div className="mt-1.5 text-[11px] leading-snug text-muted">
-              For machines that load at two or three numbered points.
+              {profile.kind === 'pegs'
+                ? 'Plates on numbered pegs, added up.'
+                : profile.kind === 'curve'
+                  ? 'One weight, on a numbered cam position.'
+                  : 'For machines that load at numbered pegs, or set a cam position.'}
             </div>
           </div>
           <div className="border-t border-line/60" />
@@ -2001,6 +2127,31 @@ function ExerciseMenu({
         </div>
       )}
     </div>
+  );
+}
+
+// The − / + either side of a count in the menu.
+function StepperButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-sm font-bold text-ink active:bg-line/60 disabled:opacity-30"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -2698,10 +2849,12 @@ function LastTimeRow({
   lastSets,
   lastTopSet,
   unit,
+  profile,
 }: {
   lastSets: LoggedSet[];
   lastTopSet: LoggedSet;
   unit: MachineUnit;
+  profile: MachineProfile;
 }) {
   const [open, setOpen] = useState(false);
   const groups: { setIndex: number; rows: LoggedSet[] }[] = [];
@@ -2714,13 +2867,16 @@ function LastTimeRow({
   }
   const fmt = (s: LoggedSet) =>
     `${s.weight != null ? `${fromKg(s.weight, unit)} ${unit}` : '–'} × ${s.reps ?? '–'}`;
-  // A set logged on a profile machine says how that weight was spread — the
-  // point matters as much as the number when you're setting the machine up.
+  // A set logged on a profile machine says how the weight was set up — which peg
+  // it sat on, or which cam position it was lifted at. That's half of what you
+  // need to repeat the set, so even one loaded position is worth spelling out.
   const breakdown = (s: LoggedSet): string | null => {
     const values = parsePositionWeights(s.position_weights);
-    // Even a single loaded point is worth spelling out: which peg it was on is
-    // half of what you need to set the machine up the same way again.
     if (!values || loadedPoints(values).length === 0) return null;
+    if (profile.kind === 'curve') {
+      const point = curvePointOf(values);
+      return point == null ? null : `Curve ${point + 1}`;
+    }
     return describePoints(values, (kg) => String(fromKg(kg, unit)));
   };
 
@@ -2851,11 +3007,12 @@ function SetGroup({
   shakeIdx,
   unit,
   unitIsOverride,
-  positions,
+  profile,
   weightless,
   timed,
   onChange,
   onChangePoint,
+  onSelectCurve,
   onComplete,
   onEdit,
   onOpenCalculator,
@@ -2868,15 +3025,17 @@ function SetGroup({
   // Emphasises the in-field unit suffix when this machine isn't logging in the
   // user's default unit.
   unitIsOverride: boolean;
-  // 2 or 3 on a machine that loads at numbered points: the row's weight becomes
-  // the total of a per-point breakdown that opens underneath it.
-  positions: LoadPositions;
+  // What this machine does with weight. On pegs the row's weight becomes the
+  // total of a breakdown that opens underneath it; on a curve the weight is
+  // typed as usual and the cam position is picked from a row of chips.
+  profile: MachineProfile;
   // Bodyweight work: no weight field, and no barbell calculator to open.
   weightless: boolean;
   // Counted in seconds rather than reps.
   timed: boolean;
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onChangePoint: (idx: number, point: number, value: string) => void;
+  onSelectCurve: (idx: number, point: number) => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
   onOpenCalculator: (idx: number, point: number) => void;
@@ -2885,7 +3044,8 @@ function SetGroup({
   // untouched follows the set being worked on, so the active set arrives ready
   // to load and the ones behind it stay out of the way.
   const [pointsOverride, setPointsOverride] = useState<Record<number, boolean>>({});
-  const multiPoint = positions > 1 && !weightless;
+  const multiPoint = hasPegs(profile) && !weightless;
+  const curved = hasCurve(profile) && !weightless;
   const setIndex = rows[0].row.setIndex;
   const mainRow = rows[0].row;
   const hasDrops = rows.some((r) => r.row.dropIndex > 0);
@@ -2906,8 +3066,8 @@ function SetGroup({
         const isActive = !row.completed && idx === activeIndex;
         const isLastInGroup = ri === rows.length - 1;
         const shaking = shakeIdx === idx;
-        const pointValues = pointInputsFor(row, positions);
-        const pointSuggestions = pointSuggestionsFor(row, positions);
+        const pointValues = pointInputsFor(row, profile);
+        const pointSuggestions = pointSuggestionsFor(row, profile);
         const points = readPointInputs(pointValues);
         // What the set logs: every loaded point added together.
         const totalStr = points.total == null ? '' : String(points.total);
@@ -3156,6 +3316,50 @@ function SetGroup({
                     {totalStr === '' ? '–' : `${totalStr} ${unitSuffix(unit)}`}
                   </span>
                 </div>
+              </div>
+            )}
+            {curved && (
+              <div
+                className={`flex items-center gap-2.5 bg-line/25 px-5 py-2 ${
+                  !isLastInGroup ? 'border-b border-line/60' : ''
+                }`}
+              >
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  Curve
+                </span>
+                {row.completed ? (
+                  <span className="text-xs font-semibold text-ink">
+                    {row.curvePoint == null ? 'Not set' : row.curvePoint + 1}
+                  </span>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {Array.from({ length: profile.positions }, (_, point) => {
+                      const selected = row.curvePoint === point;
+                      // Outlined where it's last week's position rather than one
+                      // picked just now — the same "this is a suggestion" reading
+                      // the greyed weight fields have.
+                      const carried = selected && row.curveSuggested === point;
+                      return (
+                        <button
+                          key={point}
+                          type="button"
+                          onClick={() => onSelectCurve(idx, point)}
+                          aria-pressed={selected}
+                          aria-label={`Curve position ${point + 1}`}
+                          className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                            selected
+                              ? carried
+                                ? 'border border-ink bg-paper text-ink'
+                                : 'bg-ink text-white'
+                              : 'bg-line text-muted'
+                          }`}
+                        >
+                          {point + 1}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
             {multiPoint && !pointsOpen && loaded.length > 0 && (
