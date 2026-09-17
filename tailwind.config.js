@@ -82,6 +82,25 @@ export default {
       // Elevation, by how far off the page something sits. The plate graphics
       // in the barbell calculator keep their own inset lighting — they're an
       // illustration of a real object, not a surface in this system.
+      // Motion. The browser's own easings are weak — they lack the snap that
+      // makes a transition feel intended rather than incidental — so the curves
+      // are named by what they carry.
+      transitionTimingFunction: {
+        // Anything responding to a tap: fast out of the gate, settles gently.
+        snap: 'cubic-bezier(0.23, 1, 0.32, 1)',
+        // Something travelling across the screen under its own steam.
+        glide: 'cubic-bezier(0.77, 0, 0.175, 1)',
+        // iOS's sheet curve, for anything that slides up from the bottom.
+        sheet: 'cubic-bezier(0.32, 0.72, 0, 1)',
+      },
+      // Long enough to read as movement, short enough to stay out of the way.
+      // A control that answers in 140ms feels like it was waiting for you; the
+      // same movement at 300ms feels like it had to think about it.
+      transitionDuration: {
+        press: '140ms',
+        pop: '180ms',
+        sheet: '280ms',
+      },
       boxShadow: {
         card: '0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
         lift: '0 8px 24px rgba(0,0,0,0.18)',

@@ -1458,7 +1458,7 @@ export function ExerciseLogger({
         {alternatives.length > 0 && (
           <button
             onClick={() => setAltSheetOpen(true)}
-            className={`mt-3 inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors ${
+            className={`pressable mt-3 inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors ${
               activeAltId !== null
                 ? 'bg-ink text-white'
                 : 'bg-line text-muted active:text-ink'
@@ -1628,7 +1628,7 @@ export function ExerciseLogger({
                     coachSaving ||
                     coachDraft.trim() === savedCoach.trim()
                   }
-                  className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
+                  className="pressable rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
                 >
                   {coachSaving ? 'Saving…' : 'Save'}
                 </button>
@@ -1638,7 +1638,7 @@ export function ExerciseLogger({
                     coachSaving ||
                     (savedCoach === '' && coachDraft === '')
                   }
-                  className="rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-pressed disabled:opacity-40"
+                  className="pressable rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-pressed disabled:opacity-40"
                 >
                   Clear
                 </button>
@@ -1681,7 +1681,7 @@ export function ExerciseLogger({
                     personalSaving ||
                     personalDraft.trim() === savedPersonal.trim()
                   }
-                  className="rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
+                  className="pressable rounded-pill bg-ink px-4 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
                 >
                   {personalSaving ? 'Saving…' : 'Save'}
                 </button>
@@ -1691,7 +1691,7 @@ export function ExerciseLogger({
                     personalSaving ||
                     (savedPersonal === '' && personalDraft === '')
                   }
-                  className="rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-pressed disabled:opacity-40"
+                  className="pressable rounded-pill border border-line bg-paper-card px-4 py-2 text-xs font-semibold text-ink active:bg-pressed disabled:opacity-40"
                 >
                   Clear
                 </button>
@@ -1716,7 +1716,7 @@ export function ExerciseLogger({
             <button
               onClick={onNext}
               disabled={!allDone}
-              className="w-full rounded-pill bg-ink py-4 text-base font-semibold text-white active:opacity-80 disabled:opacity-40"
+              className="pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white active:opacity-80 disabled:opacity-40"
             >
               Next exercise
             </button>
@@ -1724,7 +1724,7 @@ export function ExerciseLogger({
             <button
               onClick={onFinish}
               disabled={!allDone}
-              className="w-full rounded-pill bg-ink py-4 text-base font-semibold text-white active:opacity-80 disabled:opacity-40"
+              className="pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white active:opacity-80 disabled:opacity-40"
             >
               Finish workout
             </button>
@@ -1964,7 +1964,7 @@ function ExerciseMenu({
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="More options"
-        className="flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
+        className="pressable flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <circle cx="5" cy="12" r="1.6" fill="currentColor" />
@@ -2147,7 +2147,7 @@ function StepperButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-sm font-bold text-ink active:bg-surface-strong disabled:opacity-30"
+      className="pressable flex h-7 w-7 items-center justify-center rounded-full border border-line text-sm font-bold text-ink active:bg-surface-strong disabled:opacity-30"
     >
       {children}
     </button>
@@ -2211,13 +2211,13 @@ function RotationSuggestionBanner({
           <div className="mt-2.5 flex gap-2">
             <button
               onClick={onSwitch}
-              className="flex-1 rounded-pill bg-ink py-2 text-xs font-semibold text-white active:opacity-80"
+              className="pressable flex-1 rounded-pill bg-ink py-2 text-xs font-semibold text-white active:opacity-80"
             >
               Switch to {nextName}
             </button>
             <button
               onClick={onDismiss}
-              className="rounded-pill border border-line bg-paper px-4 py-2 text-xs font-semibold text-muted active:text-ink"
+              className="pressable rounded-pill border border-line bg-paper px-4 py-2 text-xs font-semibold text-muted active:text-ink"
             >
               Keep
             </button>
@@ -2272,13 +2272,13 @@ function AlternativeSheet({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-end justify-center bg-ink/40 transition-opacity duration-200 sm:items-center ${
+      className={`fixed inset-0 z-50 flex items-end justify-center bg-ink/40 transition-opacity duration-pop ease-snap sm:items-center ${
         shown ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={onClose}
     >
       <div
-        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 transition-transform duration-300 ease-out sm:rounded-card ${
+        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 transition-transform duration-sheet ease-sheet sm:rounded-card ${
           shown ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
@@ -2344,13 +2344,13 @@ function AlternativeSheet({
 
         <button
           onClick={onAdd}
-          className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
+          className="pressable mt-4 flex w-full items-center justify-center gap-1.5 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
         >
           <span className="text-base leading-none">+</span> Add alternative
         </button>
         <button
           onClick={onClose}
-          className="mt-2 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+          className="pressable mt-2 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
         >
           Done
         </button>
@@ -2427,11 +2427,11 @@ function AddAlternativeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
       onClick={onCancel}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 sm:rounded-card"
+        className="sheet-in flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 sm:rounded-card"
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2487,7 +2487,7 @@ function AddAlternativeModal({
           <button
             onClick={chooseNew}
             disabled={!trimmedNew || submitting}
-            className="shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+            className="pressable shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
           >
             {submitting ? 'Adding…' : 'Add'}
           </button>
@@ -2502,7 +2502,7 @@ function AddAlternativeModal({
         <button
           onClick={onCancel}
           disabled={submitting}
-          className="mt-4 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink disabled:opacity-40"
+          className="pressable mt-4 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink disabled:opacity-40"
         >
           Cancel
         </button>
@@ -2586,11 +2586,11 @@ function SwapMachineModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
       onClick={onCancel}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 sm:rounded-card"
+        className="sheet-in flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 sm:rounded-card"
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2646,7 +2646,7 @@ function SwapMachineModal({
               <button
                 onClick={chooseNew}
                 disabled={!trimmedNew}
-                className="shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+                className="pressable shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
               >
                 Add
               </button>
@@ -2654,7 +2654,7 @@ function SwapMachineModal({
 
             <button
               onClick={onCancel}
-              className="mt-4 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+              className="pressable mt-4 w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
             >
               Cancel
             </button>
@@ -2677,7 +2677,7 @@ function SwapMachineModal({
                 onClick={() =>
                   pending && onConfirm({ ...pending, scope: 'plan' })
                 }
-                className="w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+                className="pressable w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
               >
                 Update the workout plan
               </button>
@@ -2685,7 +2685,7 @@ function SwapMachineModal({
                 onClick={() =>
                   pending && onConfirm({ ...pending, scope: 'oneoff' })
                 }
-                className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
+                className="pressable w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
               >
                 Just this workout
               </button>
@@ -2694,7 +2694,7 @@ function SwapMachineModal({
                   setPending(null);
                   setStage('choose');
                 }}
-                className="w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+                className="pressable w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
               >
                 Back
               </button>
@@ -2752,20 +2752,20 @@ function RenameExerciseModal({
           <button
             onClick={() => onConfirm(trimmed, false)}
             disabled={!valid}
-            className="w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+            className="pressable w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
           >
             Same machine — keep history
           </button>
           <button
             onClick={() => onConfirm(trimmed, true)}
             disabled={!valid}
-            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink disabled:opacity-40 active:bg-pressed"
+            className="pressable w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink disabled:opacity-40 active:bg-pressed"
           >
             Different machine — reset to baseline
           </button>
           <button
             onClick={onCancel}
-            className="w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+            className="pressable w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
           >
             Cancel
           </button>
@@ -2792,11 +2792,11 @@ function DidYouMeanModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-md rounded-t-card bg-paper p-5 sm:rounded-card"
+        className="sheet-in w-full max-w-md rounded-t-card bg-paper p-5 sm:rounded-card"
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2822,19 +2822,19 @@ function DidYouMeanModal({
           <button
             onClick={onMerge}
             disabled={!confirmed}
-            className="w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+            className="pressable w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
           >
             Use “{candidateName}” and merge history
           </button>
           <button
             onClick={onKeepTyped}
-            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
+            className="pressable w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             No — keep “{typedName}”
           </button>
           <button
             onClick={onCancel}
-            className="w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
+            className="pressable w-full rounded-pill py-3 text-sm font-semibold text-muted active:text-ink"
           >
             Cancel
           </button>
@@ -3207,7 +3207,7 @@ function SetGroup({
                 <button
                   onClick={() => onOpenCalculator(idx, 0)}
                   aria-label="Open barbell calculator"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
+                  className="pressable flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
                 >
                   <CalculatorIcon />
                 </button>
@@ -3220,7 +3220,7 @@ function SetGroup({
                 <button
                   onClick={() => onEdit(idx)}
                   aria-label={`Edit set ${setIndex}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white active:opacity-70"
+                  className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white active:opacity-70"
                 >
                   <Check />
                 </button>
@@ -3229,7 +3229,7 @@ function SetGroup({
                   onClick={() => onComplete(idx)}
                   disabled={savingIdx === idx}
                   aria-label={`Log set ${setIndex} as done`}
-                  className={`flex h-9 w-9 items-center justify-center rounded-full border active:opacity-60 disabled:opacity-40 ${
+                  className={`pressable flex h-9 w-9 items-center justify-center rounded-full border active:opacity-60 disabled:opacity-40 ${
                     ready ? 'border-ink text-ink' : 'border-line text-muted'
                   }`}
                 >
@@ -3303,7 +3303,7 @@ function SetGroup({
                           <button
                             onClick={() => onOpenCalculator(idx, point)}
                             aria-label={`Open the plate calculator for point ${point + 1}`}
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
+                            className="pressable flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
                           >
                             <CalculatorIcon />
                           </button>
@@ -3453,13 +3453,13 @@ function RestTimer({
       <div className="flex flex-col gap-2">
         <button
           onClick={onSkip}
-          className="rounded-pill bg-ink px-4 py-1.5 text-xs font-semibold text-white active:opacity-80"
+          className="pressable rounded-pill bg-ink px-4 py-1.5 text-xs font-semibold text-white active:opacity-80"
         >
           Skip
         </button>
         <button
           onClick={onAdd}
-          className="rounded-pill border border-line bg-paper-card px-4 py-1.5 text-xs font-semibold text-ink active:opacity-80"
+          className="pressable rounded-pill border border-line bg-paper-card px-4 py-1.5 text-xs font-semibold text-ink active:opacity-80"
         >
           +15s
         </button>
@@ -3543,7 +3543,7 @@ function RestOverlay({
           <button
             onClick={onMinimise}
             aria-label="Minimise rest timer"
-            className="absolute right-0 flex h-11 w-11 items-center justify-center rounded-full text-white/80 active:bg-white/10 active:text-white"
+            className="pressable absolute right-0 flex h-11 w-11 items-center justify-center rounded-full text-white/80 active:bg-white/10 active:text-white"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <path
@@ -3630,7 +3630,7 @@ function RestOverlay({
                   <button
                     key={s}
                     onClick={() => onSetRestSeconds(s)}
-                    className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                    className={`pressable rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors ${
                       active
                         ? 'bg-white text-ink'
                         : 'border border-white/30 text-white/80 active:bg-white/10'
@@ -3683,7 +3683,7 @@ function MiniRestBar({
       <button
         onClick={onExpand}
         aria-label="Expand rest timer"
-        className="pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-pill bg-[#0A0A0A] py-2 pl-4 pr-3 text-white shadow-card active:opacity-80"
+        className="pressable pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-pill bg-[#0A0A0A] py-2 pl-4 pr-3 text-white shadow-card active:opacity-80"
       >
         <span className="text-label font-semibold uppercase tracking-[0.18em] text-white/60">
           Rest
@@ -3811,7 +3811,7 @@ function RestPicker({
           <button
             key={s}
             onClick={() => onChange(s)}
-            className={`rounded-pill px-2.5 py-1 text-caption font-semibold transition-colors ${
+            className={`pressable rounded-pill px-2.5 py-1 text-caption font-semibold transition-colors ${
               active ? 'bg-ink text-white' : 'bg-line text-muted active:text-ink'
             }`}
           >
