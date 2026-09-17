@@ -17,12 +17,15 @@ export function hapticBuzz(pattern: number | number[]) {
  * so there the visual press feedback is doing the whole job.
  */
 export const haptics = {
+  /** The lightest one: a selection moving. A chip, a unit, a stepper, a set
+   *  reopened. Barely there by design — these fire in runs of three or four as
+   *  a machine gets set up, and anything heavier turns into noise. */
+  tick: () => hapticBuzz(5),
   /** A control acknowledging a press: a menu opening, a sheet coming up. */
-  tap: () => hapticBuzz(8),
-  /** A choice landing: a chip, a unit, a position on the machine. */
-  select: () => hapticBuzz(12),
-  /** Something is saved and counted — a set logged, a weight recorded. */
-  commit: () => hapticBuzz([12, 40, 12]),
+  tap: () => hapticBuzz(9),
+  /** Something saved and counted — a set logged, a workout started. Two pulses,
+   *  because it should feel unlike everything else on the screen. */
+  commit: () => hapticBuzz([10, 30, 10]),
   /** Something was refused, and the screen is about to say why. */
-  alert: () => hapticBuzz([40, 30, 40]),
+  alert: () => hapticBuzz([30, 25, 30]),
 };

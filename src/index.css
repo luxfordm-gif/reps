@@ -96,12 +96,17 @@ h1, h2, h3, h4 {
   --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* A panel arriving over the screen. On a phone it's a sheet, so it comes up
-   from the bottom edge it's anchored to; at tablet width it's centred with
-   nothing to come up from, so it scales in from where it already is. Nothing
-   starts at scale(0) — things in the world don't appear out of nothing. */
+/* A panel arriving over the screen.
+
+   It used to travel translateY(100%) — its own full height. That looks right
+   only if the height holds still, and here it doesn't: these panels load a list
+   or raise the keyboard while the animation runs, so the distance changed
+   underneath it and the panel appeared to lurch, then accelerate into place.
+   A fixed rise can't be moved by any of that. 28px with a fade reads as the
+   panel arriving from the edge it's anchored to, and stays smooth whatever the
+   content does. */
 .sheet-in {
-  animation: sheet-up 280ms var(--ease-sheet) both;
+  animation: sheet-up 240ms var(--ease-snap) both;
 }
 
 .backdrop-in {
@@ -109,8 +114,8 @@ h1, h2, h3, h4 {
 }
 
 @keyframes sheet-up {
-  from { transform: translateY(100%); }
-  to { transform: none; }
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: none; }
 }
 
 @keyframes backdrop-fade {
@@ -119,6 +124,9 @@ h1, h2, h3, h4 {
 }
 
 @media (min-width: 640px) {
+  /* Centred rather than anchored, so it scales in from where it already is
+     instead of arriving from an edge it hasn't got. Never from scale(0) —
+     things in the world don't appear out of nothing. */
   .sheet-in {
     animation: modal-in 180ms var(--ease-snap) both;
   }

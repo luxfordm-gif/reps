@@ -1125,7 +1125,7 @@ export function ExerciseLogger({
 
   /** Pick (or unpick) the cam position a set was lifted at. */
   function selectCurve(idx: number, point: number) {
-    haptics.select();
+    haptics.tick();
     setSets((prev) =>
       prev.map((s, i) =>
         i === idx ? { ...s, curvePoint: s.curvePoint === point ? null : point } : s
@@ -1140,7 +1140,7 @@ export function ExerciseLogger({
   }
 
   function handleEdit(idx: number) {
-    haptics.tap();
+    haptics.tick();
     setError(null);
     clearRest();
     update(idx, { completed: false });
@@ -1954,7 +1954,7 @@ function ExerciseMenu({
   }, [open]);
 
   function pick(fn: () => void) {
-    haptics.select();
+    haptics.tick();
     setOpen(false);
     fn();
   }
@@ -3067,8 +3067,15 @@ function SetGroup({
         : scheme === 'dropset' || hasDrops
           ? 'Dropset · no rest between drops'
           : null;
+  // Which set the screen is waiting for. It moves to the next set the moment
+  // one is logged, so the outline is what the eye follows down the card stack.
+  const groupIsActive = rows.some(({ row, idx }) => !row.completed && idx === activeIndex);
   return (
-    <div className="overflow-hidden rounded-panel bg-paper-card shadow-card">
+    <div
+      className={`overflow-hidden rounded-panel bg-paper-card shadow-card transition-shadow duration-pop ${
+        groupIsActive ? 'ring-2 ring-ink' : ''
+      }`}
+    >
       {rows.map(({ row, idx }, ri) => {
         const isMain = row.dropIndex === 0;
         const isActive = !row.completed && idx === activeIndex;
@@ -3100,7 +3107,7 @@ function SetGroup({
               className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
                 !isMain ? 'bg-surface' : ''
               } ${
-                isActive ? 'ring-1 ring-inset ring-ink rounded-panel' : ''
+                isActive && rows.length > 1 ? 'ring-1 ring-inset ring-ink rounded-panel' : ''
               } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
             >
               <div className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
