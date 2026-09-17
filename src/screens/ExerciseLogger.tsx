@@ -779,7 +779,7 @@ export function ExerciseLogger({
       // without the profile columns won't, so say so rather than leave sets
       // logging a breakdown that can never be saved.
       if (isMissingProfileColumn(e)) {
-        setError('Weight profiles need database migration 0017 to be run first.');
+        setError('Weight profiles need migration 0017 run first.');
       }
     });
   }
@@ -1206,7 +1206,7 @@ export function ExerciseLogger({
     if (!weightless && Number.isNaN(weightNum)) {
       setError(
         positions > 1
-          ? `Enter the weight on at least one loading point (use 0 ${unit} for body weight)`
+          ? 'Enter the weight on at least one point'
           : `Enter both weight and reps (use 0 ${unit} for body weight)`
       );
       triggerShake(idx);
@@ -1374,7 +1374,7 @@ export function ExerciseLogger({
             <UnitBadge unit={unit} isOverride={unitIsOverride} />
             {positions > 1 && (
               <span
-                title={`Loads at ${positions} numbered points — each set logs a weight per point`}
+                title={`Loads at ${positions} numbered points`}
                 className="inline-flex items-center rounded-pill bg-line px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted"
               >
                 {positions} pts
@@ -1935,8 +1935,7 @@ function ExerciseMenu({
               ))}
             </div>
             <div className="mt-1.5 text-[11px] leading-snug text-muted">
-              For machines that load at two or three numbered points. Each set
-              takes a weight per point and logs the total.
+              For machines that load at two or three numbered points.
             </div>
           </div>
           <div className="border-t border-line/60" />
@@ -2950,7 +2949,7 @@ function SetGroup({
                       setPointsOverride((prev) => ({ ...prev, [idx]: !pointsOpen }))
                     }
                     aria-expanded={pointsOpen}
-                    aria-label={`Loading points for set ${setIndex} — total ${
+                    aria-label={`Points for set ${setIndex} — total ${
                       totalStr === '' ? 'not set' : `${totalStr} ${unit}`
                     }`}
                     className={`flex w-full items-center rounded-xl border bg-paper py-2 pl-3 pr-7 text-left text-base font-semibold ${
@@ -3085,7 +3084,7 @@ function SetGroup({
                 }`}
               >
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-                  Loading points
+                  Points
                 </div>
                 <div className="mt-2 space-y-2">
                   {pointValues.map((value, point) => {
