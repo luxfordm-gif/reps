@@ -55,7 +55,7 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
         >
           <div className="relative flex h-11 items-center justify-center px-5">
             <div
-              className={`text-nav font-semibold leading-none tracking-[-0.02em] text-ink transition-opacity duration-150 ${
+              className={`text-nav font-semibold leading-none tracking-[-0.02em] text-ink transition-opacity duration-pop ease-snap ${
                 collapsed ? 'opacity-100' : 'opacity-0'
               }`}
             >
@@ -85,14 +85,14 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
           {onBack && (
             <button
               onClick={onBack}
-              className="absolute left-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
+              className="pressable absolute left-2 flex h-11 w-11 items-center justify-center rounded-full text-ink active:bg-surface-strong"
               aria-label="Back"
             >
               <BackIcon />
             </button>
           )}
           <div
-            className={`text-nav font-semibold leading-none tracking-[-0.02em] text-ink transition-opacity duration-150 ${
+            className={`text-nav font-semibold leading-none tracking-[-0.02em] text-ink transition-opacity duration-pop ease-snap ${
               collapsed ? 'opacity-100' : 'opacity-0'
             }`}
           >

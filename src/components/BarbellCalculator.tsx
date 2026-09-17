@@ -458,7 +458,7 @@ function PlateButton({ kg, variant, onClick }: { kg: number; variant: 'heavy' | 
   return (
     <button
       onClick={onClick}
-      className={`relative h-14 w-14 justify-self-center rounded-full active:scale-95 transition-transform ${
+      className={`pressable relative h-14 w-14 justify-self-center rounded-full transition-transform ${
         heavy
           ? 'bg-[linear-gradient(180deg,#26262A_0%,#0B0B0D_60%,#000000_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_3px_6px_rgba(0,0,0,0.22)]'
           : 'border border-line bg-[linear-gradient(180deg,#FDFDFE_0%,#EFEFF3_60%,#E2E2E7_100%)] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_2px_5px_rgba(0,0,0,0.10)]'

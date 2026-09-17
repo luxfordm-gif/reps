@@ -125,7 +125,7 @@ export function NotesAccordion({
               type="button"
               onClick={handleOk}
               disabled={!loaded || saving}
-              className="rounded-pill bg-ink px-5 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
+              className="pressable rounded-pill bg-ink px-5 py-2 text-xs font-semibold text-white active:opacity-80 disabled:opacity-40"
             >
               OK
             </button>

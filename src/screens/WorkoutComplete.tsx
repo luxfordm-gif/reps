@@ -233,7 +233,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
         <div className="bg-paper px-5 pt-2 pb-[max(env(safe-area-inset-bottom),24px)]">
           <button
             onClick={onDone}
-            className="pointer-events-auto mx-auto block w-full max-w-md rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
+            className="pressable pointer-events-auto mx-auto block w-full max-w-md rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
           >
             Back to home
           </button>

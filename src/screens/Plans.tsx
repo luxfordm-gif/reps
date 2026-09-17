@@ -118,7 +118,7 @@ export function Plans({ onBack, onUpload, onAfterActivate }: Props) {
             </p>
             <button
               onClick={onUpload}
-              className="mt-5 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+              className="pressable mt-5 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
             >
               Upload a plan
             </button>
@@ -150,7 +150,7 @@ export function Plans({ onBack, onUpload, onAfterActivate }: Props) {
 
             <button
               onClick={onUpload}
-              className="mt-6 w-full rounded-pill border border-line bg-paper-card py-4 text-base font-semibold text-ink active:bg-pressed"
+              className="pressable mt-6 w-full rounded-pill border border-line bg-paper-card py-4 text-base font-semibold text-ink active:bg-pressed"
             >
               Upload a new plan
             </button>
@@ -256,7 +256,7 @@ function PlanCard({
             <button
               onClick={onEditStart}
               aria-label="Rename plan"
-              className={`shrink-0 rounded-full p-2 ${
+              className={`pressable shrink-0 rounded-full p-2 ${
                 dark ? 'active:bg-white/15' : 'active:bg-pressed'
               }`}
             >
@@ -270,14 +270,14 @@ function PlanCard({
         {!plan.is_active && (
           <button
             onClick={onSwitch}
-            className="mt-4 w-full rounded-pill bg-ink py-2.5 text-sm font-semibold text-white active:opacity-80"
+            className="pressable mt-4 w-full rounded-pill bg-ink py-2.5 text-sm font-semibold text-white active:opacity-80"
           >
             Switch to this plan
           </button>
         )}
         <button
           onClick={onToggleExpanded}
-          className={`mt-4 flex w-full items-center justify-between rounded-pill px-4 py-2.5 text-sm font-semibold ${
+          className={`pressable mt-4 flex w-full items-center justify-between rounded-pill px-4 py-2.5 text-sm font-semibold ${
             dark
               ? 'bg-white/10 text-white active:bg-white/15'
               : 'border border-line bg-paper-card text-ink active:bg-pressed'
@@ -402,11 +402,11 @@ function SwitchPlanDialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-6 backdrop-blur-sm"
+      className="backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-6 backdrop-blur-sm"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-card bg-paper-card p-6 shadow-card"
+        className="dialog-in w-full max-w-sm rounded-card bg-paper-card p-6 shadow-card"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-center text-xl font-bold tracking-tight text-ink">
@@ -420,14 +420,14 @@ function SwitchPlanDialog({
           <button
             onClick={onResume}
             disabled={busy}
-            className="w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
+            className="pressable w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
           >
             Continue where I left off
           </button>
           <button
             onClick={onRestart}
             disabled={busy}
-            className="w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed disabled:opacity-50"
+            className="pressable w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed disabled:opacity-50"
           >
             Start again from week 1
           </button>

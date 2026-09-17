@@ -76,7 +76,7 @@ export function Calendar({ value, onChange, maxISO }: Props) {
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-ink active:bg-line"
+          className="pressable flex h-8 w-8 items-center justify-center rounded-full text-ink active:bg-line"
           aria-label="Previous month"
         >
           <ChevronLeft />
@@ -88,7 +88,7 @@ export function Calendar({ value, onChange, maxISO }: Props) {
           type="button"
           onClick={() => navigate(1)}
           disabled={monthIsAtMax}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-ink active:bg-line disabled:opacity-30"
+          className="pressable flex h-8 w-8 items-center justify-center rounded-full text-ink active:bg-line disabled:opacity-30"
           aria-label="Next month"
         >
           <ChevronRight />

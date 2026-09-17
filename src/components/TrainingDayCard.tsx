@@ -115,7 +115,7 @@ export function TrainingDayCard({
   return (
     <button
       onClick={onClick}
-      className={`group relative flex w-full items-center gap-4 rounded-card p-5 text-left transition-transform active:scale-[0.99] ${surface} ${
+      className={`pressable group relative flex w-full items-center gap-4 rounded-card p-5 text-left transition-transform ${surface} ${
         done && !isNext ? 'opacity-70' : ''
       }`}
     >
