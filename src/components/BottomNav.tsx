@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { haptics } from '../lib/haptics';
 
 export type Tab = 'home' | 'performance' | 'profile';
 
@@ -86,11 +85,12 @@ export function BottomNav({
           return (
             <button
               key={tab.id}
-              onClick={() => {
-                // The lightest one: this is the most-pressed control in the app.
-                haptics.tick();
-                onChange?.(tab.id);
-              }}
+              // No haptic here on purpose. This is the most-pressed control in
+              // the app, and a vibration motor has a spin-up time — there is no
+              // "lighter" below a few milliseconds, only on or off. Switching
+              // tabs already answers with the entire screen changing, so the
+              // buzz was adding nothing but wear.
+              onClick={() => onChange?.(tab.id)}
               aria-label={tab.label}
               aria-current={isActive ? 'page' : undefined}
               className={`pressable flex h-11 items-center justify-center rounded-pill transition-colors ${
