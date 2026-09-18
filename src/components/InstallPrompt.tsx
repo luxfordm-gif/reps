@@ -95,14 +95,15 @@ export function InstallBanner({ advice, onInstall, onDismiss }: BannerProps) {
         </button>
       </div>
 
-      <p className="mt-2.5 text-sm leading-snug text-muted">
-        Opens full screen and keeps working when the gym has no signal.
+      <p className="mt-2.5 text-base leading-snug text-muted">
+        Faster to open, full screen instead of a browser tab, and it keeps working when the gym has
+        no signal.
       </p>
 
       {advice === 'prompt' && (
         <button
           onClick={onInstall}
-          className="pressable mt-3.5 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+          className="pressable mt-3.5 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white active:opacity-80"
         >
           Install
         </button>
@@ -112,7 +113,7 @@ export function InstallBanner({ advice, onInstall, onDismiss }: BannerProps) {
         // Safari can't be asked to install, only pointed at. The glyph is
         // the one on the button they're being sent to, so the sentence can
         // be matched to the toolbar without translating a word into a shape.
-        <p className="mt-3.5 flex items-center gap-2 rounded-panel bg-surface px-3 py-2.5 text-sm text-ink">
+        <p className="mt-3.5 flex items-center gap-2 rounded-panel bg-surface px-3 py-2.5 text-base text-ink">
           <span className="shrink-0 text-muted">
             <ShareIcon />
           </span>
@@ -124,7 +125,7 @@ export function InstallBanner({ advice, onInstall, onDismiss }: BannerProps) {
       )}
 
       {advice === 'ios-browser' && (
-        <p className="mt-3.5 rounded-panel bg-surface px-3 py-2.5 text-sm leading-snug text-ink">
+        <p className="mt-3.5 rounded-panel bg-surface px-3 py-2.5 text-base leading-snug text-ink">
           Open this page in <span className="font-semibold">Safari</span> to add it — on an iPhone
           it's the only browser that can.
         </p>
