@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { PageHeader } from '../components/PageHeader';
-import { Tile, ChevronRight, BarsIcon, BoltIcon, DumbbellIcon } from '../components/Tile';
+import { Tile, ChevronRight, BarsIcon, DumbbellIcon } from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
@@ -194,7 +194,20 @@ export function Performance() {
 
             {derived.streak.longest > 0 && (
               <Block>
-                <StreakCard streak={derived.streak} target={derived.weeklyTarget} />
+                <div className="grid grid-cols-2 gap-3">
+                  <StreakTile streak={derived.streak} target={derived.weeklyTarget} />
+                  <Tile
+                    icon={<CalendarIcon />}
+                    label="Consistency"
+                    value={derived.consistency.pct != null ? `${derived.consistency.pct}%` : '–'}
+                    hint={
+                      derived.consistency.pct != null
+                        ? `${derived.consistency.done} of ${derived.consistency.planned} planned`
+                        : 'needs an active plan'
+                    }
+                    visual={<DotRow dots={derived.dots} />}
+                  />
+                </div>
               </Block>
             )}
 
@@ -247,32 +260,9 @@ export function Performance() {
               </Block>
             )}
 
-            <Block>
-              <div className="grid grid-cols-2 gap-3">
-                <Tile
-                  icon={<CalendarIcon />}
-                  label="Consistency"
-                  value={derived.consistency.pct != null ? `${derived.consistency.pct}%` : '–'}
-                  hint={
-                    derived.consistency.pct != null
-                      ? `${derived.consistency.done} of ${derived.consistency.planned} planned`
-                      : 'needs an active plan'
-                  }
-                  visual={<DotRow dots={derived.dots} />}
-                />
-                <Tile
-                  icon={<BoltIcon />}
-                  label="Workouts / week"
-                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
-                  hint={derived.perWeek.average != null ? 'avg on this plan' : 'nothing logged yet'}
-                  visual={<MiniBars values={derived.perWeek.weekly} />}
-                />
-              </div>
-            </Block>
-
             {derived.load.some((p) => p.sets > 0) && (
               <Block>
-                <TrainingLoadCard load={derived.load} />
+                <TrainingLoadCard load={derived.load} perWeek={derived.perWeek.average} />
               </Block>
             )}
 
@@ -371,68 +361,47 @@ function DotRow({ dots }: { dots: boolean[] }) {
   );
 }
 
-function MiniBars({ values }: { values: number[] }) {
-  const max = Math.max(1, ...values);
-  return (
-    <div className="flex h-8 items-end gap-1">
-      {values.map((v, i) => (
-        <div
-          key={i}
-          className={`flex-1 rounded-sm ${i === values.length - 1 ? 'bg-ink' : 'bg-ink/25'}`}
-          style={{ height: `${Math.max(8, (v / max) * 100)}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
 /** A small line with a soft fill under it. Values only; no axes. */
 /**
  * Weeks in a row hitting the plan's target.
  *
- * White, like almost everything else here. An inverted card is the only
- * "this matters" this palette has — there is no accent colour to spend
- * instead — so it is worth rationing: the tab already spends it on the plan
- * hero and on the best lift of the month, and a third would leave all three
- * shouting over each other. A big number on white is emphatic enough.
+ * A tile rather than a card of its own. It carries exactly what the tiles
+ * beside it carry — a chip, a label, one number, a line under it — and given
+ * a full-width card to fill it just sat a 44px chip next to a short word and
+ * left half the row empty.
+ *
+ * Paired with consistency because they answer the same question from two
+ * sides: the ratio that forgives, and the run that doesn't.
  */
-function StreakCard({ streak, target }: { streak: WeekStreak; target: number }) {
+function StreakTile({ streak, target }: { streak: WeekStreak; target: number }) {
   const { current, longest, thisWeekCounts } = streak;
   const live = current > 0;
   const weeks = live ? current : longest;
   return (
-    <div className="rounded-card bg-paper-card p-5 shadow-card">
-      <div className="flex items-start gap-4">
-        <div
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-            live ? 'bg-ink text-white' : 'bg-surface-strong text-muted'
-          }`}
-        >
-          <FlameIcon />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm text-ink">{live ? 'Streak' : 'Best streak'}</div>
-          <div className="mt-0.5 text-display font-bold leading-none tracking-tight text-ink tabular-nums">
-            {weeks}
-            <span className="ml-1.5 text-base font-semibold text-muted">
-              {weeks === 1 ? 'week' : 'weeks'}
-            </span>
-          </div>
-          <div className="mt-1.5 text-xs text-muted">
-            {live
-              ? thisWeekCounts
-                ? `${target} a week · this one already counted`
-                : `${target} a week · finish this one for ${current + 1}`
-              : `${target} workouts in a week starts a new one`}
-          </div>
-        </div>
-      </div>
-      {live && longest > current && (
-        <div className="mt-3.5 border-t border-line/60 pt-2.5 text-xs text-muted tabular-nums">
-          Best run so far: {longest} weeks
-        </div>
-      )}
-    </div>
+    <Tile
+      icon={<FlameIcon />}
+      label={live ? 'Streak' : 'Best streak'}
+      value={
+        <>
+          {weeks}
+          <span className="ml-1 text-base font-semibold text-muted">
+            {weeks === 1 ? 'week' : 'weeks'}
+          </span>
+        </>
+      }
+      hint={
+        live
+          ? thisWeekCounts
+            ? 'this week counted'
+            : `finish this week for ${current + 1}`
+          : `${target} a week starts one`
+      }
+      visual={
+        live && longest > current ? (
+          <div className="text-caption text-muted tabular-nums">Best: {longest} weeks</div>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -448,7 +417,7 @@ function StreakCard({ streak, target }: { streak: WeekStreak; target: number }) 
  * one screen drawn in two different idioms read as two different apps, and
  * this one has axes worth labelling.
  */
-function TrainingLoadCard({ load }: { load: WeeklyLoadPoint[] }) {
+function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek: number | null }) {
   const thisWeek = load[load.length - 1]?.sets ?? 0;
   const average = Math.round(load.reduce((sum, p) => sum + p.sets, 0) / load.length);
   const points = load.map((p) => ({ label: p.weekStart, value: p.sets }));
@@ -467,7 +436,9 @@ function TrainingLoadCard({ load }: { load: WeeklyLoadPoint[] }) {
           {thisWeek === 1 ? 'set this week' : 'sets this week'}
         </div>
       </div>
-      <div className="mt-0.5 text-xs text-muted tabular-nums">{average} a week on average</div>
+      <div className="mt-0.5 text-xs text-muted tabular-nums">
+        {average} a week on average{perWeek != null && ` · ${perWeek} workouts a week`}
+      </div>
       <div className="mt-3">
         <ResponsiveContainer width="100%" height={140}>
           <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
