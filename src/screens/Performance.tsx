@@ -1,21 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-} from 'recharts';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { PageHeader } from '../components/PageHeader';
-import {
-  Tile,
-  ChevronRight,
-  BarsIcon,
-  BoltIcon,
-  DumbbellIcon,
-} from '../components/Tile';
+import { Tile, ChevronRight, BarsIcon, BoltIcon, DumbbellIcon } from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
@@ -26,6 +12,7 @@ import {
   type SessionSet,
 } from '../lib/performanceApi';
 import { loadRecords, type LiftRecord } from '../lib/recordsApi';
+import { headlineRecords } from '../lib/records';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import { buildDaySlots } from '../lib/daySlots';
 import {
@@ -124,12 +111,12 @@ export function Performance() {
     const slots = plan ? buildDaySlots(plan.training_days) : [];
     // The gym days per week: what Home counts towards the weekly target.
     const weeklyTarget = slots.filter(
-      (s) => s.name !== 'Abs' && !s.variants.every((v) => v.reference_only === true)
+      (s) => s.name !== 'Abs' && !s.variants.every((v) => v.reference_only === true),
     ).length;
     // A reference day (the home abs workout) isn't in the weekly target, so a
     // session marked done for it mustn't count towards it either.
     const referenceNames = new Set(
-      (plan?.training_days ?? []).filter((d) => d.reference_only).map((d) => d.name)
+      (plan?.training_days ?? []).filter((d) => d.reference_only).map((d) => d.name),
     );
     const gymSessions = sessions.filter((s) => !referenceNames.has(s.day_name));
     const mostImproved = computeMostImproved(perf.sets);
@@ -145,13 +132,16 @@ export function Performance() {
       bodyWeight: summarizeBodyWeight(perf.bodyWeights, activatedAt),
       newPrs: newRecordCount(records),
       dots: weekDots(week.bars),
-      topRecords: records.filter((r) => r.kind === 'weighted').slice(0, 3),
+      topRecords: headlineRecords(records),
     };
   }, [data]);
 
   const hasAnyData =
     !!data &&
-    (data.records.length > 0 || data.perf.bodyWeights.length > 0 || data.sessions.length > 0 || !!data.plan);
+    (data.records.length > 0 ||
+      data.perf.bodyWeights.length > 0 ||
+      data.sessions.length > 0 ||
+      !!data.plan);
 
   if (view === 'records' && data) {
     return (
@@ -213,7 +203,7 @@ export function Performance() {
                     derived.bodyWeight?.deltaKg != null
                       ? `${derived.bodyWeight.deltaKg > 0 ? '↑' : derived.bodyWeight.deltaKg < 0 ? '↓' : '·'} ${formatBwDelta(
                           Math.abs(derived.bodyWeight.deltaKg),
-                          bwUnit
+                          bwUnit,
                         )} ${derived.bodyWeight.since === 'plan' ? 'this plan' : 'overall'}`
                       : 'no change yet'
                   }
@@ -304,7 +294,9 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
           Current plan
         </div>
         <div className="mt-1 text-xl font-bold tracking-tight">No active plan</div>
-        <div className="mt-0.5 text-sm text-white/70">Upload one from your profile to start tracking.</div>
+        <div className="mt-0.5 text-sm text-white/70">
+          Upload one from your profile to start tracking.
+        </div>
       </div>
     );
   }
@@ -388,12 +380,25 @@ function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string;
     (i / (values.length - 1)) * w,
     h - 4 - ((v - min) / span) * (h - 8),
   ]);
-  const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const line = pts
+    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(' ');
   const area = `${line} L${w},${h} L0,${h} Z`;
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-full w-full" aria-hidden="true">
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="h-full w-full"
+      aria-hidden="true"
+    >
       <path d={area} fill={fill} />
-      <path d={line} fill="none" stroke={stroke} strokeWidth={1.6} vectorEffect="non-scaling-stroke" />
+      <path
+        d={line}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={1.6}
+        vectorEffect="non-scaling-stroke"
+      />
       {pts.map(([x, y], i) => (
         <circle key={i} cx={x} cy={y} r={1.6} fill={stroke} vectorEffect="non-scaling-stroke" />
       ))}
@@ -433,7 +438,11 @@ function StrengthCard({ strength }: { strength: ReturnType<typeof computeOverall
         </div>
         {strength.series.length >= 2 && (
           <div className="h-12 w-28 shrink-0">
-            <Sparkline values={strength.series.map((p) => p.pct)} stroke="#0A0A0A" fill="rgba(10,10,10,0.08)" />
+            <Sparkline
+              values={strength.series.map((p) => p.pct)}
+              stroke="#0A0A0A"
+              fill="rgba(10,10,10,0.08)"
+            />
           </div>
         )}
       </div>
@@ -519,7 +528,7 @@ function formatBw(kg: number, unit: BodyWeightUnit): string {
 
 function formatBwDelta(kg: number, unit: BodyWeightUnit): string {
   if (unit === 'st') {
-    const lb = Math.round(kg / 0.45359237 * 10) / 10;
+    const lb = Math.round((kg / 0.45359237) * 10) / 10;
     return `${fmtNum(lb)} lb`;
   }
   return `${fmtNum(kg)} kg`;
@@ -536,7 +545,12 @@ function ScaleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <rect x="3" y="3" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M6.5 7.5a2.5 2.5 0 0 1 5 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path
+        d="M6.5 7.5a2.5 2.5 0 0 1 5 0"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -544,7 +558,12 @@ function CalendarIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <rect x="3" y="4" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M3 8h12M6.5 2.5v3M11.5 2.5v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path
+        d="M3 8h12M6.5 2.5v3M11.5 2.5v3"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -566,7 +585,7 @@ function Block({ children }: { children: React.ReactNode }) {
 function LiftHistory({ sets, record }: { sets: PerformanceData['sets']; record: LiftRecord }) {
   const history = useMemo(
     () => buildExerciseHistory(sets, record.normalizedName),
-    [sets, record.normalizedName]
+    [sets, record.normalizedName],
   );
   const points = useMemo(
     () =>
@@ -577,7 +596,7 @@ function LiftHistory({ sets, record }: { sets: PerformanceData['sets']; record: 
           weight: fromKgFor(p.topWeightKg!, record.unit), // converted to display unit
           reps: p.repsAtTopWeight!, // raw count — never converted
         })),
-    [history, record.unit]
+    [history, record.unit],
   );
 
   // Reps-only and hold records have no weight to chart; the list still shows
@@ -738,9 +757,7 @@ function SessionHistoryList({
                 </span>
               )}
             </div>
-            <div className="mt-1 text-sm text-muted tabular-nums">
-              {formatSets(p.sets, unit)}
-            </div>
+            <div className="mt-1 text-sm text-muted tabular-nums">{formatSets(p.sets, unit)}</div>
           </li>
         ))}
       </ul>
@@ -777,7 +794,7 @@ function BodyWeightCard({
         label: r.recorded_on,
         value: bwUnit === 'kg' ? r.weight_kg : toDecimalStones(r.weight_kg),
       })),
-    [rows, bwUnit]
+    [rows, bwUnit],
   );
 
   return (
