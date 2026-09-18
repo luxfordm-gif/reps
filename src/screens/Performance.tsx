@@ -202,7 +202,7 @@ export function Performance() {
                     value={derived.consistency.pct != null ? `${derived.consistency.pct}%` : '–'}
                     hint={
                       derived.consistency.pct != null
-                        ? `${derived.consistency.done} of ${derived.consistency.planned} planned`
+                        ? `${derived.consistency.done} of ${derived.consistency.planned} this plan`
                         : 'needs an active plan'
                     }
                     visual={<DotRow dots={derived.dots} />}
@@ -344,6 +344,37 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
 const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const TODAY_IDX = (new Date().getDay() + 6) % 7;
 
+/**
+ * The last seven weeks, hit or missed — the week-scale twin of DotRow.
+ *
+ * Built to the same two-row shape (dots, then a line of text) so the two tiles
+ * in the pair end at the same place. This week is drawn as pending rather than
+ * missed while it still has days left in it, the same distinction DotRow makes
+ * for days that haven't happened.
+ */
+function WeekDots({ weeks, best }: { weeks: boolean[]; best: number | null }) {
+  return (
+    <div>
+      <div className="flex justify-between">
+        {weeks.map((on, i) => {
+          const isThisWeek = i === weeks.length - 1;
+          return (
+            <span
+              key={i}
+              className={`h-2.5 w-2.5 rounded-full ${
+                on ? 'bg-ink' : isThisWeek ? 'bg-surface-strong' : 'bg-line'
+              }`}
+            />
+          );
+        })}
+      </div>
+      <div className="mt-1 text-label text-muted tabular-nums">
+        {best != null ? `Best ${best} weeks` : 'Last 7 weeks'}
+      </div>
+    </div>
+  );
+}
+
 function DotRow({ dots }: { dots: boolean[] }) {
   return (
     <div className="flex justify-between">
@@ -396,11 +427,7 @@ function StreakTile({ streak, target }: { streak: WeekStreak; target: number }) 
             : `finish this week for ${current + 1}`
           : `${target} a week starts one`
       }
-      visual={
-        live && longest > current ? (
-          <div className="text-caption text-muted tabular-nums">Best: {longest} weeks</div>
-        ) : undefined
-      }
+      visual={<WeekDots weeks={streak.recentWeeks} best={longest > current ? longest : null} />}
     />
   );
 }

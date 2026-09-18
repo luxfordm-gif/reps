@@ -24,19 +24,22 @@ console.log('\n=== the week in progress is never held against you ===');
 eq(
   'a target not yet met this week leaves the run standing',
   computeWeekStreak([...week(0, 1), ...week(1, 3), ...week(2, 3), ...week(3, 3)], 3, NOW),
-  { current: 3, longest: 3, thisWeekCounts: false }
+  { current: 3, longest: 3, thisWeekCounts: false,
+    recentWeeks: [false, false, false, true, true, true, false] }
 );
 eq(
   'meeting it early extends the run straight away',
   computeWeekStreak([...week(0, 3), ...week(1, 3), ...week(2, 3)], 3, NOW),
-  { current: 3, longest: 3, thisWeekCounts: true }
+  { current: 3, longest: 3, thisWeekCounts: true,
+    recentWeeks: [false, false, false, false, true, true, true] }
 );
 
 console.log('\n=== breaking and rebuilding ===');
 eq(
   'a missed week ends the run',
   computeWeekStreak([...week(1, 3), ...week(2, 1), ...week(3, 3), ...week(4, 3)], 3, NOW),
-  { current: 1, longest: 2, thisWeekCounts: false }
+  { current: 1, longest: 2, thisWeekCounts: false,
+    recentWeeks: [false, false, true, true, false, true, false] }
 );
 eq(
   'the longest run is remembered after the current one breaks',
@@ -45,17 +48,28 @@ eq(
     3,
     NOW
   ),
-  { current: 0, longest: 4, thisWeekCounts: false }
+  { current: 0, longest: 4, thisWeekCounts: false,
+    recentWeeks: [false, true, true, true, true, false, false] }
 );
 eq(
   'exceeding the target still just counts as one week',
   computeWeekStreak([...week(1, 9), ...week(2, 5)], 3, NOW),
-  { current: 2, longest: 2, thisWeekCounts: false }
+  { current: 2, longest: 2, thisWeekCounts: false,
+    recentWeeks: [false, false, false, false, true, true, false] }
 );
 
 console.log('\n=== nothing to count ===');
-eq('no sessions', computeWeekStreak([], 3, NOW), { current: 0, longest: 0, thisWeekCounts: false });
-eq('no target', computeWeekStreak(week(1, 5), 0, NOW), { current: 0, longest: 0, thisWeekCounts: false });
+const noWeeks = [false, false, false, false, false, false, false];
+eq('no sessions', computeWeekStreak([], 3, NOW), { current: 0, longest: 0, thisWeekCounts: false, recentWeeks: noWeeks });
+eq('no target', computeWeekStreak(week(1, 5), 0, NOW), { current: 0, longest: 0, thisWeekCounts: false, recentWeeks: noWeeks });
+
+console.log('\n=== the seven dots ===');
+// Oldest first, this week last — the same reading order as the day dots.
+eq(
+  'seven weeks, this one last',
+  computeWeekStreak([...week(0, 3), ...week(6, 3)], 3, NOW).recentWeeks,
+  [true, false, false, false, false, false, true]
+);
 
 console.log('\n=== twelve weeks of load ===');
 const sets = (w, n) => Array.from({ length: n }, (_, i) => ({

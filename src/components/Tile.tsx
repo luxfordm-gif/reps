@@ -24,6 +24,13 @@ export function Tile({
 }) {
   // Icon above the words, not beside them: at phone width two tiles share
   // ~330px, and an icon column left the label with room for "Body wei…".
+  //
+  // Two tiles in a row are the same height whatever is in them, so where the
+  // slack goes decides whether they look aligned. The rule: the icon is pinned
+  // to the top and the visual to the bottom, and the words flow down from the
+  // icon. Labels, numbers and hints then line up across the pair, the visuals
+  // sit on a shared baseline, and any spare height collects in the middle
+  // where nothing has to line up with anything.
   const body = (
     <>
       <div className="flex items-center justify-between">
@@ -37,10 +44,10 @@ export function Tile({
         {value}
       </div>
       {hint && <div className="mt-1 truncate text-xs text-muted">{hint}</div>}
-      {visual && <div className="mt-3">{visual}</div>}
+      {visual && <div className="mt-auto pt-3">{visual}</div>}
     </>
   );
-  const cls = 'rounded-card bg-paper-card p-4 shadow-card';
+  const cls = 'flex h-full flex-col rounded-card bg-paper-card p-4 shadow-card';
   return onClick ? (
     <button type="button" onClick={onClick} className={`${cls} w-full text-left active:bg-surface`}>
       {body}
@@ -57,8 +64,21 @@ export function TileUnit({ children }: { children: ReactNode }) {
 
 export function ChevronRight() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" className="shrink-0 text-muted">
-      <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0 text-muted"
+    >
+      <path
+        d="M5 3l4 4-4 4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -66,7 +86,12 @@ export function ChevronRight() {
 export function BarsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path d="M4 14V9M9 14V4M14 14v-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M4 14V9M9 14V4M14 14v-3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -74,7 +99,12 @@ export function BarsIcon() {
 export function BoltIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path d="M10 2L4 10h5l-1 6 6-8h-5l1-6Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path
+        d="M10 2L4 10h5l-1 6 6-8h-5l1-6Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -82,7 +112,12 @@ export function BoltIcon() {
 export function DumbbellIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path d="M6 9h6M3 7v4M5 6v6M13 6v6M15 7v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M6 9h6M3 7v4M5 6v6M13 6v6M15 7v4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
