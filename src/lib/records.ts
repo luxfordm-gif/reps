@@ -123,8 +123,7 @@ export function computeRecords(sets: RawSet[]): LiftRecord[] {
       }
     }
 
-    const kind: RecordKind =
-      heaviest != null ? 'weighted' : longestHold != null ? 'hold' : 'reps';
+    const kind: RecordKind = heaviest != null ? 'weighted' : longestHold != null ? 'hold' : 'reps';
 
     // A movement with nothing scoreable (every set blank) isn't a record.
     if (heaviest == null && mostReps == null && longestHold == null) continue;
@@ -170,7 +169,7 @@ export function recordAchievedAt(r: LiftRecord): string {
 
 /** Group records under their body part, "Other" last, for the screen's sections. */
 export function groupByBodyPart(
-  records: LiftRecord[]
+  records: LiftRecord[],
 ): { bodyPart: string; records: LiftRecord[] }[] {
   const groups = new Map<string, LiftRecord[]>();
   for (const r of records) {
@@ -186,4 +185,75 @@ export function groupByBodyPart(
       if (b.bodyPart === 'Other') return -1;
       return a.bodyPart.localeCompare(b.bodyPart);
     });
+}
+
+// --- The headline board -----------------------------------------------------------
+
+/**
+ * The movements the Performance tab leads with, in the order it leads with
+ * them.
+ *
+ * Without this the board is simply whatever is heaviest, and the heaviest
+ * thing in a gym is rarely the thing you care about: a calf raise moves more
+ * plates than a bench and tells you nothing. These are the lifts people
+ * measure themselves by, so they get the top of the card whatever the number
+ * says.
+ *
+ * Matched against the normalized name, which is the machine's full label
+ * lowercased — "nebula leg press", "arsenal low row" — so the patterns look
+ * for the movement inside the name rather than the whole of it.
+ */
+const CORE_LIFTS: RegExp[] = [
+  /\bsquat\b/,
+  /\bbench\b/,
+  /\bdead\s?lift\b/,
+  /\bleg press\b/,
+  /\b(overhead|shoulder|military)\s+press\b/,
+  /\b(lat\s?pull\s?down|pull\s?down|pull[\s-]?up|chin[\s-]?up)\b/,
+  /\brow\b/,
+  /\bchest press\b/,
+];
+
+/**
+ * Where a movement sits in that order, or Infinity if it isn't one of them.
+ */
+export function coreLiftRank(normalizedName: string): number {
+  const idx = CORE_LIFTS.findIndex((re) => re.test(normalizedName));
+  return idx === -1 ? Infinity : idx;
+}
+
+/**
+ * The few records worth putting on the dashboard.
+ *
+ * Core movements first, in the order above, then the heaviest of whatever is
+ * left. At most one record per core movement: three squat variations would
+ * otherwise fill the board and push the bench off it, and the point of a
+ * headline is breadth.
+ *
+ * "Heaviest" compares the stored weight across machines, which mixes
+ * kilograms with the pin positions a stack machine logs (see units.ts). That
+ * ordering is rough for the filler slots, and unavoidable without a
+ * conversion that doesn't exist — but it no longer decides the top of the
+ * board, which is what it was getting wrong.
+ */
+export function headlineRecords(records: LiftRecord[], limit = 6): LiftRecord[] {
+  const byWeightDesc = (a: LiftRecord, b: LiftRecord) =>
+    (b.heaviest?.weightKg ?? 0) - (a.heaviest?.weightKg ?? 0);
+
+  const weighted = records
+    .filter((r) => r.kind === 'weighted' && r.heaviest != null)
+    .sort(byWeightDesc);
+
+  // Heaviest-first means the first match for a movement is the one to keep.
+  const bestPerCore = new Map<number, LiftRecord>();
+  const rest: LiftRecord[] = [];
+  for (const r of weighted) {
+    const rank = coreLiftRank(r.normalizedName);
+    if (rank === Infinity) rest.push(r);
+    else if (bestPerCore.has(rank)) rest.push(r);
+    else bestPerCore.set(rank, r);
+  }
+
+  const core = [...bestPerCore.entries()].sort((a, b) => a[0] - b[0]).map(([, r]) => r);
+  return [...core, ...rest].slice(0, limit);
 }
