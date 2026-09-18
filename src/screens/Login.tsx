@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { hasSignedInBefore } from '../lib/returning';
 import { Logo } from '../components/Logo';
 
 type Mode = 'signin' | 'signup' | 'forgot';
-type Step = 'email' | 'password';
+/** 'sent' is a destination, not a form: the only thing left to do is open the
+ *  email, so the screen says so instead of leaving a filled-in form behind. */
+type Step = 'email' | 'password' | 'sent';
 
 export function Login() {
   const [mode, setMode] = useState<Mode>('signin');
@@ -17,6 +19,18 @@ export function Login() {
   // Read once on mount: has this device ever been signed in? Only then does
   // "Welcome back" mean anything.
   const [returning] = useState(hasSignedInBefore);
+  // Seconds left before the resend button comes back. Supabase rate-limits
+  // these anyway; the counter is so the wait is visible rather than a refusal.
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = window.setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [resendIn]);
+
+  /** Where a confirmation or reset link should land. */
+  const linkTarget = () => `${window.location.origin}/`;
 
   function changeMode(m: Mode) {
     setMode(m);
@@ -24,11 +38,19 @@ export function Login() {
     setError(null);
     setInfo(null);
     setPassword('');
+    setResendIn(0);
   }
 
   function handleBack() {
     setError(null);
     setInfo(null);
+    if (step === 'sent') {
+      // Back from here means "that address was wrong", so keep the mode and
+      // return to the field, not to the password they already chose.
+      setPassword('');
+      setStep('email');
+      return;
+    }
     if (step === 'password') {
       setPassword('');
       setStep('email');
@@ -69,21 +91,23 @@ export function Login() {
           // Site URL, which is a development machine until someone remembers to
           // change it — and a dead link is the one bug a new user can't work
           // around. Same origin the reset flow uses.
-          options: { emailRedirectTo: `${window.location.origin}/` },
+          options: { emailRedirectTo: linkTarget() },
         });
         if (error) throw error;
         // With confirmations switched off Supabase hands back a session and
         // onAuthStateChange has already moved us on, so saying "check your
         // email" would send them looking for a message that never arrives.
         if (!data.session) {
-          setInfo('Check your email to confirm your account, then sign in.');
+          setStep('sent');
+          setResendIn(RESEND_COOLDOWN_S);
         }
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: linkTarget(),
         });
         if (error) throw error;
-        setInfo('Check your email for a link to reset your password.');
+        setStep('sent');
+        setResendIn(RESEND_COOLDOWN_S);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -94,13 +118,41 @@ export function Login() {
 
 
 
+  async function handleResend() {
+    if (resendIn > 0 || busy) return;
+    setError(null);
+    setInfo(null);
+    setBusy(true);
+    try {
+      if (mode === 'signup') {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email,
+          options: { emailRedirectTo: linkTarget() },
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: linkTarget(),
+        });
+        if (error) throw error;
+      }
+      setInfo('Sent again.');
+      setResendIn(RESEND_COOLDOWN_S);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not resend');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const { heading, subtitle, primaryLabel } = computeHeadings(
     mode,
     step,
     email,
     returning
   );
-  const showBack = step === 'password' || mode === 'forgot';
+  const showBack = step === 'password' || step === 'sent' || mode === 'forgot';
 
   return (
     <div className="bg-paper" style={{ minHeight: '100dvh' }}>
@@ -141,6 +193,32 @@ export function Login() {
           )}
 
           <div className="mt-5 w-full">
+            {step === 'sent' && (
+              <div className="space-y-3">
+                <div className="rounded-card bg-paper-card px-5 py-6 text-center shadow-card">
+                  <EnvelopeIcon />
+                  <p className="mt-4 text-sm leading-relaxed text-muted">
+                    {mode === 'signup'
+                      ? 'Open the link to confirm your account, then sign in.'
+                      : 'Open the link to choose a new password.'}
+                  </p>
+                  <p className="mt-3 break-all text-sm font-semibold text-ink">{email}</p>
+                </div>
+                <Messages error={error} info={info} />
+                <PrimaryButton busy={false} onClick={() => changeMode('signin')}>
+                  Back to sign in
+                </PrimaryButton>
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resendIn > 0 || busy}
+                  className="block w-full pt-1 text-center text-sm text-muted active:text-ink disabled:opacity-60"
+                >
+                  {resendIn > 0 ? `Resend in ${resendIn}s` : 'Didn\u2019t get it? Send again'}
+                </button>
+              </div>
+            )}
+
             {step === 'email' && (
               <form
                 onSubmit={mode === 'forgot' ? handleSubmit : handleEmailNext}
@@ -198,19 +276,19 @@ export function Login() {
           </div>
 
           <div className="mt-6 space-y-2 text-center text-sm text-muted">
-            {mode === 'signin' && step !== 'password' && (
+            {mode === 'signin' && step === 'email' && (
               <button onClick={() => changeMode('signup')} className="block w-full">
                 New here?{' '}
                 <span className="font-semibold text-ink">Create an account</span>
               </button>
             )}
-            {mode === 'signup' && step !== 'password' && (
+            {mode === 'signup' && step === 'email' && (
               <button onClick={() => changeMode('signin')} className="block w-full">
                 Already have an account?{' '}
                 <span className="font-semibold text-ink">Sign in</span>
               </button>
             )}
-            {mode === 'forgot' && (
+            {mode === 'forgot' && step === 'email' && (
               <button onClick={() => changeMode('signin')} className="block w-full">
                 <span className="font-semibold text-ink">Back to sign in</span>
               </button>
@@ -230,6 +308,13 @@ function computeHeadings(
   email: string,
   returning: boolean
 ): { heading: string; subtitle: string; primaryLabel: string } {
+  if (step === 'sent') {
+    return {
+      heading: 'Check your email.',
+      subtitle: '',
+      primaryLabel: 'Back to sign in',
+    };
+  }
   if (mode === 'forgot') {
     return {
       heading: 'Reset password.',
@@ -342,6 +427,39 @@ function PrimaryButton({
 //
 //   Either way: Supabase → Authentication → URL Configuration must allow-list
 //   the production domain and http://localhost:5173/.
+
+/** Long enough that a second tap is a real decision, short enough that someone
+ *  whose mail is slow isn't stuck staring at a dead button. */
+const RESEND_COOLDOWN_S = 30;
+
+function EnvelopeIcon() {
+  return (
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 24 24"
+      fill="none"
+      className="mx-auto text-ink"
+      aria-hidden="true"
+    >
+      <rect
+        x="2.5"
+        y="5"
+        width="19"
+        height="14"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M3.5 7.5l7.34 5.03a2 2 0 0 0 2.32 0L20.5 7.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 function BackIcon() {
   return (
