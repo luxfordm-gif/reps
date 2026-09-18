@@ -390,28 +390,35 @@ function MiniBars({ values }: { values: number[] }) {
 /**
  * Weeks in a row hitting the plan's target.
  *
- * Dark, and above everything else on the page, because it's the one number
- * here that changes behaviour rather than describing it. The rest of the tab
- * reports on training that has happened; this one is an argument for training
- * tomorrow.
+ * White, like almost everything else here. An inverted card is the only
+ * "this matters" this palette has — there is no accent colour to spend
+ * instead — so it is worth rationing: the tab already spends it on the plan
+ * hero and on the best lift of the month, and a third would leave all three
+ * shouting over each other. A big number on white is emphatic enough.
  */
 function StreakCard({ streak, target }: { streak: WeekStreak; target: number }) {
   const { current, longest, thisWeekCounts } = streak;
   const live = current > 0;
+  const weeks = live ? current : longest;
   return (
-    <div className="rounded-card bg-ink p-5 text-white shadow-lift">
-      <div className="flex items-center justify-between gap-4">
+    <div className="rounded-card bg-paper-card p-5 shadow-card">
+      <div className="flex items-start gap-4">
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+            live ? 'bg-ink text-white' : 'bg-surface-strong text-muted'
+          }`}
+        >
+          <FlameIcon />
+        </div>
         <div className="min-w-0">
-          <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
-            {live ? 'Streak' : 'Best streak'}
-          </div>
-          <div className="mt-1 text-display font-bold leading-none tracking-tight tabular-nums">
-            {live ? current : longest}
-            <span className="ml-1.5 text-base font-semibold text-white/70">
-              {(live ? current : longest) === 1 ? 'week' : 'weeks'}
+          <div className="text-sm text-ink">{live ? 'Streak' : 'Best streak'}</div>
+          <div className="mt-0.5 text-display font-bold leading-none tracking-tight text-ink tabular-nums">
+            {weeks}
+            <span className="ml-1.5 text-base font-semibold text-muted">
+              {weeks === 1 ? 'week' : 'weeks'}
             </span>
           </div>
-          <div className="mt-1.5 text-xs text-white/60">
+          <div className="mt-1.5 text-xs text-muted">
             {live
               ? thisWeekCounts
                 ? `${target} a week · this one already counted`
@@ -419,10 +426,9 @@ function StreakCard({ streak, target }: { streak: WeekStreak; target: number }) 
               : `${target} workouts in a week starts a new one`}
           </div>
         </div>
-        <FlameIcon lit={live} />
       </div>
       {live && longest > current && (
-        <div className="mt-3 border-t border-white/10 pt-2.5 text-xs text-white/55 tabular-nums">
+        <div className="mt-3.5 border-t border-line/60 pt-2.5 text-xs text-muted tabular-nums">
           Best run so far: {longest} weeks
         </div>
       )}
@@ -436,27 +442,21 @@ function StreakCard({ streak, target }: { streak: WeekStreak; target: number }) 
  * The rest of the tab looks at a fortnight or at one lift. This is the only
  * place that answers "how has it been going lately", which is the question a
  * chart is for — and the empty weeks are drawn, because a month off is the
- * most informative thing a year of training has to say.
+ * most informative thing a season of training has to say.
+ *
+ * Built like the body-weight chart rather than as a sparkline: two charts on
+ * one screen drawn in two different idioms read as two different apps, and
+ * this one has axes worth labelling.
  */
 function TrainingLoadCard({ load }: { load: WeeklyLoadPoint[] }) {
   const thisWeek = load[load.length - 1]?.sets ?? 0;
-  const weeksTrained = load.filter((p) => p.sets > 0).length;
-  const average =
-    weeksTrained > 0 ? Math.round(load.reduce((sum, p) => sum + p.sets, 0) / load.length) : 0;
-  // Three evenly spaced weeks, labelled by month, as the axis.
-  const ticks = [0, Math.floor((load.length - 1) / 2), load.length - 1].map((i) => ({
-    i,
-    label: new Date(`${load[i].weekStart}T00:00:00`).toLocaleDateString('en-GB', {
-      month: 'short',
-    }),
-  }));
+  const average = Math.round(load.reduce((sum, p) => sum + p.sets, 0) / load.length);
+  const points = load.map((p) => ({ label: p.weekStart, value: p.sets }));
 
   return (
-    <div className="rounded-card bg-paper-card p-5 shadow-card">
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
-          Training load
-        </div>
+    <div className="rounded-card bg-paper-card p-4 shadow-card">
+      <div className="flex items-center justify-between">
+        <SectionLabel>Training load</SectionLabel>
         <div className="text-xs text-muted">Past 12 weeks</div>
       </div>
       <div className="mt-1 flex items-baseline gap-2">
@@ -467,36 +467,70 @@ function TrainingLoadCard({ load }: { load: WeeklyLoadPoint[] }) {
           {thisWeek === 1 ? 'set this week' : 'sets this week'}
         </div>
       </div>
-      <div className="mt-1 text-xs text-muted tabular-nums">{average} a week on average</div>
-      <div className="mt-4 h-20 w-full">
-        <Sparkline values={load.map((p) => p.sets)} stroke="#0A0A0A" fill="rgba(10,10,10,0.08)" />
-      </div>
-      <div className="mt-1.5 flex justify-between text-caption uppercase tracking-[0.12em] text-muted">
-        {ticks.map((t) => (
-          <span key={t.i}>{t.label}</span>
-        ))}
+      <div className="mt-0.5 text-xs text-muted tabular-nums">{average} a week on average</div>
+      <div className="mt-3">
+        <ResponsiveContainer width="100%" height={140}>
+          <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <XAxis
+              dataKey="label"
+              tick={{ fill: '#8E8E93', fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              minTickGap={24}
+              tickFormatter={(d) =>
+                new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', {
+                  day: 'numeric',
+                  month: 'short',
+                })
+              }
+            />
+            {/* Anchored at zero, unlike body weight. A week off is a real zero,
+                and an axis that starts at the smallest value would draw the
+                gap as a shallow dip instead of the floor it is. */}
+            <YAxis
+              tick={{ fill: '#8E8E93', fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              width={40}
+              allowDecimals={false}
+              domain={[0, 'dataMax + 4']}
+            />
+            <Tooltip
+              contentStyle={{ borderRadius: 12, border: '1px solid #E5E5EA', fontSize: 12 }}
+              formatter={(v) => [`${v} ${Number(v) === 1 ? 'set' : 'sets'}`, 'Logged']}
+              labelFormatter={(d) =>
+                `Week of ${new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', {
+                  day: 'numeric',
+                  month: 'short',
+                })}`
+              }
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="#0A0A0A"
+              strokeWidth={2}
+              dot={{ r: 2.5, fill: '#0A0A0A' }}
+              activeDot={{ r: 4 }}
+              isAnimationActive
+              animationDuration={900}
+              animationEasing="ease-out"
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
 }
 
-function FlameIcon({ lit }: { lit: boolean }) {
+function FlameIcon() {
   return (
-    <svg
-      width="40"
-      height="40"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-      className="shrink-0"
-    >
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M12 2.6c.9 3.2-1.1 4.6-2.4 6.1a5.6 5.6 0 0 0-1.5 3.8 5.9 5.9 0 0 0 11.8 0c0-2.2-1-3.5-2.3-5-.5 1-1.2 1.6-2 1.9.3-2.9-1.2-5.4-3.6-6.8Z"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.7"
         strokeLinejoin="round"
-        className={lit ? 'text-white' : 'text-white/30'}
-        fill={lit ? 'rgba(255,255,255,0.15)' : 'none'}
       />
     </svg>
   );
