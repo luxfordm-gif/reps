@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { PageHeader } from '../components/PageHeader';
-import { Tile, ChevronRight, BarsIcon, DumbbellIcon } from '../components/Tile';
+import { Tile, ChevronRight, BarsIcon, BoltIcon, WaterIcon, StepsIcon } from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
@@ -13,6 +13,8 @@ import {
 } from '../lib/performanceApi';
 import { loadRecords, type LiftRecord } from '../lib/recordsApi';
 import { headlineRecords } from '../lib/records';
+import { listWaterSince, type WaterDay } from '../lib/waterApi';
+import { listSteps, formatSteps, type StepRow } from '../lib/stepsApi';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import { buildDaySlots } from '../lib/daySlots';
 import {
@@ -24,6 +26,8 @@ import {
 import {
   bodyWeightRange,
   computeConsistency,
+  weekDailyAverage,
+  weekStartISO,
   computeWeekStreak,
   computeWeeklyLoad,
   type WeekStreak,
@@ -33,7 +37,6 @@ import {
   computeWorkoutsPerWeek,
   newRecordCount,
   summarizeBodyWeight,
-  weekDots,
 } from '../lib/dashboard';
 import {
   getBodyWeightUnit,
@@ -63,6 +66,8 @@ interface Loaded {
   plan: FullPlan | null;
   sessions: CompletedSessionSummary[];
   week: WeekSummary;
+  water: WaterDay[];
+  steps: StepRow[];
 }
 
 const EMPTY_WEEK: WeekSummary = {
@@ -73,14 +78,19 @@ const EMPTY_WEEK: WeekSummary = {
 
 /** Each source fails on its own; one missing table must not blank the tab. */
 async function loadAll(): Promise<Loaded> {
-  const [perf, records, plan, sessions, week] = await Promise.all([
+  // Only this week is needed for the habit averages, so the water query is
+  // bounded rather than fetching a year to divide seven days by.
+  const weekFrom = weekStartISO(new Date());
+  const [perf, records, plan, sessions, week, water, steps] = await Promise.all([
     loadPerformanceData().catch(() => ({ sets: [], bodyWeights: [] })),
     loadRecords().catch(() => []),
     getActivePlan().catch(() => null),
     listCompletedSessions().catch(() => []),
     getThisWeekSummary().catch(() => EMPTY_WEEK),
+    listWaterSince(weekFrom).catch(() => []),
+    listSteps().catch(() => []),
   ]);
-  return { perf, records, plan, sessions, week };
+  return { perf, records, plan, sessions, week, water, steps };
 }
 
 export function Performance() {
@@ -110,7 +120,7 @@ export function Performance() {
 
   const derived = useMemo(() => {
     if (!data) return null;
-    const { perf, records, plan, sessions, week } = data;
+    const { perf, records, plan, sessions } = data;
     const activatedAt = plan?.activated_at ?? null;
     const slots = plan ? buildDaySlots(plan.training_days) : [];
     // The gym days per week: what Home counts towards the weekly target.
@@ -128,6 +138,8 @@ export function Performance() {
       weeklyTarget,
       consistency: computeConsistency(gymSessions, activatedAt, weeklyTarget),
       streak: computeWeekStreak(gymSessions, weeklyTarget),
+      water: weekDailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
+      steps: weekDailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
       load: computeWeeklyLoad(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       strength: computeOverallStrength(perf.sets, activatedAt),
@@ -137,7 +149,6 @@ export function Performance() {
         : [],
       bodyWeight: summarizeBodyWeight(perf.bodyWeights, activatedAt),
       newPrs: newRecordCount(records),
-      dots: weekDots(week.bars),
       topRecords: headlineRecords(records),
     };
   }, [data]);
@@ -205,7 +216,6 @@ export function Performance() {
                         ? `${derived.consistency.done} of ${derived.consistency.planned} this plan`
                         : 'needs an active plan'
                     }
-                    visual={<DotRow dots={derived.dots} />}
                   />
                 </div>
               </Block>
@@ -221,16 +231,48 @@ export function Performance() {
                   onClick={() => setView('records')}
                 />
                 <Tile
-                  icon={<ScaleIcon />}
-                  label="Body weight"
-                  value={derived.bodyWeight ? formatBw(derived.bodyWeight.latestKg, bwUnit) : '–'}
+                  icon={<BoltIcon />}
+                  label="Workouts / week"
+                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
                   hint={
-                    derived.bodyWeight?.deltaKg != null
-                      ? `${derived.bodyWeight.deltaKg > 0 ? '↑' : derived.bodyWeight.deltaKg < 0 ? '↓' : '·'} ${formatBwDelta(
-                          Math.abs(derived.bodyWeight.deltaKg),
-                          bwUnit,
-                        )} ${derived.bodyWeight.since === 'plan' ? 'this plan' : 'overall'}`
-                      : 'no change yet'
+                    derived.perWeek.average != null ? 'average on this plan' : 'nothing logged yet'
+                  }
+                />
+              </div>
+            </Block>
+
+            {/* The daily habits, in the same shape as the training numbers
+                above them. Both are averaged over the days they were actually
+                logged — see weekDailyAverage — so the hint names that count
+                rather than letting "a day" imply a full week. */}
+            <Block>
+              <div className="grid grid-cols-2 gap-3">
+                <Tile
+                  icon={<WaterIcon />}
+                  label="Water"
+                  value={
+                    derived.water.average != null
+                      ? String(Math.round(derived.water.average * 10) / 10)
+                      : '–'
+                  }
+                  hint={
+                    derived.water.average != null
+                      ? `a day over ${derived.water.daysLogged} ${derived.water.daysLogged === 1 ? 'day' : 'days'}`
+                      : 'none logged this week'
+                  }
+                />
+                <Tile
+                  icon={<StepsIcon />}
+                  label="Steps"
+                  value={
+                    derived.steps.average != null
+                      ? formatSteps(Math.round(derived.steps.average))
+                      : '–'
+                  }
+                  hint={
+                    derived.steps.average != null
+                      ? `a day over ${derived.steps.daysLogged} ${derived.steps.daysLogged === 1 ? 'day' : 'days'}`
+                      : 'none logged this week'
                   }
                 />
               </div>
@@ -241,6 +283,15 @@ export function Performance() {
                 <BodyWeightCard
                   rows={bodyWeightRange(data.perf.bodyWeights, bwRange).slice().reverse()}
                   bwUnit={bwUnit}
+                  latestKg={derived.bodyWeight?.latestKg ?? null}
+                  delta={
+                    derived.bodyWeight?.deltaKg != null
+                      ? `${derived.bodyWeight.deltaKg > 0 ? '↑' : derived.bodyWeight.deltaKg < 0 ? '↓' : '·'} ${formatBwDelta(
+                          Math.abs(derived.bodyWeight.deltaKg),
+                          bwUnit,
+                        )} ${derived.bodyWeight.since === 'plan' ? 'this plan' : 'overall'}`
+                      : null
+                  }
                   controls={
                     <div className="flex rounded-pill bg-surface-strong p-0.5">
                       {([84, 182, 365] as BwRange[]).map((r) => (
@@ -341,57 +392,6 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
   );
 }
 
-const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-const TODAY_IDX = (new Date().getDay() + 6) % 7;
-
-/**
- * The last seven weeks, hit or missed — the week-scale twin of DotRow.
- *
- * Built to the same two-row shape (dots, then a line of text) so the two tiles
- * in the pair end at the same place. This week is drawn as pending rather than
- * missed while it still has days left in it, the same distinction DotRow makes
- * for days that haven't happened.
- */
-function WeekDots({ weeks, best }: { weeks: boolean[]; best: number | null }) {
-  return (
-    <div>
-      <div className="flex justify-between">
-        {weeks.map((on, i) => {
-          const isThisWeek = i === weeks.length - 1;
-          return (
-            <span
-              key={i}
-              className={`h-2.5 w-2.5 rounded-full ${
-                on ? 'bg-ink' : isThisWeek ? 'bg-surface-strong' : 'bg-line'
-              }`}
-            />
-          );
-        })}
-      </div>
-      <div className="mt-1 text-label text-muted tabular-nums">
-        {best != null ? `Best ${best} weeks` : 'Last 7 weeks'}
-      </div>
-    </div>
-  );
-}
-
-function DotRow({ dots }: { dots: boolean[] }) {
-  return (
-    <div className="flex justify-between">
-      {dots.map((on, i) => (
-        <div key={i} className="flex flex-col items-center gap-1">
-          <span
-            className={`h-2.5 w-2.5 rounded-full ${
-              on ? 'bg-ink' : i > TODAY_IDX ? 'bg-surface-strong' : 'bg-line'
-            }`}
-          />
-          <span className="text-label text-muted">{DAY_LETTERS[i]}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /** A small line with a soft fill under it. Values only; no axes. */
 /**
  * Weeks in a row hitting the plan's target.
@@ -427,7 +427,6 @@ function StreakTile({ streak, target }: { streak: WeekStreak; target: number }) 
             : `finish this week for ${current + 1}`
           : `${target} a week starts one`
       }
-      visual={<WeekDots weeks={streak.recentWeeks} best={longest > current ? longest : null} />}
     />
   );
 }
@@ -571,6 +570,15 @@ function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string;
   );
 }
 
+/**
+ * Overall strength, as a data card rather than a shape of its own.
+ *
+ * Label, headline, graph — the same three parts as body weight and training
+ * load, so "not enough data yet" is this card's empty state rather than a
+ * fourth kind of component. The sentence sits where the number will, at the
+ * size of prose rather than of a headline, because it is standing in for a
+ * figure we haven't got rather than being one.
+ */
 function StrengthCard({ strength }: { strength: ReturnType<typeof computeOverallStrength> }) {
   const hint =
     strength.reason === 'no_plan'
@@ -579,38 +587,29 @@ function StrengthCard({ strength }: { strength: ReturnType<typeof computeOverall
         ? 'Shows after four weeks on the plan'
         : strength.reason === 'too_few_lifts'
           ? 'Needs three lifts trained early and recently'
-          : 'since starting this plan';
+          : 'Since starting this plan';
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-paper text-ink">
-          <DumbbellIcon />
+      <SectionLabel>Overall strength</SectionLabel>
+      {strength.pct != null ? (
+        <div className="mt-1 text-display font-bold leading-none tracking-tight text-ink tabular-nums">
+          {`${strength.pct > 0 ? '+' : ''}${fmtNum(strength.pct)}%`}
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm text-ink">Overall strength</div>
-          {strength.pct != null ? (
-            <div className="mt-0.5 text-2xl font-bold leading-none tracking-tight text-ink tabular-nums">
-              {`${strength.pct > 0 ? '+' : ''}${fmtNum(strength.pct)}%`}
-            </div>
-          ) : (
-            // A sentence set at the size of a headline number reads as a
-            // headline. This one is a placeholder for a number we haven't got.
-            <div className="mt-0.5 text-base font-semibold leading-tight text-muted">
-              Not enough data yet
-            </div>
-          )}
-          <div className="mt-1 text-xs text-muted">{hint}</div>
+      ) : (
+        <div className="mt-1 text-base font-semibold leading-tight text-muted">
+          Not enough data yet
         </div>
-        {strength.series.length >= 2 && (
-          <div className="h-12 w-28 shrink-0">
-            <Sparkline
-              values={strength.series.map((p) => p.pct)}
-              stroke="#0A0A0A"
-              fill="rgba(10,10,10,0.08)"
-            />
-          </div>
-        )}
-      </div>
+      )}
+      <div className="mt-1 text-xs text-muted">{hint}</div>
+      {strength.series.length >= 2 && (
+        <div className="mt-3 h-20 w-full">
+          <Sparkline
+            values={strength.series.map((p) => p.pct)}
+            stroke="#0A0A0A"
+            fill="rgba(10,10,10,0.08)"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -706,19 +705,6 @@ function formatLoadShort(kg: number, unit: MachineUnit): string {
 
 // --- Icons -------------------------------------------------------------------------------
 
-function ScaleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M6.5 7.5a2.5 2.5 0 0 1 5 0"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 function CalendarIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -947,11 +933,17 @@ function BodyWeightCard({
   rows,
   bwUnit,
   controls,
+  latestKg,
+  delta,
 }: {
   rows: PerformanceData['bodyWeights'];
   bwUnit: BodyWeightUnit;
   /** Rendered beside the label — the range pills. */
   controls?: React.ReactNode;
+  /** Most recent reading, for the headline above the graph. */
+  latestKg?: number | null;
+  /** The change under it, already worded. */
+  delta?: string | null;
 }) {
   const points = useMemo(
     () =>
@@ -964,10 +956,21 @@ function BodyWeightCard({
 
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <SectionLabel>Body weight</SectionLabel>
         {controls}
       </div>
+      {/* The headline the stat grid used to carry. It belonged here all along,
+          above the graph that explains it, rather than in a tile directly
+          above a card showing the same figure. */}
+      {latestKg != null && (
+        <div className="mt-1">
+          <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
+            {formatBw(latestKg, bwUnit)}
+          </div>
+          {delta && <div className="mt-1 text-xs text-muted tabular-nums">{delta}</div>}
+        </div>
+      )}
       <div className="mt-3">
         {points.length < 2 ? (
           <div className="flex h-[140px] items-center justify-center px-6 text-center text-sm text-muted">
