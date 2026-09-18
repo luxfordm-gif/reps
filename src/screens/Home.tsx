@@ -306,7 +306,7 @@ export function Home({
             />
           )}
           <div className={`${showOnboardingBanner ? 'mt-5' : 'mt-12'} rounded-card bg-paper-card p-8 text-center shadow-card`}>
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-panel bg-[#FFE9D6]">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-panel bg-surface-strong">
               <UploadCloudIcon />
             </div>
             <h2 className="mt-5 text-2xl font-bold tracking-tight text-ink">
@@ -326,6 +326,25 @@ export function Home({
               </button>
             )}
           </div>
+          {!offline && (
+            <div className="mt-4 rounded-card bg-paper-card p-8 text-center shadow-card">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-panel bg-surface-strong">
+                <PencilIcon />
+              </div>
+              <h2 className="mt-5 text-2xl font-bold tracking-tight text-ink">
+                Build your own plan.
+              </h2>
+              <p className="mt-2 text-sm text-muted">
+                Put a plan together day by day, without a PDF to upload.
+              </p>
+              <button
+                disabled
+                className="mt-6 w-full cursor-not-allowed rounded-pill bg-surface-strong py-4 text-base font-semibold text-muted"
+              >
+                Coming soon
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1098,6 +1117,20 @@ function ScaleIcon() {
         strokeWidth="2.401"
         strokeLinejoin="round"
         transform="translate(1.5041,1.4000) scale(0.208219)"
+      />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="text-ink">
+      <path
+        d="M21 7l4 4M22.5 5.5a2.1 2.1 0 013 3L12 22l-5 1 1-5 14.5-12.5z M8 27h16"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );

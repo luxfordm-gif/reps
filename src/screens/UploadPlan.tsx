@@ -478,7 +478,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }, [matches]);
 
   return (
-    <div className="min-h-screen bg-paper pb-12">
+    <div className={`min-h-screen bg-paper ${parsed ? 'pb-32' : 'pb-12'}`}>
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title="Upload plan" onBack={onCancel} />
 
@@ -710,26 +710,29 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               </div>
             )}
 
-            <button
-              onClick={handleSave}
-              disabled={saving || !planName || problems.length > 0}
-              className="pressable mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save plan'}
-            </button>
-            <button
-              onClick={() => {
-                setParsed(null);
-                setFile(null);
-                setRawText('');
-              }}
-              className="mt-3 w-full text-center text-sm text-muted"
-            >
-              Upload a different PDF
-            </button>
           </>
         )}
       </div>
+
+      {/* Save sits on the screen rather than at the end of it: the plan under
+          review is long, and the one action that finishes the job shouldn't
+          need scrolling to reach. Same bar as the one in a workout. */}
+      {parsed && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 px-5 pt-4 backdrop-blur"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+        >
+          <div className="mx-auto max-w-md">
+            <button
+              onClick={handleSave}
+              disabled={saving || !planName || problems.length > 0}
+              className="pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save plan'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {parsed && editor && (
         <ExerciseEditorSheet
