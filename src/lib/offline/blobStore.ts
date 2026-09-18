@@ -111,6 +111,19 @@ export async function deleteBlobs(ids: readonly string[]): Promise<void> {
  * the residue of a write that was interrupted between banking the bytes and
  * queueing the entry, so there is no one left to send it.
  */
+/** Drops the whole store — for deleting an account off this device. */
+export async function deleteAllBlobs(): Promise<void> {
+  if (!supported()) return;
+  await new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    // Resolve either way: a blocked or failed wipe must not stop the sign-out
+    // that follows it.
+    req.onsuccess = () => resolve();
+    req.onerror = () => resolve();
+    req.onblocked = () => resolve();
+  });
+}
+
 export async function deleteOrphans(referenced: ReadonlySet<string>): Promise<void> {
   if (!supported()) return;
   try {

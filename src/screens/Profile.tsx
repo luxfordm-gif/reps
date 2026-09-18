@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { PageHeader } from '../components/PageHeader';
-import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
+import { DateOfBirthInput } from '../components/DateOfBirthInput';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { deleteAccount } from '../lib/accountApi';
+import { getActivePlan, getCachedActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import {
   getBodyWeightUnit,
   setBodyWeightUnit,
@@ -72,7 +75,33 @@ export function Profile({
   onResumeOnboarding,
 }: Props) {
   const { session, signOut } = useAuth();
-  const [plan, setPlan] = useState<FullPlan | null>(null);
+
+  /**
+   * There's no undo behind this, so the dialog closes first and the row shows
+   * "Deleting…" — the one thing worse than a slow delete is a dialog that
+   * looks ignored and invites a second tap.
+   */
+  async function handleDeleteAccount() {
+    setConfirmDelete(false);
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await deleteAccount();
+      // Signing out unmounts this screen; nothing below this line runs.
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Could not delete your account.');
+      setDeleting(false);
+    }
+  }
+  // Seeded from the copy already on the device, so returning to this tab paints
+  // the real card on the first frame rather than a placeholder that swaps a
+  // moment later. The fetch behind it only ever corrects what's already there.
+  const cachedPlan = useMemo(() => getCachedActivePlan(), []);
+  const [plan, setPlan] = useState<FullPlan | null>(cachedPlan);
+  const [planKnown, setPlanKnown] = useState(cachedPlan != null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [bwUnit, setBwUnitState] = useState<BodyWeightUnit>(getBodyWeightUnit());
   const [lwUnit, setLwUnitState] = useState<LiftWeightUnit>(getLiftWeightUnit());
   const [waterGoal, setWaterGoalState] = useState<number>(getWaterGoal());
@@ -100,7 +129,12 @@ export function Profile({
   ];
 
   useEffect(() => {
-    getActivePlan().then(setPlan).catch(() => {});
+    getActivePlan()
+      .then(setPlan)
+      .catch(() => {})
+      // Either way we now know whether there's a plan, which is what lets the
+      // card say "No plan loaded." without it being a guess.
+      .finally(() => setPlanKnown(true));
   }, []);
 
   function changeBwUnit(u: BodyWeightUnit) {
@@ -126,6 +160,9 @@ export function Profile({
 
         <Section title="Active plan">
           <div className="rounded-card bg-paper-card p-5 shadow-card">
+            {/* Loaded, empty and still-loading all stand the same height, so
+                nothing below this card moves when the answer arrives. */}
+            <div className="min-h-[70px]">
             {plan ? (
               <>
                 <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
@@ -144,14 +181,25 @@ export function Profile({
                   · {plan.training_days?.length ?? 0} days
                 </div>
               </>
-            ) : (
+            ) : planKnown ? (
               <div className="text-sm text-muted">No plan loaded.</div>
+            ) : (
+              <div className="animate-pulse" aria-hidden>
+                <div className="h-3 w-14 rounded bg-line" />
+                <div className="mt-2 h-5 w-44 rounded bg-line" />
+                <div className="mt-2 h-4 w-52 rounded bg-line" />
+              </div>
             )}
+            </div>
+            {/* Until we know whether there's a plan, this button doesn't know
+                where it goes — tapping it early used to open the upload flow
+                for someone who already had one. */}
             <button
               onClick={plan && onOpenPlans ? onOpenPlans : onUploadPlan}
-              className="pressable mt-4 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+              disabled={!planKnown}
+              className="pressable mt-4 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
             >
-              {plan ? 'Switch or manage plans' : 'Upload plan'}
+              {!planKnown ? 'Loading\u2026' : plan ? 'Switch or manage plans' : 'Upload plan'}
             </button>
           </div>
         </Section>
@@ -340,15 +388,38 @@ export function Profile({
         </Section>
 
         <Section title="Account">
-          <button
-            onClick={signOut}
-            className="w-full rounded-card bg-paper-card px-5 py-4 text-left text-sm font-semibold text-danger-strong shadow-card active:bg-danger-soft"
-          >
-            Sign out
-          </button>
+          <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+            <button
+              onClick={signOut}
+              className="w-full px-5 py-4 text-left text-sm font-semibold text-danger-strong active:bg-danger-soft"
+            >
+              Sign out
+            </button>
+            <div className="border-t border-line" />
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="w-full px-5 py-4 text-left text-sm font-semibold text-danger-strong active:bg-danger-soft disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete account'}
+            </button>
+          </div>
+          {deleteError && (
+            <p className="mt-2 px-1 text-sm text-danger">{deleteError}</p>
+          )}
         </Section>
       </div>
 
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete your account?"
+          message="Are you sure you want to do this? By doing this, all information will be removed. You will not be able to recover it."
+          confirmLabel="Delete everything"
+          cancelLabel="Keep my account"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={handleDeleteAccount}
+        />
+      )}
     </div>
   );
 }
@@ -978,10 +1049,11 @@ function EnumEditor<T extends string>({
           <button
             key={opt.value}
             onClick={() => setDraft(opt.value)}
-            className={`flex w-full items-center justify-between rounded-panel px-4 py-3 text-left text-sm font-semibold transition-colors ${
-              draft === opt.value
-                ? 'border-2 border-ink bg-paper-card text-ink'
-                : 'border border-line bg-paper-card text-ink'
+            // Border plus inset ring, not a 2px border: the ring is painted
+            // inside the box, so selecting a row doesn't make it taller and
+            // shove the rows below it down.
+            className={`flex w-full items-center justify-between rounded-panel border bg-paper-card px-4 py-3 text-left text-sm font-semibold text-ink transition-colors ${
+              draft === opt.value ? 'border-ink ring-1 ring-inset ring-ink' : 'border-line'
             }`}
           >
             {opt.label}
@@ -1026,10 +1098,9 @@ function MultiEnumEditor<T extends string>({
             <button
               key={opt.value}
               onClick={() => toggle(opt.value)}
-              className={`flex w-full items-center justify-between rounded-panel px-4 py-3 text-left text-sm font-semibold transition-colors ${
-                selected
-                  ? 'border-2 border-ink bg-paper-card text-ink'
-                  : 'border border-line bg-paper-card text-ink'
+              // Same as above: an inset ring costs no layout.
+              className={`flex w-full items-center justify-between rounded-panel border bg-paper-card px-4 py-3 text-left text-sm font-semibold text-ink transition-colors ${
+                selected ? 'border-ink ring-1 ring-inset ring-ink' : 'border-line'
               }`}
             >
               {opt.label}
@@ -1110,20 +1181,9 @@ function DobEditor({
   busy: boolean;
 }) {
   const [draft, setDraft] = useState(value ?? '');
-  const max = (() => {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - 13);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
   return (
     <>
-      <input
-        type="date"
-        value={draft}
-        max={max}
-        onChange={(e) => setDraft(e.target.value)}
-        className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-base font-semibold text-ink focus:border-ink focus:outline-none"
-      />
+      <DateOfBirthInput value={value} onChange={setDraft} compact />
       <button
         onClick={() => draft && onSave(draft)}
         disabled={busy || !draft || draft === value}

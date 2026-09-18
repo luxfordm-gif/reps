@@ -192,6 +192,14 @@ h1, h2, h3, h4 {
   }
 }
 
+/* A tab arriving. 110ms is about as short as a fade can be and still register
+   as a transition rather than a flicker — long enough to soften the swap,
+   nowhere near long enough to make the app feel like it's thinking. No
+   movement, so there's nothing here reduced-motion needs saving from. */
+.tab-fade {
+  animation: reps-fade 110ms ease-out both;
+}
+
 @keyframes reps-fade {
   from { opacity: 0; }
   to { opacity: 1; }

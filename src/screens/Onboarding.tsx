@@ -8,6 +8,8 @@ import {
   upsertProfile,
   markOnboardingComplete,
 } from '../lib/profileApi';
+import { DateOfBirthInput } from '../components/DateOfBirthInput';
+import { iconForGoal } from '../lib/goalIcons';
 import { logBodyWeight } from '../lib/bodyWeightApi';
 import { cleanDisplayName, MAX_DISPLAY_NAME } from '../lib/displayName';
 import {
@@ -43,18 +45,6 @@ const MOTIVATIONAL_LINES = [
 
 function todayISO(): string {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function minDOBISO(): string {
-  const d = new Date();
-  return `${d.getFullYear() - 100}-01-01`;
-}
-
-function maxDOBISO(): string {
-  // 13 years ago, matching the typical app-store minimum age.
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 13);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
@@ -323,12 +313,26 @@ function StepShell({
   );
 }
 
-function StepHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+/**
+ * A step's title and its one line of subcopy, in a block of fixed height.
+ *
+ * Both halves of that matter, because the card below sits wherever this block
+ * ends. The subtitle is required — a step that left it out pulled the card up
+ * a line — and the height is reserved for the tallest heading we allow, so a
+ * one-line title doesn't pull it up either. Stepping through onboarding then
+ * leaves the card exactly where it was.
+ *
+ * 115px is two title lines (34px at leading-tight), the 6px gap, and one line
+ * of subcopy. Keep new copy inside that at phone width: titles to two lines,
+ * subtitles to one. Anything longer still renders — the block grows — but it
+ * moves the card again, which is the thing this is here to stop.
+ */
+function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <>
+    <div className="min-h-[115px]">
       <h1 className="text-display font-bold leading-tight tracking-tight text-ink">{title}</h1>
-      {subtitle && <p className="mt-1.5 text-base text-muted">{subtitle}</p>}
-    </>
+      <p className="mt-1.5 text-base text-muted">{subtitle}</p>
+    </div>
   );
 }
 
@@ -390,7 +394,7 @@ function StepGender({
   ];
   return (
     <>
-      <StepHeading title="What is your gender?" />
+      <StepHeading title="What is your gender?" subtitle="It helps us tailor your plan." />
       <div className="mt-8 space-y-3">
         {options.map((opt) => (
           <TileOption
@@ -483,19 +487,16 @@ function StepBirthday({
     <>
       <StepHeading title="When is your birthday?" subtitle="We use this to tune your plan." />
       <div className="mt-8 rounded-card bg-paper-card p-5 shadow-card">
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-            Date of birth
-          </span>
-          <input
-            type="date"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            min={minDOBISO()}
-            max={maxDOBISO()}
-            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-xl font-semibold tracking-tight text-ink focus:border-ink focus:outline-none"
-          />
-        </label>
+        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Date of birth
+        </span>
+        <DateOfBirthInput
+          value={value}
+          onChange={onChange}
+          onEnter={() => {
+            if (canContinue && !busy) onContinue();
+          }}
+        />
       </div>
       <ContinueFooter
         onContinue={onContinue}
@@ -554,7 +555,7 @@ function StepWeight({
 
   return (
     <>
-      <StepHeading title="What is your weight?" />
+      <StepHeading title="What is your weight?" subtitle="You can update it any time." />
       <div className="mt-8 rounded-card bg-paper-card p-5 shadow-card">
         <div className="flex items-center justify-between">
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
@@ -660,7 +661,7 @@ function StepHeight({
 
   return (
     <>
-      <StepHeading title="What is your height?" />
+      <StepHeading title="What is your height?" subtitle="We use it to track your progress." />
       <div className="mt-8 rounded-card bg-paper-card p-5 shadow-card">
         <div className="flex items-center justify-between">
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
@@ -736,9 +737,9 @@ function StepGoal({
   error: string | null;
 }) {
   const options: { value: TopGoal; label: string; icon: React.ReactNode }[] = [
-    { value: 'build_muscle', label: 'Build Muscle', icon: <MuscleIcon /> },
-    { value: 'gain_strength', label: 'Gain Strength', icon: <StrengthIcon /> },
-    { value: 'fat_loss', label: 'Fat Loss', icon: <ScaleIcon /> },
+    { value: 'build_muscle', label: 'Build muscle', icon: <GoalIcon goal="build_muscle" /> },
+    { value: 'gain_strength', label: 'Gain strength', icon: <GoalIcon goal="gain_strength" /> },
+    { value: 'fat_loss', label: 'Fat loss', icon: <GoalIcon goal="fat_loss" /> },
   ];
   function toggle(g: TopGoal) {
     onChange(value.includes(g) ? value.filter((v) => v !== g) : [...value, g]);
@@ -793,7 +794,10 @@ function StepExperience({
   ];
   return (
     <>
-      <StepHeading title="How much training experience do you have?" />
+      <StepHeading
+        title="How experienced are you?"
+        subtitle="Pick the one that sounds most like you."
+      />
       <div className="mt-8 space-y-3">
         {options.map((opt) => (
           <button
@@ -883,6 +887,14 @@ function ReadyScreen({
 
 // ---------- Reusable pieces ----------
 
+/**
+ * A tappable option row.
+ *
+ * The selected edge is a 1px border plus a 1px inset ring rather than a 2px
+ * border. It reads the same, but a ring is painted inside the box, so picking
+ * an option no longer makes the tile 2px taller and nudges every row below it
+ * down the screen. The shadow is free — it never took up space.
+ */
 function TileOption({
   selected,
   onClick,
@@ -899,10 +911,10 @@ function TileOption({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center justify-between rounded-card px-5 py-4 text-left transition-colors duration-pop active:opacity-80 ${
+      className={`flex w-full items-center justify-between rounded-card border bg-paper-card px-5 py-4 text-left transition-colors duration-pop active:opacity-80 ${
         selected
-          ? 'border-2 border-ink bg-paper-card shadow-card'
-          : 'border border-line bg-paper-card'
+          ? 'border-ink shadow-card ring-1 ring-inset ring-ink'
+          : 'border-line'
       }`}
     >
       <div className="flex items-center gap-3">
@@ -1050,39 +1062,10 @@ function OtherIcon() {
   );
 }
 
-function MuscleIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M4 13c2-1 3-3 4-5s4-2 6 0 4 4 6 4-1 4-4 5-6 1-8 0-5-3-4-4z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function StrengthIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M3 12h2m14 0h2M7 8v8m10-8v8M7 12h10"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function ScaleIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M8 9h8M12 12v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
+/** A goal's drawn icon, sized to sit in a TileOption's 32px slot. */
+function GoalIcon({ goal }: { goal: TopGoal }) {
+  const { src, size } = iconForGoal(goal);
+  return <img src={src} alt="" width={size} height={size} />;
 }
 
 function CheckIcon() {

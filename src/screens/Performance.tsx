@@ -188,15 +188,15 @@ export function Performance() {
           <EmptyState />
         ) : (
           <div className="mt-2 space-y-3">
-            <Rise index={0}>
+            <Block>
               <PlanHero
                 plan={data.plan}
                 done={data.week.workoutsDone}
                 target={derived.weeklyTarget}
               />
-            </Rise>
+            </Block>
 
-            <Rise index={1}>
+            <Block>
               <div className="grid grid-cols-2 gap-3">
                 <Tile
                   icon={<BarsIcon />}
@@ -219,10 +219,10 @@ export function Performance() {
                   }
                 />
               </div>
-            </Rise>
+            </Block>
 
             {data.perf.bodyWeights.length > 0 && (
-              <Rise index={2}>
+              <Block>
                 <BodyWeightCard
                   rows={bodyWeightRange(data.perf.bodyWeights, bwRange).slice().reverse()}
                   bwUnit={bwUnit}
@@ -242,10 +242,10 @@ export function Performance() {
                     </div>
                   }
                 />
-              </Rise>
+              </Block>
             )}
 
-            <Rise index={3}>
+            <Block>
               <div className="grid grid-cols-2 gap-3">
                 <Tile
                   icon={<CalendarIcon />}
@@ -266,26 +266,26 @@ export function Performance() {
                   visual={<MiniBars values={derived.perWeek.weekly} />}
                 />
               </div>
-            </Rise>
+            </Block>
 
-            <Rise index={4}>
+            <Block>
               <StrengthCard strength={derived.strength} />
-            </Rise>
+            </Block>
 
             {derived.mostImproved && (
-              <Rise index={5}>
+              <Block>
                 <MostImprovedCard
                   mi={derived.mostImproved}
                   series={derived.mostImprovedSeries.map((p) => p.value)}
                   unit={liftUnit}
                 />
-              </Rise>
+              </Block>
             )}
 
             {derived.topRecords.length > 0 && (
-              <Rise index={6}>
+              <Block>
                 <TopRecords records={derived.topRecords} onViewAll={() => setView('records')} />
-              </Rise>
+              </Block>
             )}
           </div>
         )}
@@ -325,8 +325,11 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
         </div>
         {target > 0 && (
           <div className="w-32 shrink-0 pt-1 text-right">
-            <div className="text-sm font-semibold tabular-nums">
-              {done} of {target} this week
+            <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
+              This week
+            </div>
+            <div className="mt-1 text-sm font-semibold tabular-nums">
+              {done} of {target} workouts
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-pill bg-white/20">
               <div className="h-full rounded-pill bg-white" style={{ width: `${pct}%` }} />
@@ -415,9 +418,17 @@ function StrengthCard({ strength }: { strength: ReturnType<typeof computeOverall
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm text-ink">Overall strength</div>
-          <div className="mt-0.5 text-2xl font-bold leading-none tracking-tight text-ink tabular-nums">
-            {strength.pct != null ? `${strength.pct > 0 ? '+' : ''}${fmtNum(strength.pct)}%` : 'Not enough data yet'}
-          </div>
+          {strength.pct != null ? (
+            <div className="mt-0.5 text-2xl font-bold leading-none tracking-tight text-ink tabular-nums">
+              {`${strength.pct > 0 ? '+' : ''}${fmtNum(strength.pct)}%`}
+            </div>
+          ) : (
+            // A sentence set at the size of a headline number reads as a
+            // headline. This one is a placeholder for a number we haven't got.
+            <div className="mt-0.5 text-base font-semibold leading-tight text-muted">
+              Not enough data yet
+            </div>
+          )}
           <div className="mt-1 text-xs text-muted">{hint}</div>
         </div>
         {strength.series.length >= 2 && (
@@ -537,15 +548,17 @@ function CalendarIcon() {
     </svg>
   );
 }
-function Rise({ index, children }: { index: number; children: React.ReactNode }) {
-  return (
-    <div
-      className="mt-7 first:mt-6"
-      style={{ animation: 'reps-rise 420ms ease-out both', animationDelay: `${index * 70}ms` }}
-    >
-      {children}
-    </div>
-  );
+/**
+ * One block of the dashboard.
+ *
+ * These used to rise into place one after another, 70ms apart. That's an
+ * arrival gesture, and it belongs on a screen you arrive at — the one after a
+ * workout still has it. This is a tab: you flick to it to read numbers, over
+ * and over, and the stagger held the last card at zero opacity for 420ms after
+ * the loading state had already cleared.
+ */
+function Block({ children }: { children: React.ReactNode }) {
+  return <div className="mt-7 first:mt-6">{children}</div>;
 }
 
 // --- One lift's history, under its record ---------------------------------
@@ -768,12 +781,12 @@ function BodyWeightCard({
   );
 
   return (
-    <div>
+    <div className="rounded-card bg-paper-card p-4 shadow-card">
       <div className="flex items-center justify-between">
         <SectionLabel>Body weight</SectionLabel>
         {controls}
       </div>
-      <div className="mt-3 rounded-card bg-paper-card p-4 shadow-card">
+      <div className="mt-3">
         {points.length < 2 ? (
           <div className="flex h-[140px] items-center justify-center px-6 text-center text-sm text-muted">
             Log your body weight on more days to see the trend.

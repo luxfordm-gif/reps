@@ -590,7 +590,12 @@ function TabSwipeContainer({
       onPointerUp={onPointerUp}
       onPointerCancel={() => (start.current = null)}
     >
-      {children}
+      {/* Keyed on the tab so switching re-runs the fade — for a swipe as much
+          as a tap. Opacity only, and short: this is here to stop a tab change
+          landing with a bang, not to be noticed. */}
+      <div key={tab} className="tab-fade">
+        {children}
+      </div>
     </div>
   );
 }

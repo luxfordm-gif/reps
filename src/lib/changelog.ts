@@ -4,15 +4,29 @@
 
 export interface ChangelogEntry {
   version: string;
-  emoji: string;
   title: string;
   bullets: string[];
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-18',
+    title: "What's new",
+    bullets: [
+      'You can delete your account: Profile \u2192 Delete account clears every workout, plan, weigh-in and setting from the server and from this phone, then signs you out. It asks first, and there\u2019s no way back afterwards',
+      'A photograph for every kind of training day \u2014 chest, back, shoulders, lower, full body and mobility join legs, push, pull, abs, arms and upper, so you can tell a day apart before you\u2019ve read its name',
+      'Your date of birth is three boxes now \u2014 day, month, year \u2014 rather than a picker you had to scroll back decades in. It turns away dates that never existed, and says something if your birthday is nearby',
+      'Onboarding sits still: every step has a line under its title, the heading holds its height, and choosing an option no longer nudges everything below it down the screen',
+      'Save plan stays on screen while you check an imported plan, instead of waiting at the bottom of a long list. \u201CUpload a different PDF\u201D has gone \u2014 Back already did that',
+      'Your plan on Profile appears the moment the screen does. It used to say \u201CNo plan loaded.\u201D for a second first, then jump as the real thing arrived',
+      'Performance reads more calmly \u2014 the body weight chart keeps its title and its 12w / 6m / 1y buttons inside its own card, this week\u2019s count says what it\u2019s counting, and the cards stop rising into place one by one every time you open the tab',
+      'New icons on the goals step, and a second card on the welcome screen for building a plan yourself, which is coming soon',
+      'Moving between tabs fades instead of snapping',
+      'This screen carries the Reps mark now, and scrolls when there\u2019s a lot to say, so the button to send it away can never end up below the bottom of your screen',
+    ],
+  },
+  {
     version: '2026-09-13',
-    emoji: '\u{1F6B6}',
     title: "What's new",
     bullets: [
       'A step count tile on Home: tap it to record how many steps you\u2019ve done today, with a goal of 7,000 a day to start with',
@@ -25,7 +39,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-09-05b',
-    emoji: '\u{1F4CA}',
     title: "What's new",
     bullets: [
       'The Performance tab is now a dashboard: where you are on the plan and this week\u2019s progress, new PRs this month, body weight with a 12w / 6m / 1y chart, how consistently you\u2019ve turned up, workouts per week, and whether you\u2019re getting stronger overall',
@@ -36,7 +49,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-09-05',
-    emoji: '\u{1F3C6}',
     title: "What's new",
     bullets: [
       'The Performance tab is now your records: body weight up top, then your best ever on every machine: heaviest set, estimated 1RM, and the date you hit it. Pull-ups and planks count too (most reps, longest hold), and anything set in the last month is flagged as new',
@@ -52,7 +64,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-09-02',
-    emoji: '🔄',
     title: "What's new",
     bullets: [
       'The upload review is quieter: your bulk keep-or-reset choice stands on its own, with an "Adjust machine by machine" link when you want exceptions — and the per-machine control is now a clear Carry over | Start fresh switch instead of a checkbox',
@@ -68,7 +79,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-09-01',
-    emoji: '🔁',
     title: "What's new",
     bullets: [
       'Uploading a new plan now keeps your weights on machines you have trained before, instead of resetting them to zero — untick "Keep history" on the review screen for anything you would rather restart',
@@ -78,7 +88,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-08-31',
-    emoji: '⏱️',
     title: "What's new",
     bullets: [
       'New plans now set their own rest periods: drop sets run straight through with no timer, deadlifts, squats and leg presses get 2 minutes, and everything else starts at 1 minute',
@@ -90,7 +99,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-08-17',
-    emoji: '📶',
     title: "What's new",
     bullets: [
       'Reps now works without signal — the app itself is stored on your phone, so it opens instantly in the gym basement',
@@ -106,7 +114,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-05-16',
-    emoji: '✨',
     title: "What's new",
     bullets: [
       "Black splash screen on launch and a tighter, logo-less top across Home, Performance and Profile",
@@ -121,7 +128,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-05-13',
-    emoji: '✨',
     title: "What's new",
     bullets: [
       'Stronger vibration and a bell-style "ding" when the rest timer hits zero',
@@ -133,7 +139,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     version: '2026-05-11',
-    emoji: '🏋️',
     title: "What's new",
     bullets: [
       'Tap the green check on a logged set to edit it',
