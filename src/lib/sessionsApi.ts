@@ -1,13 +1,9 @@
 import { supabase, currentUserId, currentUserIdSync } from './supabase';
+import { getCachedExerciseUnit } from './exercisePrefsApi';
 import { getActivePlan, getCachedActivePlan } from './plansApi';
 import { prefetchAlternativesForExercises } from './alternativesApi';
 import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
-import {
-  enqueue,
-  pendingSetIds,
-  requestFlush,
-  type QueuedSetPatch,
-} from './offline/outbox';
+import { enqueue, pendingSetIds, requestFlush, type QueuedSetPatch } from './offline/outbox';
 import { dropCache, newId, readCache, writeCache } from './offline/storage';
 import {
   completeLocalSession,
@@ -62,7 +58,7 @@ export async function getSessionNotes(sessionId: string): Promise<SessionNotes> 
         .select('feedback_for_self, notes_to_coach')
         .eq('id', sessionId)
         .maybeSingle(),
-      { label: 'getSessionNotes' }
+      { label: 'getSessionNotes' },
     );
     const row = data as LocalNotes | null;
     // Anything typed offline hasn't reached the server yet, so it wins.
@@ -81,7 +77,7 @@ export async function getSessionNotes(sessionId: string): Promise<SessionNotes> 
 
 export async function updateSessionNotes(
   sessionId: string,
-  patch: Partial<SessionNotes>
+  patch: Partial<SessionNotes>,
 ): Promise<void> {
   const update: Record<string, string | null> = {};
   if ('feedbackForSelf' in patch) {
@@ -164,7 +160,7 @@ export interface LoggedSet {
 
 export async function getRecentSessionPositions(
   trainingDayIds: string[],
-  limit: number = 6
+  limit: number = 6,
 ): Promise<number[]> {
   const userId = await currentUserId();
   if (!userId || trainingDayIds.length === 0) return [];
@@ -179,7 +175,7 @@ export async function getRecentSessionPositions(
         .in('training_day_id', trainingDayIds)
         .order('completed_at', { ascending: false })
         .limit(limit),
-      { label: 'getRecentSessionPositions' }
+      { label: 'getRecentSessionPositions' },
     );
   } catch {
     return [];
@@ -198,7 +194,7 @@ export async function getRecentSessionPositions(
 }
 
 export async function getLastCompletedTrainingDayName(
-  sinceIso?: string | null
+  sinceIso?: string | null,
 ): Promise<string | null> {
   const userId = await currentUserId();
   if (!userId) return null;
@@ -220,7 +216,8 @@ export async function getLastCompletedTrainingDayName(
   }
   if (!data) return null;
   // training_days may come through as object or array depending on PostgREST inference
-  const td = (data as { training_days: { name: string } | { name: string }[] | null }).training_days;
+  const td = (data as { training_days: { name: string } | { name: string }[] | null })
+    .training_days;
   if (!td) return null;
   if (Array.isArray(td)) return td[0]?.name ?? null;
   return td.name ?? null;
@@ -234,10 +231,7 @@ export interface ActiveSessionContext {
   lastPlanExerciseId: string | null;
 }
 
-function cachedTrainingDayName(
-  userId: string | null,
-  trainingDayId: string
-): string | null {
+function cachedTrainingDayName(userId: string | null, trainingDayId: string): string | null {
   const plan = getCachedActivePlan(userId);
   return plan?.training_days?.find((d) => d.id === trainingDayId)?.name ?? null;
 }
@@ -269,7 +263,7 @@ function localActiveSession(userId: string | null): ActiveSessionContext | null 
  */
 function dropFinishedSessions<T extends { id: string; started_at?: string }>(
   userId: string,
-  rows: T[]
+  rows: T[],
 ): T[] {
   const live: T[] = [];
   const abandoned: string[] = [];
@@ -287,10 +281,7 @@ function dropFinishedSessions<T extends { id: string; started_at?: string }>(
     // Nothing on this device says it was finished, but a workout can't run for
     // the best part of a day. This is what clears a session stranded by an
     // older version of the app, without the user having to re-enter and end it.
-    if (
-      row.started_at &&
-      Date.now() - new Date(row.started_at).getTime() > ABANDONED_AFTER_MS
-    ) {
+    if (row.started_at && Date.now() - new Date(row.started_at).getTime() > ABANDONED_AFTER_MS) {
       abandoned.push(row.id);
       continue;
     }
@@ -318,7 +309,7 @@ export async function getAnyActiveSession(): Promise<ActiveSessionContext | null
         // More than one, so a stale row we've already finished doesn't hide a
         // workout that really is in progress.
         .limit(5),
-      { label: 'getAnyActiveSession' }
+      { label: 'getAnyActiveSession' },
     );
     type OpenRow = {
       id: string;
@@ -361,13 +352,11 @@ function localSessionIsSynced(userId: string | null, sessionId: string): boolean
   return getLocalSessions(userId).find((s) => s.id === sessionId)?.synced ?? false;
 }
 
-export async function getActiveSessionForDay(
-  trainingDayId: string
-): Promise<SessionRow | null> {
+export async function getActiveSessionForDay(trainingDayId: string): Promise<SessionRow | null> {
   const userId = await currentUserId();
   if (!userId) return null;
   const localOpen = getLocalSessions(userId).find(
-    (s) => !s.completed_at && s.training_day_id === trainingDayId
+    (s) => !s.completed_at && s.training_day_id === trainingDayId,
   );
   try {
     const data = await query(
@@ -379,7 +368,7 @@ export async function getActiveSessionForDay(
         .is('completed_at', null)
         .order('started_at', { ascending: false })
         .limit(5),
-      { label: 'getActiveSessionForDay' }
+      { label: 'getActiveSessionForDay' },
     );
     const row = dropFinishedSessions(userId, (data as SessionRow[]) ?? [])[0] ?? null;
     if (row) {
@@ -402,7 +391,7 @@ export async function getActiveSessionForDay(
 }
 
 export async function getSessionStats(
-  sessionId: string
+  sessionId: string,
 ): Promise<{ setsLogged: number; lastPlanExerciseId: string | null }> {
   const userId = await currentUserId();
   try {
@@ -412,13 +401,13 @@ export async function getSessionStats(
         .select('*')
         .eq('session_id', sessionId)
         .order('completed_at', { ascending: false }),
-      { label: 'getSessionStats' }
+      { label: 'getSessionStats' },
     );
     const rows = mergeServerSets(
       userId,
       sessionId,
       (data as LoggedSet[]) ?? [],
-      pendingSetIds()
+      pendingSetIds(),
     ).sort((a, b) => (a.completed_at < b.completed_at ? 1 : -1));
     return {
       setsLogged: rows.length,
@@ -426,7 +415,7 @@ export async function getSessionStats(
     };
   } catch {
     const rows = [...getLocalSets(userId, sessionId)].sort((a, b) =>
-      a.completed_at < b.completed_at ? 1 : -1
+      a.completed_at < b.completed_at ? 1 : -1,
     );
     return {
       setsLogged: rows.length,
@@ -524,15 +513,11 @@ async function serverSessionRecap(sessionId: string): Promise<SessionRecap> {
     supabase
       .from('logged_sets')
       .select(
-        'exercise_display_name, exercise_normalized_name, weight, reps, completed_at, plan_exercises(body_part)'
+        'exercise_display_name, exercise_normalized_name, weight, reps, completed_at, plan_exercises(body_part)',
       )
       .eq('session_id', sessionId)
       .order('completed_at', { ascending: true }),
-    supabase
-      .from('sessions')
-      .select('started_at, completed_at')
-      .eq('id', sessionId)
-      .maybeSingle(),
+    supabase.from('sessions').select('started_at, completed_at').eq('id', sessionId).maybeSingle(),
   ]);
   if (setsErr) throw setsErr;
   if (sessErr) throw sessErr;
@@ -615,9 +600,7 @@ async function serverSessionRecap(sessionId: string): Promise<SessionRecap> {
   // weights for that exercise. Today's logged sets are already in the DB so
   // a new PR naturally ranks first.
   const medalByExercise = new Map<string, RecapMedal | null>();
-  const normalizedNames = bestEntries
-    .filter((e) => e.weight > 0)
-    .map((e) => e.normalizedName);
+  const normalizedNames = bestEntries.filter((e) => e.weight > 0).map((e) => e.normalizedName);
   if (thisSess?.user_id && normalizedNames.length > 0) {
     const { data: hist } = await supabase
       .from('logged_sets')
@@ -641,9 +624,7 @@ async function serverSessionRecap(sessionId: string): Promise<SessionRecap> {
         medalByExercise.set(e.exercise, null);
         continue;
       }
-      const distinct = [...(distinctByName.get(e.normalizedName) ?? [])].sort(
-        (a, b) => b - a
-      );
+      const distinct = [...(distinctByName.get(e.normalizedName) ?? [])].sort((a, b) => b - a);
       const todays = Math.round(e.weight * 10) / 10;
       const rank = distinct.indexOf(todays);
       const medal: RecapMedal | null =
@@ -697,7 +678,9 @@ export async function getLastDayRecap(trainingDayId: string): Promise<LastDayRec
       .from('logged_sets')
       .select('exercise_display_name, weight, reps')
       .eq('session_id', sid);
-    const rows = (data as { exercise_display_name: string; weight: number | null; reps: number | null }[]) ?? [];
+    const rows =
+      (data as { exercise_display_name: string; weight: number | null; reps: number | null }[]) ??
+      [];
     let total = 0;
     const bestReps = new Map<string, number>();
     for (const r of rows) {
@@ -746,7 +729,7 @@ export interface ExerciseHistory {
 
 export async function getExerciseHistories(
   normalizedNames: string[],
-  excludeSessionId?: string
+  excludeSessionId?: string,
 ): Promise<Record<string, ExerciseHistory>> {
   const userId = await currentUserId();
   const out: Record<string, ExerciseHistory> = {};
@@ -835,7 +818,7 @@ export async function listCompletedSessions(): Promise<CompletedSessionSummary[]
       .from('logged_sets')
       .select('session_id, plan_exercise_id')
       .in('session_id', sessionIds);
-    for (const ls of ((logged as { session_id: string; plan_exercise_id: string | null }[]) ?? [])) {
+    for (const ls of (logged as { session_id: string; plan_exercise_id: string | null }[]) ?? []) {
       if (!ls.plan_exercise_id) continue;
       let set = recordedBySession.get(ls.session_id);
       if (!set) {
@@ -880,6 +863,38 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export interface WeekSessionBreakdown {
   trainingDayName: string;
   bodyParts: string[];
+  /** Sets logged in this session. Always meaningful, whatever was lifted. */
+  setCount: number;
+  /** Reps across those sets. Sets logged without a rep count contribute 0. */
+  repCount: number;
+  /**
+   * Total weight moved, in kilograms — or null when we can't stand behind a
+   * figure.
+   *
+   * The weight column stores kilograms for every machine except a 'pin' one,
+   * where it holds the pin position 1:1 (see units.ts). A pin number isn't a
+   * weight, so adding it to a kilogram total produces a number that means
+   * nothing. `kudos` gets away with the same column because it only ever
+   * compares one exercise against itself, where the unit cancels out; a
+   * printed total has no such cover. So a session containing any pin-logged
+   * set reports null rather than a figure that reads precise and isn't.
+   */
+  volumeKg: number | null;
+  /**
+   * How this session's volume compares with the last time this same workout
+   * was done, as a percentage — or null when there's nothing to compare with.
+   *
+   * Deliberately like-for-like rather than week-against-week. A week in
+   * progress held up against a finished one reads as a loss on every day but
+   * the last: on a Wednesday you would be "down 50%" for no reason but the
+   * calendar. The same workout twice is a fair comparison whenever you look.
+   *
+   * Computed from raw volume even for a pin-logged session, where volumeKg is
+   * withheld. A ratio between the same machines at two points in time holds
+   * whatever the numbers on the stack mean — the unit cancels, which is the
+   * same licence kudos.ts reads this column under.
+   */
+  volumeChangePct: number | null;
 }
 
 export interface WeekSummary {
@@ -899,11 +914,7 @@ function startOfThisWeek(): Date {
 export function mondayOfWeek(offsetWeeks: number): Date {
   const now = new Date();
   const dow = (now.getDay() + 6) % 7; // 0=Mon..6=Sun
-  return new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - dow + offsetWeeks * 7
-  );
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow + offsetWeeks * 7);
 }
 
 export async function getCompletedDayNamesThisWeek(): Promise<string[]> {
@@ -923,7 +934,7 @@ export async function getCompletedDayNamesThisWeek(): Promise<string[]> {
         .gte('completed_at', monday.toISOString())
         .lt('completed_at', nextMonday.toISOString())
         .order('completed_at', { ascending: true }),
-      { label: 'getCompletedDayNamesThisWeek' }
+      { label: 'getCompletedDayNamesThisWeek' },
     );
   } catch {
     return [];
@@ -956,12 +967,12 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
     sessions = await query(
       supabase
         .from('sessions')
-        .select('id, completed_at, training_days(name)')
+        .select('id, completed_at, training_day_id, training_days(name)')
         .eq('user_id', userId)
         .not('completed_at', 'is', null)
         .gte('completed_at', monday.toISOString())
         .lt('completed_at', nextMonday.toISOString()),
-      { label: 'getThisWeekSummary' }
+      { label: 'getThisWeekSummary' },
     );
   } catch {
     return { workoutsDone: 0, bars: emptyBars, dayDetails: emptyDetails };
@@ -969,38 +980,84 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
   type SRow = {
     id: string;
     completed_at: string;
+    training_day_id: string | null;
     training_days: { name: string } | { name: string }[] | null;
   };
   const sessionList = (sessions as SRow[]) ?? [];
   if (sessionList.length === 0)
     return { workoutsDone: 0, bars: emptyBars, dayDetails: emptyDetails };
 
+  // The outing before this week's, for each workout on it. Only the most
+  // recent one per training day is wanted, which Postgres can't express through
+  // this client, so the newest rows are pulled and the first per day is kept —
+  // seven days of workouts can't need more than this.
+  let priorList: SRow[] = [];
+  const trainingDayIds = [
+    ...new Set(sessionList.map((s) => s.training_day_id).filter((id): id is string => !!id)),
+  ];
+  if (trainingDayIds.length > 0) {
+    try {
+      const prior = await query(
+        supabase
+          .from('sessions')
+          .select('id, completed_at, training_day_id, training_days(name)')
+          .eq('user_id', userId)
+          .not('completed_at', 'is', null)
+          .in('training_day_id', trainingDayIds)
+          .lt('completed_at', monday.toISOString())
+          .order('completed_at', { ascending: false })
+          .limit(60),
+        { label: 'getThisWeekSummary.prior' },
+      );
+      priorList = (prior as SRow[]) ?? [];
+    } catch {
+      // No comparison is fine; the week itself still renders.
+    }
+  }
+
   const { data: sets } = await supabase
     .from('logged_sets')
-    .select('session_id, weight, reps, plan_exercises(body_part)')
+    .select('session_id, weight, reps, plan_exercises(body_part, normalized_name)')
     .in(
       'session_id',
-      sessionList.map((s) => s.id)
+      [...sessionList, ...priorList].map((s) => s.id),
     );
   type LRow = {
     session_id: string;
     weight: number | null;
     reps: number | null;
     plan_exercises:
-      | { body_part: string | null }
-      | { body_part: string | null }[]
+      | { body_part: string | null; normalized_name: string | null }
+      | { body_part: string | null; normalized_name: string | null }[]
       | null;
   };
   const volumeBySession = new Map<string, number>();
   const bodyPartsBySession = new Map<string, Set<string>>();
-  for (const r of ((sets as LRow[]) ?? [])) {
+  const setCountBySession = new Map<string, number>();
+  const repCountBySession = new Map<string, number>();
+  // Sessions holding a set logged in pin positions rather than weight. Their
+  // volume is not a number of kilograms and isn't reported as one.
+  const pinTainted = new Set<string>();
+  for (const r of (sets as LRow[]) ?? []) {
+    const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
+
+    setCountBySession.set(r.session_id, (setCountBySession.get(r.session_id) ?? 0) + 1);
+    if (r.reps != null) {
+      repCountBySession.set(r.session_id, (repCountBySession.get(r.session_id) ?? 0) + r.reps);
+    }
+
     if (r.weight != null && r.reps != null) {
+      // The bar heights keep using every set, pin or not: they're relative to
+      // the week's own biggest day, so a consistent arbitrary number still
+      // ranks the days correctly. Only the printed total has to be honest.
       volumeBySession.set(
         r.session_id,
-        (volumeBySession.get(r.session_id) ?? 0) + r.weight * r.reps
+        (volumeBySession.get(r.session_id) ?? 0) + r.weight * r.reps,
       );
+      const name = pe?.normalized_name;
+      if (name && getCachedExerciseUnit(name) === 'pin') pinTainted.add(r.session_id);
     }
-    const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
+
     const bp = pe?.body_part?.trim();
     if (bp) {
       let set = bodyPartsBySession.get(r.session_id);
@@ -1012,10 +1069,38 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
     }
   }
 
+  // Every outing of these workouts, oldest first, so each session's
+  // predecessor is simply the one before it. A workout done twice in one week
+  // compares against Monday's, not against last week's.
+  const historyByDay = new Map<string, SRow[]>();
+  for (const row of [...priorList, ...sessionList]) {
+    if (!row.training_day_id) continue;
+    const list = historyByDay.get(row.training_day_id);
+    if (list) list.push(row);
+    else historyByDay.set(row.training_day_id, [row]);
+  }
+  for (const list of historyByDay.values()) {
+    list.sort((a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime());
+  }
+
+  /** Volume change against the previous outing of the same workout, in %. */
+  function changePctFor(session: SRow): number | null {
+    if (!session.training_day_id) return null;
+    const list = historyByDay.get(session.training_day_id) ?? [];
+    const idx = list.findIndex((r) => r.id === session.id);
+    if (idx <= 0) return null;
+    const previous = volumeBySession.get(list[idx - 1].id) ?? 0;
+    // Nothing to be a percentage of — a first outing, or one logged entirely
+    // without weights.
+    if (previous <= 0) return null;
+    const current = volumeBySession.get(session.id) ?? 0;
+    return Math.round(((current - previous) / previous) * 100);
+  }
+
   const dayBuckets: number[][] = [[], [], [], [], [], [], []];
   const dayDetails: WeekSessionBreakdown[][] = [[], [], [], [], [], [], []];
   const sortedByDay = [...sessionList].sort(
-    (a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime()
+    (a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime(),
   );
   for (const s of sortedByDay) {
     const d = new Date(s.completed_at);
@@ -1025,6 +1110,10 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
     dayDetails[idx].push({
       trainingDayName: td?.name ?? 'Workout',
       bodyParts: [...(bodyPartsBySession.get(s.id) ?? [])],
+      setCount: setCountBySession.get(s.id) ?? 0,
+      repCount: repCountBySession.get(s.id) ?? 0,
+      volumeKg: pinTainted.has(s.id) ? null : (volumeBySession.get(s.id) ?? 0),
+      volumeChangePct: changePctFor(s),
     });
   }
   // Normalize: bar height for any single session is its volume relative to
@@ -1034,9 +1123,7 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
   const max = Math.max(...dayTotals, 0);
   // Preserve segment counts even if all volumes are 0 (e.g. body-weight-only
   // workouts) so each completed session still gets a visible bar.
-  const bars: number[][] = dayBuckets.map((arr) =>
-    arr.map((v) => (max > 0 ? v / max : 0))
-  );
+  const bars: number[][] = dayBuckets.map((arr) => arr.map((v) => (max > 0 ? v / max : 0)));
   return { workoutsDone: sessionList.length, bars, dayDetails };
 }
 
@@ -1126,7 +1213,7 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
   const { data: setsRows, error: setsErr } = await supabase
     .from('logged_sets')
     .select(
-      'session_id, exercise_display_name, exercise_normalized_name, weight, reps, plan_exercises(body_part)'
+      'session_id, exercise_display_name, exercise_normalized_name, weight, reps, plan_exercises(body_part)',
     )
     .in('session_id', sessionIds);
   if (setsErr) throw setsErr;
@@ -1239,7 +1326,7 @@ export async function deleteAllOpenSessions(): Promise<void> {
         .eq('user_id', userId)
         .is('completed_at', null)
         .select('id'),
-      { label: 'deleteAllOpenSessions' }
+      { label: 'deleteAllOpenSessions' },
     );
   } catch (e) {
     if (!isOfflineError(e)) throw e;
@@ -1270,7 +1357,7 @@ export async function createSession(trainingDayId: string): Promise<SessionRow> 
         })
         .select()
         .single(),
-      { label: 'createSession' }
+      { label: 'createSession' },
     );
     const saved = data as SessionRow;
     upsertLocalSession(userId, {
@@ -1318,7 +1405,7 @@ export async function completeSession(sessionId: string): Promise<void> {
         .update({ completed_at: completedAt })
         .eq('id', sessionId)
         .select('id'),
-      { label: 'completeSession' }
+      { label: 'completeSession' },
     );
     markLocalSessionSynced(userId, sessionId);
     forgetFinishedSession(userId, sessionId);
@@ -1357,11 +1444,9 @@ async function resolveAbandonedSessions(userId: string, ids: string[]): Promise<
   if (ids.length === 0) return;
   const sets = await query(
     supabase.from('logged_sets').select('session_id').in('session_id', ids),
-    { label: 'abandonedSessionSets' }
+    { label: 'abandonedSessionSets' },
   );
-  const withSets = new Set(
-    ((sets as { session_id: string }[]) ?? []).map((s) => s.session_id)
-  );
+  const withSets = new Set(((sets as { session_id: string }[]) ?? []).map((s) => s.session_id));
   const empty = ids.filter((id) => !withSets.has(id));
   const used = ids.filter((id) => withSets.has(id));
 
@@ -1374,12 +1459,8 @@ async function resolveAbandonedSessions(userId: string, ids: string[]): Promise<
   if (used.length > 0) {
     const completedAt = new Date().toISOString();
     await query(
-      supabase
-        .from('sessions')
-        .update({ completed_at: completedAt })
-        .in('id', used)
-        .select('id'),
-      { label: 'closeAbandonedSessions' }
+      supabase.from('sessions').update({ completed_at: completedAt }).in('id', used).select('id'),
+      { label: 'closeAbandonedSessions' },
     );
     for (const id of used) completeLocalSession(userId, id, completedAt);
   }
@@ -1392,13 +1473,9 @@ async function resolveAbandonedSessions(userId: string, ids: string[]): Promise<
  * landing, and it then shows up forever as "workout in progress". The user has
  * just finished training, so anything still open from earlier is abandoned.
  */
-async function closeStrayOpenSessions(
-  userId: string,
-  justFinishedId: string
-): Promise<void> {
+async function closeStrayOpenSessions(userId: string, justFinishedId: string): Promise<void> {
   try {
-    const startedAt = getLocalSessions(userId).find((s) => s.id === justFinishedId)
-      ?.started_at;
+    const startedAt = getLocalSessions(userId).find((s) => s.id === justFinishedId)?.started_at;
     const rows = await query(
       supabase
         .from('sessions')
@@ -1407,14 +1484,14 @@ async function closeStrayOpenSessions(
         .is('completed_at', null)
         .neq('id', justFinishedId)
         .limit(20),
-      { label: 'strayOpenSessions' }
+      { label: 'strayOpenSessions' },
     );
     const stray = ((rows as { id: string; started_at: string }[]) ?? []).filter(
-      (s) => !startedAt || s.started_at < startedAt
+      (s) => !startedAt || s.started_at < startedAt,
     );
     await resolveAbandonedSessions(
       userId,
-      stray.map((s) => s.id)
+      stray.map((s) => s.id),
     );
   } catch {
     // Housekeeping only — never let it break finishing a workout.
@@ -1425,10 +1502,7 @@ async function closeStrayOpenSessions(
  *  position_weights out of the payload entirely rather than sending an explicit
  *  null, so a database that hasn't had migration 0017 run against it yet keeps
  *  logging sets exactly as before instead of failing on an unknown column. */
-export function setInsertPayload(
-  row: LoggedSet,
-  userId: string
-): Record<string, unknown> {
+export function setInsertPayload(row: LoggedSet, userId: string): Record<string, unknown> {
   const { position_weights, ...rest } = row;
   const payload: Record<string, unknown> = { ...rest, user_id: userId };
   if (position_weights != null) payload.position_weights = position_weights;
@@ -1466,12 +1540,8 @@ export async function logSet(params: {
   };
   try {
     const data = await query(
-      supabase
-        .from('logged_sets')
-        .insert(setInsertPayload(row, userId))
-        .select()
-        .single(),
-      { label: 'logSet' }
+      supabase.from('logged_sets').insert(setInsertPayload(row, userId)).select().single(),
+      { label: 'logSet' },
     );
     const saved = data as LoggedSet;
     upsertLocalSet(userId, saved);
@@ -1498,13 +1568,13 @@ export async function getAllSessionSets(sessionId: string): Promise<LoggedSet[]>
         .select('*')
         .eq('session_id', sessionId)
         .order('completed_at', { ascending: true }),
-      { label: 'getAllSessionSets' }
+      { label: 'getAllSessionSets' },
     );
     return mergeServerSets(userId, sessionId, (data as LoggedSet[]) ?? [], pendingSetIds());
   } catch (e) {
     if (!isOfflineError(e)) throw e;
     return [...getLocalSets(userId, sessionId)].sort((a, b) =>
-      a.completed_at < b.completed_at ? -1 : 1
+      a.completed_at < b.completed_at ? -1 : 1,
     );
   }
 }
@@ -1518,7 +1588,7 @@ export async function updateLoggedSet(
     positionWeights?: (number | null)[] | null;
     reps?: number | null;
     holdSeconds?: number | null;
-  }
+  },
 ): Promise<LoggedSet | null> {
   const update: QueuedSetPatch = {};
   if ('weight' in patch) update.weight = patch.weight ?? null;
@@ -1529,7 +1599,7 @@ export async function updateLoggedSet(
   try {
     const data = await query(
       supabase.from('logged_sets').update(update).eq('id', id).select().single(),
-      { label: 'updateLoggedSet' }
+      { label: 'updateLoggedSet' },
     );
     const saved = data as LoggedSet;
     upsertLocalSet(userId, saved);
@@ -1547,7 +1617,7 @@ export async function updateLoggedSet(
 export async function getSessionSets(
   sessionId: string,
   planExerciseId: string,
-  normalizedName?: string
+  normalizedName?: string,
 ): Promise<LoggedSet[]> {
   // When an exercise slot has alternatives, the primary and every alternative
   // share the same plan_exercise_id but log under different normalized_names.
@@ -1575,12 +1645,12 @@ export async function getSessionSets(
     // so re-opening the exercise doesn't lose the ticks.
     const pending = pendingSetIds();
     const local = getLocalSets(userId, sessionId).filter(
-      (s) => matches(s) && pending.has(s.id) && !rows.some((r) => r.id === s.id)
+      (s) => matches(s) && pending.has(s.id) && !rows.some((r) => r.id === s.id),
     );
     for (const s of rows) upsertLocalSet(userId, s);
     markSetsVerified(
       userId,
-      rows.map((r) => r.id)
+      rows.map((r) => r.id),
     );
     return [...rows, ...local].sort((a, b) => a.set_index - b.set_index);
   } catch (e) {
@@ -1598,7 +1668,7 @@ export async function getSessionSets(
 // time — used to suggest rotating to the other one on weekly-alternation slots.
 export async function getLastLoggedNormalizedForSlot(
   planExerciseId: string,
-  excludeSessionId?: string
+  excludeSessionId?: string,
 ): Promise<string | null> {
   const userId = await currentUserId();
   if (!userId) return null;
@@ -1614,9 +1684,7 @@ export async function getLastLoggedNormalizedForSlot(
     const data = await query(builder.maybeSingle(), {
       label: 'getLastLoggedNormalizedForSlot',
     });
-    return (
-      (data as { exercise_normalized_name: string } | null)?.exercise_normalized_name ?? null
-    );
+    return (data as { exercise_normalized_name: string } | null)?.exercise_normalized_name ?? null;
   } catch {
     // Only a hint for the weekly-rotation prompt — never worth an error.
     return null;
@@ -1626,7 +1694,7 @@ export async function getLastLoggedNormalizedForSlot(
 export async function getLastSessionSetsForExercise(
   normalizedName: string,
   excludeSessionId?: string,
-  baselineResetAt?: string | null
+  baselineResetAt?: string | null,
 ): Promise<LoggedSet[]> {
   const userId = await currentUserId();
   if (!userId) return [];
@@ -1654,7 +1722,7 @@ export async function getLastSessionSetsForExercise(
       userId,
       normalizedName,
       excludeSessionId,
-      baselineResetAt
+      baselineResetAt,
     );
     const newer =
       local.length > 0 &&
@@ -1680,12 +1748,7 @@ export async function getLastSessionSetsForExercise(
     return result;
   } catch (e) {
     if (!isOfflineError(e)) throw e;
-    return offlineLastSetsForExercise(
-      userId,
-      normalizedName,
-      excludeSessionId,
-      baselineResetAt
-    );
+    return offlineLastSetsForExercise(userId, normalizedName, excludeSessionId, baselineResetAt);
   }
 }
 
@@ -1711,11 +1774,11 @@ export interface LastSetsCacheEntry {
 
 function readLastSetsCache(
   userId: string | null,
-  normalizedName: string
+  normalizedName: string,
 ): LastSetsCacheEntry | null {
   const raw = readCache<LoggedSet[] | LastSetsCacheEntry>(
     userId,
-    lastSetsCacheName(normalizedName)
+    lastSetsCacheName(normalizedName),
   );
   if (!raw) return null;
   // Phones upgrading from the previous build have a bare array here; keep it
@@ -1735,7 +1798,7 @@ function writeLastSetsCache(
   userId: string | null,
   normalizedName: string,
   sets: LoggedSet[],
-  baselineResetAt: string | null
+  baselineResetAt: string | null,
 ): void {
   if (!userId || sets.length === 0) return;
   const entry: LastSetsCacheEntry = {
@@ -1759,7 +1822,7 @@ function writeLastSetsCache(
 function markLastSetsEmpty(
   userId: string | null,
   normalizedName: string,
-  baselineResetAt: string | null
+  baselineResetAt: string | null,
 ): void {
   if (!userId) return;
   const prev = readLastSetsCache(userId, normalizedName);
@@ -1789,7 +1852,7 @@ function markLastSetsEmpty(
 function hasWarmedLastSets(
   userId: string | null,
   normalizedName: string,
-  baselineResetAt: string | null
+  baselineResetAt: string | null,
 ): boolean {
   const entry = readLastSetsCache(userId, normalizedName);
   if (!entry || entry.cachedAt === '') return false;
@@ -1811,7 +1874,7 @@ function offlineLastSetsForExercise(
   userId: string | null,
   normalizedName: string,
   excludeSessionId?: string,
-  baselineResetAt?: string | null
+  baselineResetAt?: string | null,
 ): LoggedSet[] {
   const sessions = getLocalSessions(userId)
     .filter((s) => s.id !== excludeSessionId)
@@ -1820,15 +1883,14 @@ function offlineLastSetsForExercise(
     const sets = getLocalSets(userId, session.id).filter(
       (s) =>
         s.exercise_normalized_name === normalizedName &&
-        (!baselineResetAt || s.completed_at >= baselineResetAt)
+        (!baselineResetAt || s.completed_at >= baselineResetAt),
     );
     if (sets.length > 0) return [...sets].sort((a, b) => a.set_index - b.set_index);
   }
   const cached = readLastSetsCache(userId, normalizedName)?.sets ?? [];
   return cached.filter(
     (s) =>
-      s.session_id !== excludeSessionId &&
-      (!baselineResetAt || s.completed_at >= baselineResetAt)
+      s.session_id !== excludeSessionId && (!baselineResetAt || s.completed_at >= baselineResetAt),
   );
 }
 
@@ -1840,13 +1902,13 @@ function offlineLastSetsForExercise(
 export function getCachedLastSetsForExercise(
   normalizedName: string,
   excludeSessionId?: string,
-  baselineResetAt?: string | null
+  baselineResetAt?: string | null,
 ): LoggedSet[] {
   return offlineLastSetsForExercise(
     currentUserIdSync(),
     normalizedName,
     excludeSessionId,
-    baselineResetAt
+    baselineResetAt,
   );
 }
 
@@ -1854,13 +1916,13 @@ export function getCachedLastSetsForExercise(
 export function getCachedSessionSets(
   sessionId: string,
   planExerciseId: string,
-  normalizedName?: string
+  normalizedName?: string,
 ): LoggedSet[] {
   return getLocalSets(currentUserIdSync(), sessionId)
     .filter(
       (s) =>
         s.plan_exercise_id === planExerciseId &&
-        (!normalizedName || s.exercise_normalized_name === normalizedName)
+        (!normalizedName || s.exercise_normalized_name === normalizedName),
     )
     .sort((a, b) => a.set_index - b.set_index);
 }
@@ -1908,7 +1970,7 @@ export function lastWarmAt(userId: string | null): string | null {
 function bucketLastSets(
   rows: LoggedSet[],
   targets: PrefetchExercise[],
-  excludeSessionIds: Set<string>
+  excludeSessionIds: Set<string>,
 ): Map<string, LoggedSet[]> {
   const out = new Map<string, LoggedSet[]>();
   for (const ex of targets) {
@@ -1917,16 +1979,14 @@ function bucketLastSets(
       (r) =>
         r.exercise_normalized_name === ex.normalizedName &&
         !excludeSessionIds.has(r.session_id) &&
-        (!ex.baselineResetAt || r.completed_at >= ex.baselineResetAt)
+        (!ex.baselineResetAt || r.completed_at >= ex.baselineResetAt),
     );
     if (mine.length === 0) continue;
     // rows arrive newest-first, so the first one names the session to keep.
     const lastSessionId = mine[0].session_id;
     out.set(
       ex.normalizedName,
-      mine
-        .filter((r) => r.session_id === lastSessionId)
-        .sort((a, b) => a.set_index - b.set_index)
+      mine.filter((r) => r.session_id === lastSessionId).sort((a, b) => a.set_index - b.set_index),
     );
   }
   return out;
@@ -1938,7 +1998,7 @@ function openSessionIds(userId: string | null, excludeSessionId?: string): Set<s
   const ids = new Set(
     getLocalSessions(userId)
       .filter((s) => !s.completed_at)
-      .map((s) => s.id)
+      .map((s) => s.id),
   );
   if (excludeSessionId) ids.add(excludeSessionId);
   return ids;
@@ -2002,7 +2062,7 @@ async function fetchWarmTopUp(userId: string, names: string[]): Promise<WarmTopU
           .in('exercise_normalized_name', chunk)
           .order('completed_at', { ascending: false })
           .limit(WARM_TOPUP_ROWS),
-        { label: 'warmLastSetsTopUp' }
+        { label: 'warmLastSetsTopUp' },
       )) as LoggedSet[]) ?? [];
     rows.push(...batch);
     if (batch.length >= WARM_TOPUP_ROWS) for (const name of chunk) uncertain.add(name);
@@ -2019,7 +2079,7 @@ async function fetchWarmTopUp(userId: string, names: string[]): Promise<WarmTopU
  */
 async function warmLastSets(
   targets: PrefetchExercise[],
-  excludeSessionId?: string
+  excludeSessionId?: string,
 ): Promise<number> {
   if (targets.length === 0 || !isReachable()) return 0;
   const userId = await currentUserId();
@@ -2047,7 +2107,7 @@ async function warmLastSets(
     try {
       const extra = await fetchWarmTopUp(
         userId,
-        missing.map((t) => t.normalizedName)
+        missing.map((t) => t.normalizedName),
       );
       const topped = bucketLastSets(extra.rows, missing, exclude);
       buckets = new Map([...buckets, ...topped]);
@@ -2080,7 +2140,7 @@ async function warmLastSets(
  */
 export async function prefetchLastSetsForDay(
   exercises: PrefetchExercise[],
-  excludeSessionId?: string
+  excludeSessionId?: string,
 ): Promise<void> {
   await warmLastSets(exercises, excludeSessionId);
 }
@@ -2098,11 +2158,7 @@ export async function warmLastSetsForPlan(options: { force?: boolean } = {}): Pr
   const userId = await currentUserId();
   if (!userId) return 0;
   const receipt = readCache<WarmReceipt>(userId, WARM_RECEIPT);
-  if (
-    !options.force &&
-    receipt &&
-    Date.now() - new Date(receipt.at).getTime() < WARM_THROTTLE_MS
-  ) {
+  if (!options.force && receipt && Date.now() - new Date(receipt.at).getTime() < WARM_THROTTLE_MS) {
     return 0;
   }
   let plan = getCachedActivePlan(userId);
@@ -2159,7 +2215,7 @@ export async function warmLastSetsForPlan(options: { force?: boolean } = {}): Pr
  * reached the device counts against you.
  */
 export function lastSetsWarmth(
-  exercises: { normalized_name: string; baseline_reset_at?: string | null }[]
+  exercises: { normalized_name: string; baseline_reset_at?: string | null }[],
 ): { covered: number; total: number } {
   const userId = currentUserIdSync();
   const seen = new Set<string>();
@@ -2188,7 +2244,7 @@ export function lastSetsWarmth(
  * beats a Home screen that won't render.
  */
 export async function getLastCompletedAtByTrainingDay(
-  dayIds: string[]
+  dayIds: string[],
 ): Promise<Record<string, string>> {
   const userId = await currentUserId();
   if (!userId || dayIds.length === 0) return {};
@@ -2201,7 +2257,7 @@ export async function getLastCompletedAtByTrainingDay(
         .not('completed_at', 'is', null)
         .in('training_day_id', dayIds)
         .order('completed_at', { ascending: false }),
-      { label: 'getLastCompletedAtByTrainingDay' }
+      { label: 'getLastCompletedAtByTrainingDay' },
     );
     const rows = (data as { training_day_id: string | null; completed_at: string }[]) ?? [];
     const out: Record<string, string> = {};

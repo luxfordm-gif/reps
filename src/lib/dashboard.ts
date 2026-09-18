@@ -59,7 +59,7 @@ export function computeConsistency(
   sessions: { completed_at: string }[],
   activatedAt: string | null,
   weeklyTarget: number,
-  now: Date = new Date()
+  now: Date = new Date(),
 ): Consistency {
   if (!activatedAt || weeklyTarget <= 0) return { pct: null, done: 0, planned: 0 };
   const start = new Date(activatedAt).getTime();
@@ -81,7 +81,7 @@ export function computeWorkoutsPerWeek(
   sessions: { completed_at: string }[],
   activatedAt: string | null,
   now: Date = new Date(),
-  weeksBack = 8
+  weeksBack = 8,
 ): WorkoutsPerWeek {
   const counts = new Map<string, number>();
   for (const s of sessions) {
@@ -138,7 +138,7 @@ const MIN_LIFTS = 3;
 export function computeOverallStrength(
   sets: StrengthSet[],
   activatedAt: string | null,
-  now: Date = new Date()
+  now: Date = new Date(),
 ): OverallStrength {
   if (!activatedAt) return { pct: null, lifts: 0, reason: 'no_plan', series: [] };
   const start = new Date(activatedAt).getTime();
@@ -157,8 +157,10 @@ export function computeOverallStrength(
     const t = new Date(s.completedAt).getTime();
     if (t < start) continue;
     const e = estimate1RM(s.weight, s.reps);
-    if (t < baseEnd) baseline.set(s.normalizedName, Math.max(baseline.get(s.normalizedName) ?? 0, e));
-    if (t >= recentStart) recent.set(s.normalizedName, Math.max(recent.get(s.normalizedName) ?? 0, e));
+    if (t < baseEnd)
+      baseline.set(s.normalizedName, Math.max(baseline.get(s.normalizedName) ?? 0, e));
+    if (t >= recentStart)
+      recent.set(s.normalizedName, Math.max(recent.get(s.normalizedName) ?? 0, e));
     const wk = weekStartISO(new Date(t));
     let m = weeklyBest.get(wk);
     if (!m) {
@@ -209,7 +211,10 @@ export interface MostImproved {
 }
 
 /** Biggest est-1RM gain comparing the last 30 days to the 30 before them. */
-export function computeMostImproved(sets: StrengthSet[], now: Date = new Date()): MostImproved | null {
+export function computeMostImproved(
+  sets: StrengthSet[],
+  now: Date = new Date(),
+): MostImproved | null {
   const start30 = now.getTime() - 30 * DAY_MS;
   const start60 = now.getTime() - 60 * DAY_MS;
   const acc = new Map<string, { display: string; recent: number; prior: number }>();
@@ -259,7 +264,7 @@ export interface BodyWeightSummary {
 
 export function summarizeBodyWeight(
   rows: { weight_kg: number; recorded_on: string }[],
-  activatedAt: string | null
+  activatedAt: string | null,
 ): BodyWeightSummary | null {
   if (rows.length === 0) return null;
   const sorted = [...rows].sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1));
@@ -285,9 +290,15 @@ export function summarizeBodyWeight(
 }
 
 /** Rows from the last `days` days, oldest first — the body-weight chart's range. */
-export function bodyWeightRange<T extends { recorded_on: string }>(rows: T[], days: number, now = new Date()): T[] {
+export function bodyWeightRange<T extends { recorded_on: string }>(
+  rows: T[],
+  days: number,
+  now = new Date(),
+): T[] {
   const cutoff = new Date(now.getTime() - days * DAY_MS).toISOString().slice(0, 10);
-  return [...rows].filter((r) => r.recorded_on >= cutoff).sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1));
+  return [...rows]
+    .filter((r) => r.recorded_on >= cutoff)
+    .sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1));
 }
 
 // --- Records -------------------------------------------------------------------------
@@ -301,4 +312,44 @@ export function newRecordCount(records: LiftRecord[], now: Date = new Date(), da
 /** Mon..Sun: did a session happen that day this week. */
 export function weekDots(bars: number[][]): boolean[] {
   return Array.from({ length: 7 }, (_, i) => (bars[i]?.length ?? 0) > 0);
+}
+
+/**
+ * The line under a workout in the weekly card: what was actually done.
+ *
+ * Sets lead because they're the one figure that survives every kind of
+ * training — a press-up has no weight to report, and a session of them would
+ * otherwise read as nothing at all. Weight follows when there is one to give;
+ * see WeekSessionBreakdown.volumeKg for when there isn't.
+ */
+export function formatSessionMetrics(s: {
+  setCount: number;
+  repCount: number;
+  volumeKg: number | null;
+}): string {
+  const parts: string[] = [];
+  if (s.setCount > 0) parts.push(`${s.setCount} ${s.setCount === 1 ? 'set' : 'sets'}`);
+  if (s.repCount > 0) parts.push(`${s.repCount} ${s.repCount === 1 ? 'rep' : 'reps'}`);
+  return parts.join(' · ');
+}
+
+/** The weight figure for the right of the card, or null when there isn't one. */
+export function formatSessionVolume(volumeKg: number | null): string | null {
+  if (volumeKg == null || volumeKg <= 0) return null;
+  return Math.round(volumeKg).toLocaleString('en-GB');
+}
+
+/**
+ * "vs last Legs", as an arrow and a percentage.
+ *
+ * Down is stated, not scolded: an easier session than last time is a deload as
+ * often as it is a bad day, and the card has no way of telling which. So the
+ * sign is carried by an arrow rather than by red, and 0 gets its own word
+ * instead of a directionless "0%".
+ */
+export function formatVolumeChange(pct: number | null): string | null {
+  if (pct == null) return null;
+  if (pct === 0) return 'same as last time';
+  const arrow = pct > 0 ? '↑' : '↓';
+  return `${arrow} ${Math.abs(pct)}% vs last time`;
 }
