@@ -17,14 +17,11 @@ const NEW_RECORD_DAYS = 30;
 
 interface Props {
   records: LiftRecord[];
-  /** The record whose history is open, if any. */
-  expanded: string | null;
-  onToggle: (normalizedName: string) => void;
-  /** Rendered under the expanded row. */
-  renderDetail: (record: LiftRecord) => ReactNode;
+  /** Open a movement's own screen. */
+  onSelect: (normalizedName: string) => void;
 }
 
-export function RecordsBoard({ records, expanded, onToggle, renderDetail }: Props) {
+export function RecordsBoard({ records, onSelect }: Props) {
   const [sort, setSort] = useState<SortMode>('bodyPart');
   const [query, setQuery] = useState('');
 
@@ -61,19 +58,18 @@ export function RecordsBoard({ records, expanded, onToggle, renderDetail }: Prop
 
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-        Personal records
-      </div>
-      <p className="mt-1 text-sm text-muted">
-        Your best ever on {records.length} {records.length === 1 ? 'movement' : 'movements'}
+      {/* Two figures rather than a paragraph. The old copy explained that
+          records are kept across plans before the reader had reached a single
+          record — true, but not what they came here for. */}
+      <p className="text-sm text-muted">
+        <span className="font-semibold text-ink">{records.length}</span> all-time{' '}
+        {records.length === 1 ? 'record' : 'records'}
         {newCount > 0 && (
           <>
-            {' '}
-            ·{' '}
-            <span className="font-semibold text-ink">{newCount} new in the last month</span>
+            {' · '}
+            <span className="font-semibold text-ink">{newCount}</span> set this month
           </>
         )}
-        . Kept forever — a new plan never clears these. Tap one for its history.
       </p>
 
       <input
@@ -110,22 +106,15 @@ export function RecordsBoard({ records, expanded, onToggle, renderDetail }: Prop
               </div>
               <ul className="mt-2 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
                 {section.records.map((r) => {
-                  const open = expanded === r.normalizedName;
                   return (
                     <li key={r.normalizedName}>
                       <button
                         type="button"
-                        onClick={() => onToggle(r.normalizedName)}
-                        aria-expanded={open}
+                        onClick={() => onSelect(r.normalizedName)}
                         className="w-full text-left active:bg-surface"
                       >
-                        <RecordRow
-                          record={r}
-                          isNew={recordAchievedAt(r) >= newCutoff}
-                          open={open}
-                        />
+                        <RecordRow record={r} isNew={recordAchievedAt(r) >= newCutoff} />
                       </button>
-                      {open && <div className="border-t border-line/60 px-5 pb-5 pt-1">{renderDetail(r)}</div>}
                     </li>
                   );
                 })}
@@ -138,15 +127,7 @@ export function RecordsBoard({ records, expanded, onToggle, renderDetail }: Prop
   );
 }
 
-function RecordRow({
-  record,
-  isNew,
-  open,
-}: {
-  record: LiftRecord;
-  isNew: boolean;
-  open: boolean;
-}) {
+function RecordRow({ record, isNew }: { record: LiftRecord; isNew: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 px-5 py-4">
       <div className="min-w-0 flex-1">
@@ -169,7 +150,7 @@ function RecordRow({
             {headlineDetail(record)}
           </div>
         </div>
-        <Chevron open={open} />
+        <ChevronRight />
       </div>
     </div>
   );
@@ -253,23 +234,17 @@ function SortPill({
   );
 }
 
-function Chevron({ open }: { open: boolean }) {
+function ChevronRight() {
   return (
     <svg
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
       fill="none"
-      className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`}
       aria-hidden="true"
+      className="shrink-0 text-muted"
     >
-      <path
-        d="M3.5 5.5L7 9l3.5-3.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M6 3.5L10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

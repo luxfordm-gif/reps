@@ -12,7 +12,7 @@ import {
   type SessionSet,
 } from '../lib/performanceApi';
 import { loadRecords, type LiftRecord } from '../lib/recordsApi';
-import { headlineRecords } from '../lib/records';
+import { headlineRecords, recordAchievedAt } from '../lib/records';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import { buildDaySlots } from '../lib/daySlots';
 import {
@@ -53,7 +53,7 @@ import {
 // invent a number. "View all" on the records tile opens the full records board,
 // which is where a lift's history lives.
 
-type View = 'dashboard' | 'records';
+type View = 'dashboard' | 'records' | 'record';
 type BwRange = 84 | 182 | 365;
 
 interface Loaded {
@@ -86,7 +86,7 @@ export function Performance() {
   const [data, setData] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('dashboard');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [bwRange, setBwRange] = useState<BwRange>(84);
   const bwUnit = getBodyWeightUnit();
   const liftUnit = getLiftWeightUnit();
@@ -158,14 +158,31 @@ export function Performance() {
           <div className="mt-4">
             <RecordsBoard
               records={data.records}
-              expanded={expanded}
-              onToggle={(n) => setExpanded((cur) => (cur === n ? null : n))}
-              renderDetail={(r) => <LiftHistory sets={data.perf.sets} record={r} />}
+              onSelect={(n) => {
+                setSelected(n);
+                setView('record');
+              }}
             />
           </div>
         </div>
       </div>
     );
+  }
+
+  if (view === 'record' && data) {
+    const record = data.records.find((r) => r.normalizedName === selected) ?? null;
+    if (record) {
+      return (
+        <RecordDetail
+          record={record}
+          sets={data.perf.sets}
+          onBack={() => {
+            setView('records');
+            setSelected(null);
+          }}
+        />
+      );
+    }
   }
 
   return (
@@ -683,43 +700,149 @@ function Block({ children }: { children: React.ReactNode }) {
 
 // --- One lift's history, under its record ---------------------------------
 
-function LiftHistory({ sets, record }: { sets: PerformanceData['sets']; record: LiftRecord }) {
+type DetailRange = 30 | 90 | 182 | 0;
+
+const RANGE_LABELS: { days: DetailRange; label: string }[] = [
+  { days: 30, label: '1M' },
+  { days: 90, label: '3M' },
+  { days: 182, label: '6M' },
+  { days: 0, label: 'All' },
+];
+
+/**
+ * One movement, on its own screen.
+ *
+ * This used to unfold inside the records list: tapping a row dropped a chart,
+ * a range of dates and every set you had ever done into the middle of it, and
+ * the list you were reading stopped being a list. A record is an overview and
+ * a movement is a detail, so they are now a screen apart — the list stays
+ * scannable, and the analysis gets the room it needs.
+ */
+function RecordDetail({
+  record,
+  sets,
+  onBack,
+}: {
+  record: LiftRecord;
+  sets: PerformanceData['sets'];
+  onBack: () => void;
+}) {
+  const [range, setRange] = useState<DetailRange>(0);
   const history = useMemo(
     () => buildExerciseHistory(sets, record.normalizedName),
-    [sets, record.normalizedName],
+    [sets, record.normalizedName]
   );
+  const inRange = useMemo(() => {
+    if (range === 0) return history;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - range);
+    const from = `${cutoff.getFullYear()}-${pad2(cutoff.getMonth() + 1)}-${pad2(cutoff.getDate())}`;
+    return history.filter((p) => p.date >= from);
+  }, [history, range]);
+
   const points = useMemo(
     () =>
-      history
+      inRange
         .filter((p) => p.topWeightKg != null && p.repsAtTopWeight != null)
         .map((p) => ({
           label: p.date,
-          weight: fromKgFor(p.topWeightKg!, record.unit), // converted to display unit
-          reps: p.repsAtTopWeight!, // raw count — never converted
+          weight: fromKgFor(p.topWeightKg!, record.unit),
+          reps: p.repsAtTopWeight!,
         })),
-    [history, record.unit],
+    [inRange, record.unit]
   );
 
-  // Reps-only and hold records have no weight to chart; the list still shows
-  // every session.
-  if (record.kind !== 'weighted') {
-    return <SessionHistoryList history={history} unit={record.unit} compact />;
-  }
+  const best =
+    record.kind === 'weighted' && record.heaviest
+      ? formatLoadShort(record.heaviest.weightKg ?? 0, record.unit)
+      : record.kind === 'reps' && record.mostReps
+        ? `${record.mostReps.reps} reps`
+        : '–';
 
   return (
-    <div>
-      {points.length < 2 ? (
-        <div className="flex h-[120px] items-center justify-center px-6 text-center text-sm text-muted">
-          {points.length === 0
-            ? 'No weighted sets logged for this yet.'
-            : 'Just one session so far — keep logging to see the trend.'}
+    <div className="min-h-screen bg-paper pb-28">
+      <div
+        className="mx-auto max-w-md px-5"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}
+      >
+        <PageHeader title="Record detail" onBack={onBack} />
+
+        <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight text-ink">
+          {record.displayName}
+        </h1>
+        <SectionLabel>All-time best</SectionLabel>
+        <div className="mt-1 text-display-lg font-bold leading-none tracking-tight text-ink tabular-nums">
+          {best}
         </div>
-      ) : (
-        <DualAxisChart points={points} unitLabel={record.unit} />
-      )}
-      <SessionHistoryList history={history} unit={record.unit} compact />
+
+        {/* Three across, and compact: these support the headline above them
+            rather than being the headline, which is why they aren't the
+            dashboard's stat tile. */}
+        <div className="mt-5 grid grid-cols-3 gap-2.5">
+          <MiniStat
+            label="Est. 1RM"
+            value={record.best1RMkg > 0 ? formatLoadShort(record.best1RMkg, record.unit) : '–'}
+          />
+          <MiniStat label="Best reps" value={record.mostReps?.reps != null ? String(record.mostReps.reps) : '–'} />
+          <MiniStat label="Record date" value={shortDate(recordAchievedAt(record))} />
+        </div>
+
+        {record.kind === 'weighted' && (
+          <>
+            <div className="mt-5 flex rounded-pill bg-surface-strong p-0.5">
+              {RANGE_LABELS.map((r) => (
+                <button
+                  key={r.label}
+                  type="button"
+                  onClick={() => setRange(r.days)}
+                  className={`flex-1 rounded-pill py-1.5 text-xs font-semibold ${
+                    range === r.days ? 'bg-ink text-white' : 'text-muted'
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 rounded-card bg-paper-card p-4 shadow-card">
+              <SectionLabel>Strength progress</SectionLabel>
+              <div className="mt-0.5 text-xs text-muted">Top working set</div>
+              {points.length < 2 ? (
+                <div className="flex h-[140px] items-center justify-center px-6 text-center text-sm text-muted">
+                  {points.length === 0
+                    ? 'Nothing logged in this range.'
+                    : 'Just one session in this range — keep logging to see the trend.'}
+                </div>
+              ) : (
+                <DualAxisChart points={points} unitLabel={record.unit} />
+              )}
+            </div>
+          </>
+        )}
+
+        <SessionHistoryList history={inRange} unit={record.unit} />
+      </div>
     </div>
   );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-panel bg-paper-card p-3 shadow-card">
+      <div className="truncate text-caption text-muted">{label}</div>
+      <div className="mt-0.5 truncate text-base font-bold leading-tight tracking-tight text-ink tabular-nums">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 // --- Chart -------------------------------------------------------------------
