@@ -302,3 +302,25 @@ export function newRecordCount(records: LiftRecord[], now: Date = new Date(), da
 export function weekDots(bars: number[][]): boolean[] {
   return Array.from({ length: 7 }, (_, i) => (bars[i]?.length ?? 0) > 0);
 }
+
+/**
+ * The line under a workout in the weekly card: what was actually done.
+ *
+ * Sets lead because they're the one figure that survives every kind of
+ * training — a press-up has no weight to report, and a session of them would
+ * otherwise read as nothing at all. Weight follows when there is one to give;
+ * see WeekSessionBreakdown.volumeKg for when there isn't.
+ */
+export function formatSessionMetrics(s: {
+  setCount: number;
+  repCount: number;
+  volumeKg: number | null;
+}): string {
+  const parts: string[] = [];
+  if (s.setCount > 0) parts.push(`${s.setCount} ${s.setCount === 1 ? 'set' : 'sets'}`);
+  if (s.repCount > 0) parts.push(`${s.repCount} ${s.repCount === 1 ? 'rep' : 'reps'}`);
+  if (s.volumeKg != null && s.volumeKg > 0) {
+    parts.push(`${Math.round(s.volumeKg).toLocaleString('en-GB')} kg`);
+  }
+  return parts.join(' · ');
+}

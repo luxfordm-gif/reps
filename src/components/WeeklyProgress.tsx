@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { WeekSessionBreakdown } from '../lib/sessionsApi';
+import { formatSessionMetrics } from '../lib/dashboard';
 
 interface Props {
   // 7 entries, Mon-Sun. Each day's entry is an array of relative efforts
@@ -19,10 +20,11 @@ const FULL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TRACK_HEIGHT = 56;
 const SEGMENT_GAP = 3;
 const EMPTY_HEIGHT = 8;
-const todayIndex = (() => {
+/** Mon=0..Sun=6, from the clock right now. */
+function currentDayIndex(): number {
   const d = new Date().getDay(); // 0=Sun..6=Sat
   return (d + 6) % 7; // shift so 0=Mon..6=Sun
-})();
+}
 
 export function WeeklyProgress({
   bars,
@@ -31,6 +33,12 @@ export function WeeklyProgress({
   workoutsTarget,
   planWeek,
 }: Props) {
+  // Read per render rather than once when the module loads. Now that today is
+  // a highlighted column rather than a slightly brighter letter, an app left
+  // open overnight would point confidently at yesterday; any re-render — new
+  // data, a tab change, a logged set — now corrects it.
+  const todayIndex = currentDayIndex();
+
   // Default to the most recent completed day this week so the popover
   // always has something to show and the card has a stable height.
   const latestIdx = useMemo(() => {
@@ -44,8 +52,7 @@ export function WeeklyProgress({
   // day so newly-finished workouts auto-anchor the popover.
   const [userPicked, setUserPicked] = useState<number | null>(null);
   const selected = userPicked ?? latestIdx;
-  const selectedDetails =
-    selected != null ? dayDetails[selected] ?? [] : [];
+  const selectedDetails = selected != null ? (dayDetails[selected] ?? []) : [];
 
   return (
     <div className="rounded-card bg-ink p-5 text-white shadow-lift">
@@ -81,7 +88,9 @@ export function WeeklyProgress({
               disabled={!hasAny}
               aria-label={`${FULL_DAYS[i]} workouts`}
               aria-pressed={isSelected}
-              className="flex flex-1 flex-col items-center gap-1.5 disabled:cursor-default"
+              className={`flex flex-1 flex-col items-center gap-1.5 rounded-panel px-0.5 py-1.5 disabled:cursor-default ${
+                isToday ? 'bg-white/[0.07]' : ''
+              }`}
             >
               <div
                 className="flex w-full flex-col-reverse items-stretch justify-start"
@@ -91,13 +100,9 @@ export function WeeklyProgress({
                   segments.map((value, si) => {
                     const px = Math.max(
                       12,
-                      Math.round(value * (TRACK_HEIGHT - SEGMENT_GAP * (segments.length - 1)))
+                      Math.round(value * (TRACK_HEIGHT - SEGMENT_GAP * (segments.length - 1))),
                     );
-                    const bg = isSelected
-                      ? 'bg-white'
-                      : isToday
-                        ? 'bg-white'
-                        : 'bg-white/55';
+                    const bg = isSelected ? 'bg-white' : 'bg-white/55';
                     return (
                       <div
                         key={si}
@@ -108,14 +113,18 @@ export function WeeklyProgress({
                   })
                 ) : (
                   <div
-                    className="w-full rounded-md bg-white/15"
+                    className={`w-full rounded-md ${isToday ? 'bg-white/30' : 'bg-white/15'}`}
                     style={{ height: `${EMPTY_HEIGHT}px` }}
                   />
                 )}
               </div>
               <div
-                className={`text-label font-medium ${
-                  isSelected || isToday ? 'text-white' : 'text-white/45'
+                className={`text-label ${
+                  isSelected
+                    ? 'font-bold text-white'
+                    : isToday
+                      ? 'font-semibold text-white'
+                      : 'font-medium text-white/45'
                 }`}
               >
                 {DAYS[i]}
@@ -134,9 +143,18 @@ export function WeeklyProgress({
             <ul className="mt-1 space-y-0.5">
               {selectedDetails.map((s, i) => (
                 <li key={i}>
-                  <span className="font-semibold">{s.trainingDayName}</span>
-                  {s.bodyParts.length > 0 && (
-                    <span className="text-white/70"> — {s.bodyParts.join(', ')}</span>
+                  <div>
+                    <span className="font-semibold">{s.trainingDayName}</span>
+                    {s.bodyParts.length > 0 && (
+                      <span className="text-white/70"> — {s.bodyParts.join(', ')}</span>
+                    )}
+                  </div>
+                  {/* What the bar above is actually made of. Without it the
+                      chart can only say which day was biggest, never how big. */}
+                  {formatSessionMetrics(s) && (
+                    <div className="mt-0.5 text-white/55 tabular-nums">
+                      {formatSessionMetrics(s)}
+                    </div>
                   )}
                 </li>
               ))}

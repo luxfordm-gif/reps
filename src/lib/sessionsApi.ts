@@ -1,4 +1,5 @@
 import { supabase, currentUserId, currentUserIdSync } from './supabase';
+import { getCachedExerciseUnit } from './exercisePrefsApi';
 import { getActivePlan, getCachedActivePlan } from './plansApi';
 import { prefetchAlternativesForExercises } from './alternativesApi';
 import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
@@ -880,6 +881,23 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export interface WeekSessionBreakdown {
   trainingDayName: string;
   bodyParts: string[];
+  /** Sets logged in this session. Always meaningful, whatever was lifted. */
+  setCount: number;
+  /** Reps across those sets. Sets logged without a rep count contribute 0. */
+  repCount: number;
+  /**
+   * Total weight moved, in kilograms — or null when we can't stand behind a
+   * figure.
+   *
+   * The weight column stores kilograms for every machine except a 'pin' one,
+   * where it holds the pin position 1:1 (see units.ts). A pin number isn't a
+   * weight, so adding it to a kilogram total produces a number that means
+   * nothing. `kudos` gets away with the same column because it only ever
+   * compares one exercise against itself, where the unit cancels out; a
+   * printed total has no such cover. So a session containing any pin-logged
+   * set reports null rather than a figure that reads precise and isn't.
+   */
+  volumeKg: number | null;
 }
 
 export interface WeekSummary {
@@ -977,7 +995,7 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
 
   const { data: sets } = await supabase
     .from('logged_sets')
-    .select('session_id, weight, reps, plan_exercises(body_part)')
+    .select('session_id, weight, reps, plan_exercises(body_part, normalized_name)')
     .in(
       'session_id',
       sessionList.map((s) => s.id)
@@ -987,20 +1005,37 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
     weight: number | null;
     reps: number | null;
     plan_exercises:
-      | { body_part: string | null }
-      | { body_part: string | null }[]
+      | { body_part: string | null; normalized_name: string | null }
+      | { body_part: string | null; normalized_name: string | null }[]
       | null;
   };
   const volumeBySession = new Map<string, number>();
   const bodyPartsBySession = new Map<string, Set<string>>();
+  const setCountBySession = new Map<string, number>();
+  const repCountBySession = new Map<string, number>();
+  // Sessions holding a set logged in pin positions rather than weight. Their
+  // volume is not a number of kilograms and isn't reported as one.
+  const pinTainted = new Set<string>();
   for (const r of ((sets as LRow[]) ?? [])) {
+    const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
+
+    setCountBySession.set(r.session_id, (setCountBySession.get(r.session_id) ?? 0) + 1);
+    if (r.reps != null) {
+      repCountBySession.set(r.session_id, (repCountBySession.get(r.session_id) ?? 0) + r.reps);
+    }
+
     if (r.weight != null && r.reps != null) {
+      // The bar heights keep using every set, pin or not: they're relative to
+      // the week's own biggest day, so a consistent arbitrary number still
+      // ranks the days correctly. Only the printed total has to be honest.
       volumeBySession.set(
         r.session_id,
         (volumeBySession.get(r.session_id) ?? 0) + r.weight * r.reps
       );
+      const name = pe?.normalized_name;
+      if (name && getCachedExerciseUnit(name) === 'pin') pinTainted.add(r.session_id);
     }
-    const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
+
     const bp = pe?.body_part?.trim();
     if (bp) {
       let set = bodyPartsBySession.get(r.session_id);
@@ -1025,6 +1060,9 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
     dayDetails[idx].push({
       trainingDayName: td?.name ?? 'Workout',
       bodyParts: [...(bodyPartsBySession.get(s.id) ?? [])],
+      setCount: setCountBySession.get(s.id) ?? 0,
+      repCount: repCountBySession.get(s.id) ?? 0,
+      volumeKg: pinTainted.has(s.id) ? null : volumeBySession.get(s.id) ?? 0,
     });
   }
   // Normalize: bar height for any single session is its volume relative to
