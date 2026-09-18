@@ -1,7 +1,11 @@
 // Tests the "18 sets · 210 reps · 4,250 kg" line under each workout in the
 // weekly card — in particular what it does when there is no honest weight.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-week-metrics.mjs
-import { formatSessionMetrics } from '../src/lib/dashboard.ts';
+import {
+  formatSessionMetrics,
+  formatSessionVolume,
+  formatVolumeChange,
+} from '../src/lib/dashboard.ts';
 
 let failures = 0;
 function eq(label, got, want) {
@@ -15,26 +19,16 @@ function eq(label, got, want) {
 
 console.log('\n=== a normal session ===');
 eq(
-  'sets, reps and weight',
+  'sets and reps; the weight is the figure on the right, not part of this line',
   formatSessionMetrics({ setCount: 18, repCount: 210, volumeKg: 4250 }),
-  '18 sets · 210 reps · 4,250 kg'
-);
-eq(
-  'thousands are separated',
-  formatSessionMetrics({ setCount: 20, repCount: 240, volumeKg: 12400 }),
-  '20 sets · 240 reps · 12,400 kg'
-);
-eq(
-  'a fractional total is rounded, not shown to the gram',
-  formatSessionMetrics({ setCount: 3, repCount: 30, volumeKg: 1012.6 }),
-  '3 sets · 30 reps · 1,013 kg'
+  '18 sets · 210 reps'
 );
 
 console.log('\n=== one of a thing ===');
 eq(
   'a single set and rep are singular',
   formatSessionMetrics({ setCount: 1, repCount: 1, volumeKg: 60 }),
-  '1 set · 1 rep · 60 kg'
+  '1 set · 1 rep'
 );
 
 console.log('\n=== when there is no weight to report ===');
@@ -45,6 +39,20 @@ eq(
   formatSessionMetrics({ setCount: 12, repCount: 180, volumeKg: 0 }),
   '12 sets · 180 reps'
 );
+
+console.log('\n=== the figure on the right ===');
+eq('a normal total', formatSessionVolume(4250), '4,250');
+eq('thousands are separated', formatSessionVolume(12400), '12,400');
+eq('rounded, not shown to the gram', formatSessionVolume(1012.6), '1,013');
+eq('a bodyweight session has no figure to show', formatSessionVolume(0), null);
+eq('a pin-logged session has none either', formatSessionVolume(null), null);
+
+console.log('\n=== against the last time ===');
+eq('up', formatVolumeChange(6), '↑ 6% vs last time');
+eq('down is stated, not scolded', formatVolumeChange(-12), '↓ 12% vs last time');
+eq('level gets a word rather than a directionless 0%', formatVolumeChange(0), 'same as last time');
+eq('a first outing has nothing to compare with', formatVolumeChange(null), null);
+eq('a big jump is not capped', formatVolumeChange(140), '↑ 140% vs last time');
 // A pin-logged machine stores the pin position in the weight column, so the
 // total would not be a number of kilograms. sessionsApi sends null instead.
 eq(

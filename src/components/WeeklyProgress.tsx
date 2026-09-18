@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { WeekSessionBreakdown } from '../lib/sessionsApi';
-import { formatSessionMetrics } from '../lib/dashboard';
+import { formatSessionMetrics, formatSessionVolume, formatVolumeChange } from '../lib/dashboard';
 
 interface Props {
   // 7 entries, Mon-Sun. Each day's entry is an array of relative efforts
@@ -140,20 +140,36 @@ export function WeeklyProgress({
             <div className="font-semibold uppercase tracking-[0.12em] text-white/60">
               {FULL_DAYS[selected]}
             </div>
-            <ul className="mt-1 space-y-0.5">
+            <ul className="mt-1 space-y-2">
               {selectedDetails.map((s, i) => (
-                <li key={i}>
-                  <div>
-                    <span className="font-semibold">{s.trainingDayName}</span>
-                    {s.bodyParts.length > 0 && (
-                      <span className="text-white/70"> — {s.bodyParts.join(', ')}</span>
+                <li key={i} className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div>
+                      <span className="font-semibold">{s.trainingDayName}</span>
+                      {s.bodyParts.length > 0 && (
+                        <span className="text-white/70"> — {s.bodyParts.join(', ')}</span>
+                      )}
+                    </div>
+                    {formatSessionMetrics(s) && (
+                      <div className="mt-0.5 text-white/55 tabular-nums">
+                        {formatSessionMetrics(s)}
+                      </div>
                     )}
                   </div>
-                  {/* What the bar above is actually made of. Without it the
-                      chart can only say which day was biggest, never how big. */}
-                  {formatSessionMetrics(s) && (
-                    <div className="mt-0.5 text-white/55 tabular-nums">
-                      {formatSessionMetrics(s)}
+                  {/* The absolute figure the bars can't give: they're scaled to
+                      the week's own best day, so the tallest is full height in
+                      a heavy week and a light one alike. */}
+                  {formatSessionVolume(s.volumeKg) && (
+                    <div className="shrink-0 text-right">
+                      <div className="text-lg font-bold leading-none tabular-nums">
+                        {formatSessionVolume(s.volumeKg)}
+                        <span className="ml-1 text-xs font-semibold text-white/55">kg</span>
+                      </div>
+                      {formatVolumeChange(s.volumeChangePct) && (
+                        <div className="mt-1 text-caption text-white/55 tabular-nums">
+                          {formatVolumeChange(s.volumeChangePct)}
+                        </div>
+                      )}
                     </div>
                   )}
                 </li>
