@@ -26,6 +26,7 @@ import {
   deleteAllOpenSessions,
 } from './lib/sessionsApi';
 import { BottomNav, type Tab } from './components/BottomNav';
+import { InstallPrompt } from './components/InstallPrompt';
 import { Splash } from './components/Splash';
 import { clearHomeCache, loadHomeData } from './lib/homeCache';
 import { requestFlush } from './lib/offline/outbox';
@@ -428,6 +429,9 @@ function Root() {
     body = (
       <>
         <TabSwipeContainer tab={tab} onTabChange={setTab}>{screen}</TabSwipeContainer>
+        {/* Home only, and never over the top of the release notes — the app
+            gets one thing to ask for at a time. */}
+        {tab === 'home' && !showWhatsNew && <InstallPrompt />}
         {showWhatsNew && (
           <WhatsNewModal entry={LATEST_CHANGELOG_ENTRY} onDismiss={dismissWhatsNew} />
         )}
