@@ -81,22 +81,23 @@ interface BannerProps {
 export function InstallBanner({ advice, onInstall, onDismiss }: BannerProps) {
   return (
     <div className="mx-auto max-w-md rounded-card bg-paper-card p-4 shadow-lift">
-      <div className="flex items-start gap-3">
-        <img src="/icon-192.png" alt="" className="h-11 w-11 shrink-0 rounded-panel" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold tracking-tight text-ink">Add Reps to your home screen</p>
-          <p className="mt-0.5 text-caption leading-snug text-muted">
-            Opens full screen and keeps working when the gym has no signal.
-          </p>
-        </div>
+      <div className="flex items-center gap-3">
+        <img src="/icon-192.png" alt="" className="h-11 w-11 shrink-0 rounded-control" />
+        <p className="min-w-0 flex-1 text-base font-bold leading-snug tracking-tight text-ink">
+          Add Reps to your home screen
+        </p>
         <button
           onClick={onDismiss}
           aria-label="Not now"
-          className="pressable -mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+          className="pressable -mr-1 flex h-8 w-8 shrink-0 items-center justify-center self-start rounded-full text-muted active:bg-surface-strong"
         >
           <CloseIcon />
         </button>
       </div>
+
+      <p className="mt-2.5 text-sm leading-snug text-muted">
+        Opens full screen and keeps working when the gym has no signal.
+      </p>
 
       {advice === 'prompt' && (
         <button
@@ -111,19 +112,19 @@ export function InstallBanner({ advice, onInstall, onDismiss }: BannerProps) {
         // Safari can't be asked to install, only pointed at. The glyph is
         // the one on the button they're being sent to, so the sentence can
         // be matched to the toolbar without translating a word into a shape.
-        <p className="mt-3.5 flex items-center gap-2 rounded-panel bg-surface px-3 py-2.5 text-xs text-ink">
+        <p className="mt-3.5 flex items-center gap-2 rounded-panel bg-surface px-3 py-2.5 text-sm text-ink">
           <span className="shrink-0 text-muted">
             <ShareIcon />
           </span>
           <span className="leading-snug">
             Tap <span className="font-semibold">Share</span>, then{' '}
-            <span className="font-semibold">Add to Home Screen</span>.
+            <span className="whitespace-nowrap font-semibold">Add to Home Screen</span>.
           </span>
         </p>
       )}
 
       {advice === 'ios-browser' && (
-        <p className="mt-3.5 rounded-panel bg-surface px-3 py-2.5 text-xs leading-snug text-ink">
+        <p className="mt-3.5 rounded-panel bg-surface px-3 py-2.5 text-sm leading-snug text-ink">
           Open this page in <span className="font-semibold">Safari</span> to add it — on an iPhone
           it's the only browser that can.
         </p>
