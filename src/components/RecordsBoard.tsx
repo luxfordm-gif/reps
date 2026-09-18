@@ -41,19 +41,19 @@ export function RecordsBoard({ records, onSelect }: Props) {
     if (sort === 'bodyPart') return groupByBodyPart(filtered);
     if (sort === 'recent') {
       const rs = [...filtered].sort((a, b) =>
-        recordAchievedAt(b).localeCompare(recordAchievedAt(a))
+        recordAchievedAt(b).localeCompare(recordAchievedAt(a)),
       );
       return [{ bodyPart: 'Most recent first', records: rs }];
     }
     const rs = [...filtered].sort(
-      (a, b) => (b.heaviest?.weightKg ?? -1) - (a.heaviest?.weightKg ?? -1)
+      (a, b) => (b.heaviest?.weightKg ?? -1) - (a.heaviest?.weightKg ?? -1),
     );
     return [{ bodyPart: 'Heaviest first', records: rs }];
   }, [filtered, sort]);
 
   const newCount = useMemo(
     () => records.filter((r) => recordAchievedAt(r) >= newCutoff).length,
-    [records, newCutoff]
+    [records, newCutoff],
   );
 
   return (
@@ -94,9 +94,7 @@ export function RecordsBoard({ records, onSelect }: Props) {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-muted">
-          Nothing matches “{query.trim()}”.
-        </p>
+        <p className="mt-8 text-center text-sm text-muted">Nothing matches “{query.trim()}”.</p>
       ) : (
         <div className="mt-5 space-y-6">
           {sections.map((section) => (
@@ -244,7 +242,13 @@ function ChevronRight() {
       aria-hidden="true"
       className="shrink-0 text-muted"
     >
-      <path d="M6 3.5L10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M6 3.5L10.5 8 6 12.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

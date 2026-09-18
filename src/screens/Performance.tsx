@@ -780,7 +780,7 @@ function RecordDetail({
   const [range, setRange] = useState<DetailRange>(0);
   const history = useMemo(
     () => buildExerciseHistory(sets, record.normalizedName),
-    [sets, record.normalizedName]
+    [sets, record.normalizedName],
   );
   const inRange = useMemo(() => {
     if (range === 0) return history;
@@ -799,7 +799,7 @@ function RecordDetail({
           weight: fromKgFor(p.topWeightKg!, record.unit),
           reps: p.repsAtTopWeight!,
         })),
-    [inRange, record.unit]
+    [inRange, record.unit],
   );
 
   const best =
@@ -815,12 +815,11 @@ function RecordDetail({
         className="mx-auto max-w-md px-5"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}
       >
-        <PageHeader title="Record detail" onBack={onBack} />
+        <PageHeader title={record.displayName} onBack={onBack} />
 
-        <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight text-ink">
-          {record.displayName}
-        </h1>
-        <SectionLabel>All-time best</SectionLabel>
+        <div className="mt-3">
+          <SectionLabel>All-time best</SectionLabel>
+        </div>
         <div className="mt-1 text-display-lg font-bold leading-none tracking-tight text-ink tabular-nums">
           {best}
         </div>
@@ -833,7 +832,10 @@ function RecordDetail({
             label="Est. 1RM"
             value={record.best1RMkg > 0 ? formatLoadShort(record.best1RMkg, record.unit) : '–'}
           />
-          <MiniStat label="Best reps" value={record.mostReps?.reps != null ? String(record.mostReps.reps) : '–'} />
+          <MiniStat
+            label="Best reps"
+            value={record.mostReps?.reps != null ? String(record.mostReps.reps) : '–'}
+          />
           <MiniStat label="Record date" value={shortDate(recordAchievedAt(record))} />
         </div>
 
