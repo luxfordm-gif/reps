@@ -314,13 +314,21 @@ function StepShell({
 }
 
 /**
- * A step's title and its one line of subcopy, in a block of fixed height.
+ * A step's title and its one line of subcopy, in a block of fixed height whose
+ * contents sit at the bottom.
  *
- * Both halves of that matter, because the card below sits wherever this block
- * ends. The subtitle is required — a step that left it out pulled the card up
- * a line — and the height is reserved for the tallest heading we allow, so a
- * one-line title doesn't pull it up either. Stepping through onboarding then
- * leaves the card exactly where it was.
+ * The fixed height is what keeps the card below from moving as you step
+ * through — it's reserved for the tallest heading we allow, so a one-line title
+ * doesn't pull the card up. The subtitle is required for the same reason: a
+ * step that left it out pulled it up a line.
+ *
+ * Bottom-aligning is what stops that reservation reading as a hole. Only three
+ * of seven titles wrap at 375px, and just one at 430px, so on most phones and
+ * most steps there are 43 spare pixels in here. Left at the top they sat
+ * between the subcopy and the card, which is the gap you notice; pushed to the
+ * bottom they land above the title, under the progress bar, where empty space
+ * is just margin. The title shifts down slightly on short steps instead, which
+ * is a far quieter thing to move than the card.
  *
  * 115px is two title lines (34px at leading-tight), the 6px gap, and one line
  * of subcopy. Keep new copy inside that at phone width: titles to two lines,
@@ -329,7 +337,7 @@ function StepShell({
  */
 function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="min-h-[115px]">
+    <div className="flex min-h-[115px] flex-col justify-end">
       <h1 className="text-display font-bold leading-tight tracking-tight text-ink">{title}</h1>
       <p className="mt-1.5 text-base text-muted">{subtitle}</p>
     </div>
