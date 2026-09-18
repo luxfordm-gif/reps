@@ -803,10 +803,10 @@ function StepExperience({
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`flex w-full items-center justify-between rounded-card px-5 py-4 text-left transition-colors duration-pop active:opacity-80 ${
+            className={`flex w-full items-center justify-between rounded-card border bg-paper-card px-5 py-4 text-left transition-colors duration-pop active:opacity-80 ${
               value === opt.value
-                ? 'border-2 border-ink bg-paper-card shadow-card'
-                : 'border border-line bg-paper-card'
+                ? 'border-ink shadow-card ring-1 ring-inset ring-ink'
+                : 'border-line'
             }`}
           >
             <div>
