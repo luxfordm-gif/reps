@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { PageHeader } from '../components/PageHeader';
-import { Tile, ChevronRight, BarsIcon, BoltIcon, DumbbellIcon } from '../components/Tile';
+import { Tile, ChevronRight, BarsIcon, DumbbellIcon } from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
@@ -24,6 +24,10 @@ import {
 import {
   bodyWeightRange,
   computeConsistency,
+  computeWeekStreak,
+  computeWeeklyLoad,
+  type WeekStreak,
+  type WeeklyLoadPoint,
   computeMostImproved,
   computeOverallStrength,
   computeWorkoutsPerWeek,
@@ -123,6 +127,8 @@ export function Performance() {
     return {
       weeklyTarget,
       consistency: computeConsistency(gymSessions, activatedAt, weeklyTarget),
+      streak: computeWeekStreak(gymSessions, weeklyTarget),
+      load: computeWeeklyLoad(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       strength: computeOverallStrength(perf.sets, activatedAt),
       mostImproved,
@@ -186,6 +192,25 @@ export function Performance() {
               />
             </Block>
 
+            {derived.streak.longest > 0 && (
+              <Block>
+                <div className="grid grid-cols-2 gap-3">
+                  <StreakTile streak={derived.streak} target={derived.weeklyTarget} />
+                  <Tile
+                    icon={<CalendarIcon />}
+                    label="Consistency"
+                    value={derived.consistency.pct != null ? `${derived.consistency.pct}%` : '–'}
+                    hint={
+                      derived.consistency.pct != null
+                        ? `${derived.consistency.done} of ${derived.consistency.planned} this plan`
+                        : 'needs an active plan'
+                    }
+                    visual={<DotRow dots={derived.dots} />}
+                  />
+                </div>
+              </Block>
+            )}
+
             <Block>
               <div className="grid grid-cols-2 gap-3">
                 <Tile
@@ -235,28 +260,11 @@ export function Performance() {
               </Block>
             )}
 
-            <Block>
-              <div className="grid grid-cols-2 gap-3">
-                <Tile
-                  icon={<CalendarIcon />}
-                  label="Consistency"
-                  value={derived.consistency.pct != null ? `${derived.consistency.pct}%` : '–'}
-                  hint={
-                    derived.consistency.pct != null
-                      ? `${derived.consistency.done} of ${derived.consistency.planned} planned`
-                      : 'needs an active plan'
-                  }
-                  visual={<DotRow dots={derived.dots} />}
-                />
-                <Tile
-                  icon={<BoltIcon />}
-                  label="Workouts / week"
-                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
-                  hint={derived.perWeek.average != null ? 'avg on this plan' : 'nothing logged yet'}
-                  visual={<MiniBars values={derived.perWeek.weekly} />}
-                />
-              </div>
-            </Block>
+            {derived.load.some((p) => p.sets > 0) && (
+              <Block>
+                <TrainingLoadCard load={derived.load} perWeek={derived.perWeek.average} />
+              </Block>
+            )}
 
             <Block>
               <StrengthCard strength={derived.strength} />
@@ -336,6 +344,37 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
 const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const TODAY_IDX = (new Date().getDay() + 6) % 7;
 
+/**
+ * The last seven weeks, hit or missed — the week-scale twin of DotRow.
+ *
+ * Built to the same two-row shape (dots, then a line of text) so the two tiles
+ * in the pair end at the same place. This week is drawn as pending rather than
+ * missed while it still has days left in it, the same distinction DotRow makes
+ * for days that haven't happened.
+ */
+function WeekDots({ weeks, best }: { weeks: boolean[]; best: number | null }) {
+  return (
+    <div>
+      <div className="flex justify-between">
+        {weeks.map((on, i) => {
+          const isThisWeek = i === weeks.length - 1;
+          return (
+            <span
+              key={i}
+              className={`h-2.5 w-2.5 rounded-full ${
+                on ? 'bg-ink' : isThisWeek ? 'bg-surface-strong' : 'bg-line'
+              }`}
+            />
+          );
+        })}
+      </div>
+      <div className="mt-1 text-label text-muted tabular-nums">
+        {best != null ? `Best ${best} weeks` : 'Last 7 weeks'}
+      </div>
+    </div>
+  );
+}
+
 function DotRow({ dots }: { dots: boolean[] }) {
   return (
     <div className="flex justify-between">
@@ -353,22 +392,148 @@ function DotRow({ dots }: { dots: boolean[] }) {
   );
 }
 
-function MiniBars({ values }: { values: number[] }) {
-  const max = Math.max(1, ...values);
+/** A small line with a soft fill under it. Values only; no axes. */
+/**
+ * Weeks in a row hitting the plan's target.
+ *
+ * A tile rather than a card of its own. It carries exactly what the tiles
+ * beside it carry — a chip, a label, one number, a line under it — and given
+ * a full-width card to fill it just sat a 44px chip next to a short word and
+ * left half the row empty.
+ *
+ * Paired with consistency because they answer the same question from two
+ * sides: the ratio that forgives, and the run that doesn't.
+ */
+function StreakTile({ streak, target }: { streak: WeekStreak; target: number }) {
+  const { current, longest, thisWeekCounts } = streak;
+  const live = current > 0;
+  const weeks = live ? current : longest;
   return (
-    <div className="flex h-8 items-end gap-1">
-      {values.map((v, i) => (
-        <div
-          key={i}
-          className={`flex-1 rounded-sm ${i === values.length - 1 ? 'bg-ink' : 'bg-ink/25'}`}
-          style={{ height: `${Math.max(8, (v / max) * 100)}%` }}
-        />
-      ))}
+    <Tile
+      icon={<FlameIcon />}
+      label={live ? 'Streak' : 'Best streak'}
+      value={
+        <>
+          {weeks}
+          <span className="ml-1 text-base font-semibold text-muted">
+            {weeks === 1 ? 'week' : 'weeks'}
+          </span>
+        </>
+      }
+      hint={
+        live
+          ? thisWeekCounts
+            ? 'this week counted'
+            : `finish this week for ${current + 1}`
+          : `${target} a week starts one`
+      }
+      visual={<WeekDots weeks={streak.recentWeeks} best={longest > current ? longest : null} />}
+    />
+  );
+}
+
+/**
+ * Twelve weeks of training, in sets.
+ *
+ * The rest of the tab looks at a fortnight or at one lift. This is the only
+ * place that answers "how has it been going lately", which is the question a
+ * chart is for — and the empty weeks are drawn, because a month off is the
+ * most informative thing a season of training has to say.
+ *
+ * Built like the body-weight chart rather than as a sparkline: two charts on
+ * one screen drawn in two different idioms read as two different apps, and
+ * this one has axes worth labelling.
+ */
+function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek: number | null }) {
+  const thisWeek = load[load.length - 1]?.sets ?? 0;
+  const average = Math.round(load.reduce((sum, p) => sum + p.sets, 0) / load.length);
+  const points = load.map((p) => ({ label: p.weekStart, value: p.sets }));
+
+  return (
+    <div className="rounded-card bg-paper-card p-4 shadow-card">
+      <div className="flex items-center justify-between">
+        <SectionLabel>Training load</SectionLabel>
+        <div className="text-xs text-muted">Past 12 weeks</div>
+      </div>
+      <div className="mt-1 flex items-baseline gap-2">
+        <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
+          {thisWeek}
+        </div>
+        <div className="text-sm font-semibold text-muted">
+          {thisWeek === 1 ? 'set this week' : 'sets this week'}
+        </div>
+      </div>
+      <div className="mt-0.5 text-xs text-muted tabular-nums">
+        {average} a week on average{perWeek != null && ` · ${perWeek} workouts a week`}
+      </div>
+      <div className="mt-3">
+        <ResponsiveContainer width="100%" height={140}>
+          <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <XAxis
+              dataKey="label"
+              tick={{ fill: '#8E8E93', fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              minTickGap={24}
+              tickFormatter={(d) =>
+                new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', {
+                  day: 'numeric',
+                  month: 'short',
+                })
+              }
+            />
+            {/* Anchored at zero, unlike body weight. A week off is a real zero,
+                and an axis that starts at the smallest value would draw the
+                gap as a shallow dip instead of the floor it is. */}
+            <YAxis
+              tick={{ fill: '#8E8E93', fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              width={40}
+              allowDecimals={false}
+              domain={[0, 'dataMax + 4']}
+            />
+            <Tooltip
+              contentStyle={{ borderRadius: 12, border: '1px solid #E5E5EA', fontSize: 12 }}
+              formatter={(v) => [`${v} ${Number(v) === 1 ? 'set' : 'sets'}`, 'Logged']}
+              labelFormatter={(d) =>
+                `Week of ${new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', {
+                  day: 'numeric',
+                  month: 'short',
+                })}`
+              }
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="#0A0A0A"
+              strokeWidth={2}
+              dot={{ r: 2.5, fill: '#0A0A0A' }}
+              activeDot={{ r: 4 }}
+              isAnimationActive
+              animationDuration={900}
+              animationEasing="ease-out"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
 
-/** A small line with a soft fill under it. Values only; no axes. */
+function FlameIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 2.6c.9 3.2-1.1 4.6-2.4 6.1a5.6 5.6 0 0 0-1.5 3.8 5.9 5.9 0 0 0 11.8 0c0-2.2-1-3.5-2.3-5-.5 1-1.2 1.6-2 1.9.3-2.9-1.2-5.4-3.6-6.8Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string; fill: string }) {
   if (values.length < 2) return null;
   const w = 100;
