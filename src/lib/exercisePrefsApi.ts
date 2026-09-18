@@ -39,9 +39,16 @@ export function getCachedExerciseUnit(normalizedName: string): MachineUnit {
 export async function getExerciseUnit(
   normalizedName: string
 ): Promise<MachineUnit> {
+  const userId = await currentUserId();
+  if (!userId) return getLiftWeightUnit();
+  // The table's key is (user_id, normalized_name), and a normalized name is a
+  // string every account shares — "lat pulldown" is the same for everyone. RLS
+  // narrows this to one row today; naming the user is what makes maybeSingle()
+  // true by construction rather than by policy.
   const { data, error } = await supabase
     .from('exercise_unit_prefs')
     .select('weight_unit')
+    .eq('user_id', userId)
     .eq('normalized_name', normalizedName)
     .maybeSingle();
   if (error) throw error;
@@ -125,9 +132,12 @@ function cacheProfile(normalizedName: string, profile: MachineProfile): void {
 export async function getExerciseProfile(
   normalizedName: string
 ): Promise<MachineProfile> {
+  const userId = await currentUserId();
+  if (!userId) return getCachedExerciseProfile(normalizedName);
   const { data, error } = await supabase
     .from('exercise_unit_prefs')
     .select('load_profile, load_positions')
+    .eq('user_id', userId)
     .eq('normalized_name', normalizedName)
     .maybeSingle();
   // A profile is an opt-in extra: any trouble reading it (offline, or a database

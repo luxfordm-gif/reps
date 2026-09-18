@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useThemeColor } from '../lib/useThemeColor';
 import { useScrollLock } from '../lib/useScrollLock';
@@ -1995,7 +1996,7 @@ function ExerciseMenu({
               ))}
             </div>
           </div>
-          <div className="border-t border-line/60" />
+          <Hairline />
           <div className="px-4 py-3">
             <div className="text-label font-semibold uppercase tracking-[0.12em] text-muted">
               Weight profile
@@ -2061,74 +2062,79 @@ function ExerciseMenu({
               </div>
             )}
             {profile.kind == null && (
-              <div className="mt-1.5 text-caption leading-snug text-muted">
-                For machines that load at numbered pegs, or set a cam position.
+              <div className="mt-1.5 text-caption text-muted">
+                For plate-loaded pegs or a cam position.
               </div>
             )}
           </div>
-          <div className="border-t border-line/60" />
-          <button
-            onClick={() => pick(onSwap)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
-          >
-            Swap machine
-          </button>
-          <div className="border-t border-line/60" />
-          <button
-            onClick={() => pick(onAddAlternative)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
-          >
-            Add alternative
-          </button>
-          <div className="border-t border-line/60" />
-          <button
-            onClick={() => pick(onEditName)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
-          >
-            Edit exercise name
-          </button>
-          <div className="border-t border-line/60" />
-          <button
-            onClick={() => pick(onOverview)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
-          >
-            Back to overview
-          </button>
-          <div className="border-t border-line/60" />
-          <button
-            onClick={() => pick(onHome)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
-          >
-            Back to home
-          </button>
-          <div className="border-t border-line/60" />
+          <GroupBreak />
+          {/* This machine. */}
+          <MenuItem onSelect={() => pick(onSwap)}>Swap machine</MenuItem>
+          <Hairline />
+          <MenuItem onSelect={() => pick(onAddAlternative)}>Add alternative</MenuItem>
+          <Hairline />
+          <MenuItem onSelect={() => pick(onEditName)}>Edit exercise name</MenuItem>
+          <GroupBreak />
+          {/* Moving on — leaving this exercise, one way or another. */}
+          <MenuItem onSelect={() => pick(onSkip)}>
+            {hasNext ? 'Skip exercise' : 'Skip & finish workout'}
+          </MenuItem>
+          <Hairline />
+          <MenuItem onSelect={() => pick(onOverview)}>Back to overview</MenuItem>
+          <Hairline />
+          <MenuItem onSelect={() => pick(onHome)}>Back to home</MenuItem>
           {onFeedback && (
             <>
-              <button
-                onClick={() => pick(onFeedback)}
-                className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
-              >
-                Send feedback
-              </button>
-              <div className="border-t border-line/60" />
+              <GroupBreak />
+              <MenuItem onSelect={() => pick(onFeedback)}>Send feedback</MenuItem>
             </>
           )}
-          <button
-            onClick={() => pick(onSkip)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-ink active:bg-pressed"
-          >
-            {hasNext ? 'Skip exercise' : 'Skip & finish workout'}
-          </button>
-          <div className="border-t border-line/60" />
-          <button
-            onClick={() => pick(onEndWorkout)}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-danger-strong active:bg-danger-soft"
-          >
+          <GroupBreak />
+          {/* On its own, because ending the workout is the one thing here you
+              can't undo by tapping again. */}
+          <MenuItem danger onSelect={() => pick(onEndWorkout)}>
             End workout
-          </button>
+          </MenuItem>
         </div>
       )}
     </div>
+  );
+}
+
+/** A divider inside a group: these items belong together. */
+function Hairline() {
+  return <div className="border-t border-line/60" />;
+}
+
+/**
+ * The gap between groups.
+ *
+ * A menu of eight identical rows separated by identical lines is a list you
+ * have to read. A band of fill instead of a hairline turns it into four short
+ * ones you can aim at — the same trick iOS uses to group a context menu.
+ */
+function GroupBreak() {
+  return <div className="h-1.5 bg-line/50" />;
+}
+
+function MenuItem({
+  onSelect,
+  danger,
+  children,
+}: {
+  onSelect: () => void;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`block w-full px-4 py-3 text-left text-sm font-semibold ${
+        danger ? 'text-danger-strong active:bg-danger-soft' : 'text-ink active:bg-pressed'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

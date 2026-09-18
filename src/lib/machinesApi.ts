@@ -58,10 +58,9 @@ export async function listMachines(): Promise<MachineRow[]> {
   const userId = await getUserId();
   const globalFallback: MachineUnit = getLiftWeightUnit();
 
-  // plan_exercises are not user-scoped directly — they belong to a training
-  // day, which belongs to a plan, which belongs to a user. The RLS policy on
-  // plan_exercises must already permit only the owner's rows for queries to
-  // be safe; if not, an explicit join is needed.
+  // plan_exercises carries user_id and is reachable through its training day's
+  // plan. The join is the stricter of the two, so it stays: it holds even for a
+  // row written before the column existed.
   const [peRes, lsRes, prefRes] = await Promise.all([
     supabase
       .from('plan_exercises')
@@ -156,6 +155,7 @@ export async function renameMachineInPlace(
     await supabase
       .from('plan_exercises')
       .update({ name: newName })
+      .eq('user_id', userId)
       .eq('normalized_name', currentNormalized);
     await supabase
       .from('logged_sets')
@@ -181,6 +181,7 @@ export async function renameMachineInPlace(
   const { error: peErr } = await supabase
     .from('plan_exercises')
     .update({ name: newName, normalized_name: newNormalized })
+    .eq('user_id', userId)
     .eq('normalized_name', currentNormalized);
   if (peErr) throw peErr;
 
@@ -271,11 +272,15 @@ export async function deleteMachine(normalizedName: string): Promise<void> {
     .eq('exercise_normalized_name', normalizedName);
   if (lsErr) throw lsErr;
 
-  // plan_exercises rows are scoped via the plan -> user_id chain in RLS, so
-  // a direct delete only affects this user's rows.
+  // A normalized name is just the lowercased exercise name, so it is shared
+  // across accounts: "lat pulldown" is the same string for everyone. RLS is
+  // what stops this reaching another user's rows, but an unqualified delete on
+  // a shared key is the wrong shape to leave lying around — plan_exercises
+  // carries user_id (savePlan writes it), so say so.
   const { error: peErr } = await supabase
     .from('plan_exercises')
     .delete()
+    .eq('user_id', userId)
     .eq('normalized_name', normalizedName);
   if (peErr) throw peErr;
 

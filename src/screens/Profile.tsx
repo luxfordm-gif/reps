@@ -25,6 +25,7 @@ import {
   type TopGoal,
   type Experience,
 } from '../lib/profileApi';
+import { cleanDisplayName, MAX_DISPLAY_NAME } from '../lib/displayName';
 import {
   getWaterGoal,
   setWaterGoal,
@@ -696,7 +697,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-type EditField = 'gender' | 'dob' | 'weight' | 'height' | 'goal' | 'experience';
+type EditField = 'name' | 'gender' | 'dob' | 'weight' | 'height' | 'goal' | 'experience';
 
 function PersonalDetailsSection({
   profile,
@@ -748,6 +749,24 @@ function PersonalDetailsSection({
   return (
     <Section title="Personal details">
       <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+        <DetailRow
+          label="Name"
+          incomplete={showDots && !profile.display_name}
+          editing={editing === 'name'}
+          onEdit={() => setEditing('name')}
+          onCancel={() => setEditing(null)}
+          value={profile.display_name ?? 'Not set'}
+          hint="How the app greets you."
+        >
+          <NameEditor
+            value={profile.display_name}
+            onSave={(v) => save({ display_name: v })}
+            busy={busy}
+          />
+        </DetailRow>
+
+        <Divider />
+
         <DetailRow
           label="Gender"
           incomplete={showDots && !profile.gender}
@@ -1036,6 +1055,43 @@ function MultiEnumEditor<T extends string>({
       <button
         onClick={() => onSave(draft)}
         disabled={busy || sameAsValue}
+        className="pressable mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
+      >
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+    </>
+  );
+}
+
+function NameEditor({
+  value,
+  onSave,
+  busy,
+}: {
+  value: string | null;
+  onSave: (v: string | null) => void;
+  busy: boolean;
+}) {
+  const [draft, setDraft] = useState(value ?? '');
+  const cleaned = cleanDisplayName(draft);
+  return (
+    <>
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !busy && cleaned !== value) onSave(cleaned);
+        }}
+        maxLength={MAX_DISPLAY_NAME}
+        autoComplete="given-name"
+        autoCapitalize="words"
+        placeholder="Alex"
+        className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-base font-semibold text-ink placeholder:font-normal placeholder:text-muted/60 focus:border-ink focus:outline-none"
+      />
+      <button
+        onClick={() => onSave(cleaned)}
+        disabled={busy || cleaned === value}
         className="pressable mt-3 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
       >
         {busy ? 'Saving…' : 'Save'}
