@@ -62,9 +62,22 @@ export function Login() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          // Without this the confirmation link points at Supabase's configured
+          // Site URL, which is a development machine until someone remembers to
+          // change it — and a dead link is the one bug a new user can't work
+          // around. Same origin the reset flow uses.
+          options: { emailRedirectTo: `${window.location.origin}/` },
+        });
         if (error) throw error;
-        setInfo('Check your email to confirm your account, then sign in.');
+        // With confirmations switched off Supabase hands back a session and
+        // onAuthStateChange has already moved us on, so saying "check your
+        // email" would send them looking for a message that never arrives.
+        if (!data.session) {
+          setInfo('Check your email to confirm your account, then sign in.');
+        }
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/`,

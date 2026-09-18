@@ -22,6 +22,7 @@ import { requestFlush } from '../lib/offline/outbox';
 import { warmLastSetsForPlan } from '../lib/sessionsApi';
 import { useNetStatus } from '../lib/offline/net';
 import type { Profile } from '../lib/profileApi';
+import { greetingName } from '../lib/displayName';
 import { haptics } from '../lib/haptics';
 
 type Day = FullPlan['training_days'][number];
@@ -69,7 +70,28 @@ function accentFor(dayName: string): string {
     ACCENTS[dayName] ?? ACCENTS[dayName.replace(/\s+\d+$/, '')] ?? FALLBACK_ACCENT
   );
 }
-const FIRST_NAME = 'Matt';
+/**
+ * The greeting, with or without a name.
+ *
+ * Splitting it here rather than inline keeps the two call sites (skeleton and
+ * loaded) identical — they used to drift. The name goes on its own line only
+ * when the greeting is two words, so "Good afternoon," never wraps mid-phrase.
+ */
+function Greeting({ name }: { name: string | null }) {
+  const hello = greeting();
+  return (
+    <h1 className="text-display font-bold leading-tight tracking-[-0.02em] text-ink">
+      {name == null ? (
+        `${hello}.`
+      ) : (
+        <>
+          {hello},
+          {hello.includes(' ') ? <span className="block">{name}.</span> : <> {name}.</>}
+        </>
+      )}
+    </h1>
+  );
+}
 
 function bodyPartsForDay(exercises: { body_part: string | null }[]): string {
   const parts: string[] = [];
@@ -147,6 +169,8 @@ export function Home({
 
   const showOnboardingBanner =
     !!profile && !profile.onboarding_completed && !bannerDismissed && !!onResumeOnboarding;
+  // Null until they've told us, and null is a perfectly good greeting.
+  const firstName = greetingName(profile?.display_name);
   const offline = !useNetStatus().reachable;
   // Hydrate synchronously from the module-level cache so tab switches don't
   // flash the skeleton. A background refresh always runs on mount to pick up
@@ -258,14 +282,7 @@ export function Home({
           className="mx-auto max-w-md px-5"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
         >
-          <h1 className="text-display font-bold leading-tight tracking-[-0.02em] text-ink">
-            {greeting()},
-            {greeting().includes(' ') ? (
-              <span className="block">{FIRST_NAME}.</span>
-            ) : (
-              <> {FIRST_NAME}.</>
-            )}
-          </h1>
+          <Greeting name={firstName} />
           <p className="mt-1.5 text-base text-muted">Ready to crush your goals today?</p>
           <div className="mt-6 h-[180px] animate-pulse rounded-card bg-paper-card shadow-card" />
           <div className="mt-8 h-3 w-24 animate-pulse rounded bg-line" />
@@ -411,14 +428,7 @@ export function Home({
         <SyncStatus className={active || showOnboardingBanner ? 'mt-5' : ''} />
 
         <div className={active || showOnboardingBanner ? 'mt-5' : ''}>
-          <h1 className="text-display font-bold leading-tight tracking-[-0.02em] text-ink">
-            {greeting()},
-            {greeting().includes(' ') ? (
-              <span className="block">{FIRST_NAME}.</span>
-            ) : (
-              <> {FIRST_NAME}.</>
-            )}
-          </h1>
+          <Greeting name={firstName} />
           <p className="mt-1.5 text-base text-muted">
             Ready to crush your goals today?
           </p>

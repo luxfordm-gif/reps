@@ -9,6 +9,7 @@ import {
   markOnboardingComplete,
 } from '../lib/profileApi';
 import { logBodyWeight } from '../lib/bodyWeightApi';
+import { cleanDisplayName, MAX_DISPLAY_NAME } from '../lib/displayName';
 import {
   getBodyWeightUnit,
   setBodyWeightUnit,
@@ -27,8 +28,9 @@ interface Props {
   onClose: (completed: boolean) => void;
 }
 
-type Step = 'gender' | 'birthday' | 'weight' | 'height' | 'goal' | 'experience' | 'ready';
-const ORDER: Step[] = ['gender', 'birthday', 'weight', 'height', 'goal', 'experience', 'ready'];
+type Step = 'name' | 'gender' | 'birthday' | 'weight' | 'height' | 'goal' | 'experience' | 'ready';
+// Name first: it's the one answer the app shows straight back to you.
+const ORDER: Step[] = ['name', 'gender', 'birthday', 'weight', 'height', 'goal', 'experience', 'ready'];
 
 const MOTIVATIONAL_LINES = [
   "Go get your dreams.",
@@ -57,11 +59,12 @@ function maxDOBISO(): string {
 }
 
 export function Onboarding({ initial, onClose }: Props) {
-  const [step, setStep] = useState<Step>('gender');
+  const [step, setStep] = useState<Step>('name');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Local form state, seeded from the profile so resume works.
+  const [name, setName] = useState<string>(initial?.display_name ?? '');
   const [gender, setGender] = useState<Gender | null>(initial?.gender ?? null);
   const [dob, setDob] = useState<string>(initial?.date_of_birth ?? '');
   const [weightKg, setWeightKg] = useState<number | null>(initial?.starting_weight_kg ?? null);
@@ -79,6 +82,8 @@ export function Onboarding({ initial, onClose }: Props) {
 
   function patchForStep(s: Step): ProfilePatch {
     switch (s) {
+      case 'name':
+        return { display_name: cleanDisplayName(name) };
       case 'gender':
         return { gender };
       case 'birthday':
@@ -98,6 +103,7 @@ export function Onboarding({ initial, onClose }: Props) {
 
   function fullPatch(): ProfilePatch {
     return {
+      display_name: cleanDisplayName(name),
       gender,
       date_of_birth: dob || null,
       starting_weight_kg: weightKg,
@@ -187,6 +193,16 @@ export function Onboarding({ initial, onClose }: Props) {
         onSkip={!isLast ? handleSkip : undefined}
         progress={(stepIdx + 1) / ORDER.length}
       >
+        {step === 'name' && (
+          <StepName
+            value={name}
+            onChange={setName}
+            onContinue={handleContinue}
+            canContinue={cleanDisplayName(name) != null}
+            busy={busy}
+            error={error}
+          />
+        )}
         {step === 'gender' && (
           <StepGender
             value={gender}
@@ -385,6 +401,56 @@ function StepGender({
             label={opt.label}
           />
         ))}
+      </div>
+      <ContinueFooter
+        onContinue={onContinue}
+        canContinue={canContinue}
+        busy={busy}
+        error={error}
+      />
+    </>
+  );
+}
+
+// ---------- Step: Birthday ----------
+
+function StepName({
+  value,
+  onChange,
+  onContinue,
+  canContinue,
+  busy,
+  error,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onContinue: () => void;
+  canContinue: boolean;
+  busy: boolean;
+  error: string | null;
+}) {
+  return (
+    <>
+      <StepHeading title="What should we call you?" subtitle="It's how the app greets you." />
+      <div className="mt-8 rounded-card bg-paper-card p-5 shadow-card">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            First name
+          </span>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && canContinue && !busy) onContinue();
+            }}
+            maxLength={MAX_DISPLAY_NAME}
+            autoComplete="given-name"
+            autoCapitalize="words"
+            placeholder="Alex"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-xl font-semibold tracking-tight text-ink placeholder:font-normal placeholder:text-muted/60 focus:border-ink focus:outline-none"
+          />
+        </label>
       </div>
       <ContinueFooter
         onContinue={onContinue}
