@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { PageHeader } from '../components/PageHeader';
-import { Tile, ChevronRight, BarsIcon, BoltIcon } from '../components/Tile';
+import { Tile, ChevronRight, BarsIcon, BoltIcon, WaterIcon, StepsIcon } from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
@@ -13,6 +13,8 @@ import {
 } from '../lib/performanceApi';
 import { loadRecords, type LiftRecord } from '../lib/recordsApi';
 import { headlineRecords } from '../lib/records';
+import { listWaterSince, type WaterDay } from '../lib/waterApi';
+import { listSteps, formatSteps, type StepRow } from '../lib/stepsApi';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import { buildDaySlots } from '../lib/daySlots';
 import {
@@ -24,6 +26,8 @@ import {
 import {
   bodyWeightRange,
   computeConsistency,
+  weekDailyAverage,
+  weekStartISO,
   computeWeekStreak,
   computeWeeklyLoad,
   type WeekStreak,
@@ -62,6 +66,8 @@ interface Loaded {
   plan: FullPlan | null;
   sessions: CompletedSessionSummary[];
   week: WeekSummary;
+  water: WaterDay[];
+  steps: StepRow[];
 }
 
 const EMPTY_WEEK: WeekSummary = {
@@ -72,14 +78,19 @@ const EMPTY_WEEK: WeekSummary = {
 
 /** Each source fails on its own; one missing table must not blank the tab. */
 async function loadAll(): Promise<Loaded> {
-  const [perf, records, plan, sessions, week] = await Promise.all([
+  // Only this week is needed for the habit averages, so the water query is
+  // bounded rather than fetching a year to divide seven days by.
+  const weekFrom = weekStartISO(new Date());
+  const [perf, records, plan, sessions, week, water, steps] = await Promise.all([
     loadPerformanceData().catch(() => ({ sets: [], bodyWeights: [] })),
     loadRecords().catch(() => []),
     getActivePlan().catch(() => null),
     listCompletedSessions().catch(() => []),
     getThisWeekSummary().catch(() => EMPTY_WEEK),
+    listWaterSince(weekFrom).catch(() => []),
+    listSteps().catch(() => []),
   ]);
-  return { perf, records, plan, sessions, week };
+  return { perf, records, plan, sessions, week, water, steps };
 }
 
 export function Performance() {
@@ -127,6 +138,8 @@ export function Performance() {
       weeklyTarget,
       consistency: computeConsistency(gymSessions, activatedAt, weeklyTarget),
       streak: computeWeekStreak(gymSessions, weeklyTarget),
+      water: weekDailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
+      steps: weekDailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
       load: computeWeeklyLoad(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       strength: computeOverallStrength(perf.sets, activatedAt),
@@ -223,6 +236,43 @@ export function Performance() {
                   value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
                   hint={
                     derived.perWeek.average != null ? 'average on this plan' : 'nothing logged yet'
+                  }
+                />
+              </div>
+            </Block>
+
+            {/* The daily habits, in the same shape as the training numbers
+                above them. Both are averaged over the days they were actually
+                logged — see weekDailyAverage — so the hint names that count
+                rather than letting "a day" imply a full week. */}
+            <Block>
+              <div className="grid grid-cols-2 gap-3">
+                <Tile
+                  icon={<WaterIcon />}
+                  label="Water"
+                  value={
+                    derived.water.average != null
+                      ? String(Math.round(derived.water.average * 10) / 10)
+                      : '–'
+                  }
+                  hint={
+                    derived.water.average != null
+                      ? `a day over ${derived.water.daysLogged} ${derived.water.daysLogged === 1 ? 'day' : 'days'}`
+                      : 'none logged this week'
+                  }
+                />
+                <Tile
+                  icon={<StepsIcon />}
+                  label="Steps"
+                  value={
+                    derived.steps.average != null
+                      ? formatSteps(Math.round(derived.steps.average))
+                      : '–'
+                  }
+                  hint={
+                    derived.steps.average != null
+                      ? `a day over ${derived.steps.daysLogged} ${derived.steps.daysLogged === 1 ? 'day' : 'days'}`
+                      : 'none logged this week'
                   }
                 />
               </div>
