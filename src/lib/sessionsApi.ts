@@ -1747,6 +1747,55 @@ function writeLastSetsCache(
   writeCache(userId, lastSetsCacheName(normalizedName), entry);
 }
 
+/**
+ * Record that a warm asked after this machine and the answer was "no history".
+ *
+ * Counting cached sets alone can't tell an exercise you have never trained from
+ * one the phone failed to fetch, so a brand new movement looked forever like a
+ * download that hadn't happened — and tapping to load it found nothing to load.
+ * Never replaces real sets: a warm that comes back empty for a machine you have
+ * trained means the filters excluded everything, not that the history is gone.
+ */
+function markLastSetsEmpty(
+  userId: string | null,
+  normalizedName: string,
+  baselineResetAt: string | null
+): void {
+  if (!userId) return;
+  const prev = readLastSetsCache(userId, normalizedName);
+  if (prev) {
+    const live = prev.sets.filter((s) => !baselineResetAt || s.completed_at >= baselineResetAt);
+    if (live.length > 0) return;
+  }
+  const entry: LastSetsCacheEntry = {
+    sets: [],
+    sessionId: null,
+    cachedAt: new Date().toISOString(),
+    baselineResetAt,
+  };
+  writeCache(userId, lastSetsCacheName(normalizedName), entry);
+}
+
+/**
+ * Has this device got an answer for this machine — including the answer "you
+ * have never trained it"?
+ *
+ * An entry only speaks for the baseline it was written under. Move the baseline
+ * and the question reopens, whether the entry was empty or full: weights from
+ * before a reset aren't "last time" any more, and only the server knows whether
+ * anything has been logged since. Entries from before this cache carried a
+ * timestamp say nothing either way — their sets, if any, answer on their own.
+ */
+function hasWarmedLastSets(
+  userId: string | null,
+  normalizedName: string,
+  baselineResetAt: string | null
+): boolean {
+  const entry = readLastSetsCache(userId, normalizedName);
+  if (!entry || entry.cachedAt === '') return false;
+  return (entry.baselineResetAt ?? null) === baselineResetAt;
+}
+
 /** Forget a machine's warmed weights — used when a slot is renamed or merged
  *  into another identity and the old key can never match again. */
 export function dropLastSetsCache(userId: string | null, normalizedName: string): void {
@@ -1925,10 +1974,23 @@ async function fetchWarmWindow(userId: string, names: string[]): Promise<LoggedS
   return rows;
 }
 
+interface WarmTopUp {
+  rows: LoggedSet[];
+  /**
+   * Names whose chunk came back full.
+   *
+   * A chunk shares one row limit between twenty machines, so a busy one can
+   * crowd out the rest — finding nothing for a name in a saturated chunk means
+   * "didn't reach it", not "never trained".
+   */
+  uncertain: Set<string>;
+}
+
 /** Exercises with nothing in the window get their own look further back — a
  *  movement you last did four months ago should still pre-fill. */
-async function fetchWarmTopUp(userId: string, names: string[]): Promise<LoggedSet[]> {
+async function fetchWarmTopUp(userId: string, names: string[]): Promise<WarmTopUp> {
   const rows: LoggedSet[] = [];
+  const uncertain = new Set<string>();
   for (let i = 0; i < names.length; i += WARM_TOPUP_CHUNK) {
     const chunk = names.slice(i, i + WARM_TOPUP_CHUNK);
     const batch =
@@ -1943,8 +2005,9 @@ async function fetchWarmTopUp(userId: string, names: string[]): Promise<LoggedSe
         { label: 'warmLastSetsTopUp' }
       )) as LoggedSet[]) ?? [];
     rows.push(...batch);
+    if (batch.length >= WARM_TOPUP_ROWS) for (const name of chunk) uncertain.add(name);
   }
-  return rows;
+  return { rows, uncertain };
 }
 
 /**
@@ -1977,21 +2040,33 @@ async function warmLastSets(
   let buckets = bucketLastSets(rows, unique, exclude);
 
   const missing = unique.filter((t) => !buckets.has(t.normalizedName));
+  // Names the server has now been asked about properly, so an empty answer for
+  // them is the truth rather than a query that didn't look far enough back.
+  let answered = new Set(unique.map((t) => t.normalizedName));
   if (missing.length > 0) {
     try {
       const extra = await fetchWarmTopUp(
         userId,
         missing.map((t) => t.normalizedName)
       );
-      const topped = bucketLastSets(extra, missing, exclude);
+      const topped = bucketLastSets(extra.rows, missing, exclude);
       buckets = new Map([...buckets, ...topped]);
+      for (const name of extra.uncertain) answered.delete(name);
     } catch {
-      // Keep whatever the window did find.
+      // Keep whatever the window did find, and claim nothing about the rest:
+      // a machine the top-up never got to isn't a machine with no history.
+      answered = new Set();
     }
   }
 
   for (const [name, sets] of buckets) {
     writeLastSetsCache(userId, name, sets, byName.get(name)?.baselineResetAt ?? null);
+  }
+  // An exercise you have never trained has no weights to warm. Saying so is what
+  // keeps the day screen from offering to load what doesn't exist.
+  for (const name of answered) {
+    if (buckets.has(name)) continue;
+    markLastSetsEmpty(userId, name, byName.get(name)?.baselineResetAt ?? null);
   }
   return buckets.size;
 }
@@ -2075,12 +2150,18 @@ export async function warmLastSetsForPlan(options: { force?: boolean } = {}): Pr
 }
 
 /**
- * How much of a day can be logged with no signal: exercises whose last weights
- * are already on the phone, out of the total.
+ * How much of a day can be logged with no signal: exercises the phone has an
+ * answer for, out of the total.
+ *
+ * "An answer" includes no history at all — a machine you have never touched is
+ * as ready to log offline as one with three months behind it, because there is
+ * nothing to fetch either way. Only an exercise whose weights exist and haven't
+ * reached the device counts against you.
  */
 export function lastSetsWarmth(
   exercises: { normalized_name: string; baseline_reset_at?: string | null }[]
 ): { covered: number; total: number } {
+  const userId = currentUserIdSync();
   const seen = new Set<string>();
   let covered = 0;
   let total = 0;
@@ -2088,9 +2169,10 @@ export function lastSetsWarmth(
     if (seen.has(ex.normalized_name)) continue;
     seen.add(ex.normalized_name);
     total += 1;
+    const baseline = ex.baseline_reset_at ?? null;
     if (
-      getCachedLastSetsForExercise(ex.normalized_name, undefined, ex.baseline_reset_at ?? null)
-        .length > 0
+      getCachedLastSetsForExercise(ex.normalized_name, undefined, baseline).length > 0 ||
+      hasWarmedLastSets(userId, ex.normalized_name, baseline)
     ) {
       covered += 1;
     }
