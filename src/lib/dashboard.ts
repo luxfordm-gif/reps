@@ -476,3 +476,44 @@ export function computeWeeklyLoad(
   }
   return out;
 }
+
+// --- Daily habits ----------------------------------------------------------------------
+
+export interface DailyAverage {
+  /** Mean across the days that carry an entry. Null when none do. */
+  average: number | null;
+  /** How many days this week carry one. */
+  daysLogged: number;
+}
+
+/**
+ * This week's average for something logged once a day — water, steps.
+ *
+ * Averaged over the days that were actually logged, not over the days that
+ * have passed. Both of these are entered by hand, so a day with no row means
+ * "didn't write it down" far more often than it means zero, and dividing by
+ * the calendar would turn three well-tracked days into a number that looks
+ * like failure. The count of days comes back alongside the figure so the tile
+ * can say what it was averaged over rather than implying a full week.
+ *
+ * A row of zero doesn't count as a day. The water tile decrements as well as
+ * increments, so zero is usually a tap taken back rather than a day's honest
+ * total.
+ */
+export function weekDailyAverage(
+  entries: { date: string; value: number }[],
+  now: Date = new Date(),
+): DailyAverage {
+  const from = weekStartISO(now);
+  const to = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  // Dates are yyyy-mm-dd, so lexical order is chronological order.
+  const inWeek = entries.filter((e) => e.value > 0 && e.date >= from && e.date <= to);
+  if (inWeek.length === 0) return { average: null, daysLogged: 0 };
+
+  // One row per day is the shape of both tables, but a duplicate would double
+  // count a day, so they're folded by date first.
+  const byDay = new Map<string, number>();
+  for (const e of inWeek) byDay.set(e.date, (byDay.get(e.date) ?? 0) + e.value);
+  const total = [...byDay.values()].reduce((sum, v) => sum + v, 0);
+  return { average: total / byDay.size, daysLogged: byDay.size };
+}

@@ -54,7 +54,7 @@ export async function getTodayWaterCount(): Promise<number> {
         .eq('user_id', userId)
         .eq('recorded_on', today)
         .maybeSingle(),
-      { label: 'getTodayWaterCount' }
+      { label: 'getTodayWaterCount' },
     );
     const count = (data as { count: number } | null)?.count ?? 0;
     writeCache(userId, waterCacheName(today), count);
@@ -62,6 +62,39 @@ export async function getTodayWaterCount(): Promise<number> {
   } catch (e) {
     if (!isOfflineError(e)) return 0;
     return readCache<number>(userId, waterCacheName(today)) ?? 0;
+  }
+}
+
+export interface WaterDay {
+  /** yyyy-mm-dd, local. */
+  recorded_on: string;
+  count: number;
+}
+
+/**
+ * Every day's count from `from` (yyyy-mm-dd) onwards.
+ *
+ * Read-only and best-effort: this feeds an average on the Performance tab, and
+ * a tile that can't be drawn is a smaller problem than a tab that won't load,
+ * so no-signal comes back empty rather than throwing. There is no offline
+ * cache for it — unlike today's count, nothing is logged against it.
+ */
+export async function listWaterSince(from: string): Promise<WaterDay[]> {
+  const userId = await currentUserId();
+  if (!userId) return [];
+  try {
+    const data = await query(
+      supabase
+        .from('water_logs')
+        .select('recorded_on, count')
+        .eq('user_id', userId)
+        .gte('recorded_on', from)
+        .order('recorded_on', { ascending: true }),
+      { label: 'listWaterSince' },
+    );
+    return (data as WaterDay[]) ?? [];
+  } catch {
+    return [];
   }
 }
 
@@ -80,7 +113,7 @@ export async function adjustWater(delta: number): Promise<number> {
         .eq('user_id', userId)
         .eq('recorded_on', today)
         .maybeSingle(),
-      { label: 'water:read' }
+      { label: 'water:read' },
     );
     const next = Math.max(0, ((existing as { count: number } | null)?.count ?? 0) + delta);
     const data = await query(
@@ -88,11 +121,11 @@ export async function adjustWater(delta: number): Promise<number> {
         .from('water_logs')
         .upsert(
           { user_id: userId, recorded_on: today, count: next },
-          { onConflict: 'user_id,recorded_on' }
+          { onConflict: 'user_id,recorded_on' },
         )
         .select()
         .single(),
-      { label: 'water:write' }
+      { label: 'water:write' },
     );
     const saved = (data as { count: number }).count;
     writeCache(userId, cacheName, saved);
