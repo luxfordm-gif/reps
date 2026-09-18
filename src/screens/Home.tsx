@@ -345,6 +345,7 @@ export function Home({
               </button>
             </div>
           )}
+          {!offline && <WhatsInside />}
         </div>
       </div>
     );
@@ -1117,6 +1118,109 @@ function ScaleIcon() {
         strokeWidth="2.401"
         strokeLinejoin="round"
         transform="translate(1.5041,1.4000) scale(0.208219)"
+      />
+    </svg>
+  );
+}
+
+/**
+ * The handful of things worth knowing about before you've used the app.
+ *
+ * It sits under the two cards on Home rather than inside onboarding: someone
+ * arriving with a plan to upload is here to upload it, and a tour in the way of
+ * that is a tour nobody reads. Here it waits until they look down.
+ */
+function WhatsInside() {
+  const items: { icon: React.ReactNode; title: string; body: string }[] = [
+    {
+      icon: <PlateIcon />,
+      title: 'Plate calculator',
+      body: 'Tap a weight while you log and it works out which plates go on the bar \u2014 one side at a time, from the plates your gym actually has.',
+    },
+    {
+      icon: <PegsIcon />,
+      title: 'Machines that need more than one number',
+      body: 'Plate-loaded machines log peg by peg, because 20 kg on peg 3 is nothing like 20 kg on peg 1. Cable machines record which position the cam was set to.',
+    },
+    {
+      icon: <NotepadIcon />,
+      title: 'Logged the way the machine works',
+      body: 'Type a weight against each peg and the total is what your records, PRs and history read \u2014 the breakdown rides along underneath.',
+    },
+    {
+      icon: <DropletIcon />,
+      title: 'Water, coffee, weight and steps',
+      body: 'Four tiles on Home. Tap one to add, hold it to take one back \u2014 no screen to open first.',
+    },
+  ];
+  return (
+    <div className="mt-4 rounded-card bg-paper-card p-5 shadow-card">
+      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        What's inside
+      </div>
+      <ul className="mt-4 space-y-5">
+        {items.map((item) => (
+          <li key={item.title} className="flex gap-3.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-panel bg-surface-strong text-ink">
+              {item.icon}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-ink">{item.title}</div>
+              <p className="mt-0.5 text-sm leading-snug text-muted">{item.body}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PlateIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M3 10v4M21 10v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PegsIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path d="M5 4v16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path
+        d="M8 7h9M8 12h6M8 17h11"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function NotepadIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <rect x="4.5" y="3.5" width="15" height="17" rx="3" stroke="currentColor" strokeWidth="1.7" />
+      <path
+        d="M8.5 9h7M8.5 13h7M8.5 17h4"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function DropletIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 3.5s6 6.2 6 10a6 6 0 0 1-12 0c0-3.8 6-10 6-10z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
       />
     </svg>
   );
