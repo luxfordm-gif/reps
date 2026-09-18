@@ -24,6 +24,10 @@ import {
 import {
   bodyWeightRange,
   computeConsistency,
+  computeWeekStreak,
+  computeWeeklyLoad,
+  type WeekStreak,
+  type WeeklyLoadPoint,
   computeMostImproved,
   computeOverallStrength,
   computeWorkoutsPerWeek,
@@ -123,6 +127,8 @@ export function Performance() {
     return {
       weeklyTarget,
       consistency: computeConsistency(gymSessions, activatedAt, weeklyTarget),
+      streak: computeWeekStreak(gymSessions, weeklyTarget),
+      load: computeWeeklyLoad(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       strength: computeOverallStrength(perf.sets, activatedAt),
       mostImproved,
@@ -185,6 +191,12 @@ export function Performance() {
                 target={derived.weeklyTarget}
               />
             </Block>
+
+            {derived.streak.longest > 0 && (
+              <Block>
+                <StreakCard streak={derived.streak} target={derived.weeklyTarget} />
+              </Block>
+            )}
 
             <Block>
               <div className="grid grid-cols-2 gap-3">
@@ -257,6 +269,12 @@ export function Performance() {
                 />
               </div>
             </Block>
+
+            {derived.load.some((p) => p.sets > 0) && (
+              <Block>
+                <TrainingLoadCard load={derived.load} />
+              </Block>
+            )}
 
             <Block>
               <StrengthCard strength={derived.strength} />
@@ -369,6 +387,121 @@ function MiniBars({ values }: { values: number[] }) {
 }
 
 /** A small line with a soft fill under it. Values only; no axes. */
+/**
+ * Weeks in a row hitting the plan's target.
+ *
+ * Dark, and above everything else on the page, because it's the one number
+ * here that changes behaviour rather than describing it. The rest of the tab
+ * reports on training that has happened; this one is an argument for training
+ * tomorrow.
+ */
+function StreakCard({ streak, target }: { streak: WeekStreak; target: number }) {
+  const { current, longest, thisWeekCounts } = streak;
+  const live = current > 0;
+  return (
+    <div className="rounded-card bg-ink p-5 text-white shadow-lift">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
+            {live ? 'Streak' : 'Best streak'}
+          </div>
+          <div className="mt-1 text-display font-bold leading-none tracking-tight tabular-nums">
+            {live ? current : longest}
+            <span className="ml-1.5 text-base font-semibold text-white/70">
+              {(live ? current : longest) === 1 ? 'week' : 'weeks'}
+            </span>
+          </div>
+          <div className="mt-1.5 text-xs text-white/60">
+            {live
+              ? thisWeekCounts
+                ? `${target} a week · this one already counted`
+                : `${target} a week · finish this one for ${current + 1}`
+              : `${target} workouts in a week starts a new one`}
+          </div>
+        </div>
+        <FlameIcon lit={live} />
+      </div>
+      {live && longest > current && (
+        <div className="mt-3 border-t border-white/10 pt-2.5 text-xs text-white/55 tabular-nums">
+          Best run so far: {longest} weeks
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Twelve weeks of training, in sets.
+ *
+ * The rest of the tab looks at a fortnight or at one lift. This is the only
+ * place that answers "how has it been going lately", which is the question a
+ * chart is for — and the empty weeks are drawn, because a month off is the
+ * most informative thing a year of training has to say.
+ */
+function TrainingLoadCard({ load }: { load: WeeklyLoadPoint[] }) {
+  const thisWeek = load[load.length - 1]?.sets ?? 0;
+  const weeksTrained = load.filter((p) => p.sets > 0).length;
+  const average =
+    weeksTrained > 0 ? Math.round(load.reduce((sum, p) => sum + p.sets, 0) / load.length) : 0;
+  // Three evenly spaced weeks, labelled by month, as the axis.
+  const ticks = [0, Math.floor((load.length - 1) / 2), load.length - 1].map((i) => ({
+    i,
+    label: new Date(`${load[i].weekStart}T00:00:00`).toLocaleDateString('en-GB', {
+      month: 'short',
+    }),
+  }));
+
+  return (
+    <div className="rounded-card bg-paper-card p-5 shadow-card">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+          Training load
+        </div>
+        <div className="text-xs text-muted">Past 12 weeks</div>
+      </div>
+      <div className="mt-1 flex items-baseline gap-2">
+        <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
+          {thisWeek}
+        </div>
+        <div className="text-sm font-semibold text-muted">
+          {thisWeek === 1 ? 'set this week' : 'sets this week'}
+        </div>
+      </div>
+      <div className="mt-1 text-xs text-muted tabular-nums">{average} a week on average</div>
+      <div className="mt-4 h-20 w-full">
+        <Sparkline values={load.map((p) => p.sets)} stroke="#0A0A0A" fill="rgba(10,10,10,0.08)" />
+      </div>
+      <div className="mt-1.5 flex justify-between text-caption uppercase tracking-[0.12em] text-muted">
+        {ticks.map((t) => (
+          <span key={t.i}>{t.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FlameIcon({ lit }: { lit: boolean }) {
+  return (
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M12 2.6c.9 3.2-1.1 4.6-2.4 6.1a5.6 5.6 0 0 0-1.5 3.8 5.9 5.9 0 0 0 11.8 0c0-2.2-1-3.5-2.3-5-.5 1-1.2 1.6-2 1.9.3-2.9-1.2-5.4-3.6-6.8Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        className={lit ? 'text-white' : 'text-white/30'}
+        fill={lit ? 'rgba(255,255,255,0.15)' : 'none'}
+      />
+    </svg>
+  );
+}
+
 function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string; fill: string }) {
   if (values.length < 2) return null;
   const w = 100;

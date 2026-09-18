@@ -353,3 +353,126 @@ export function formatVolumeChange(pct: number | null): string | null {
   const arrow = pct > 0 ? '↑' : '↓';
   return `${arrow} ${Math.abs(pct)}% vs last time`;
 }
+
+// --- Showing up, week after week -------------------------------------------------------
+
+/**
+ * Seven days on, in local time.
+ *
+ * Not `+ 7 * WEEK_MS`: across a clocks-change weekend that arrives an hour
+ * early or late, and an hour early on a Monday lands in the previous week —
+ * which would silently break a streak twice a year.
+ */
+function addWeeks(d: Date, n: number): Date {
+  const out = new Date(d);
+  out.setDate(out.getDate() + n * 7);
+  return out;
+}
+
+export interface WeekStreak {
+  /** Consecutive weeks hitting the target, counting this one if it's there. */
+  current: number;
+  /** The longest such run there has ever been. */
+  longest: number;
+  /** Whether this week is already among them. */
+  thisWeekCounts: boolean;
+}
+
+/**
+ * Consecutive weeks of hitting the plan's weekly target.
+ *
+ * Deliberately not the same thing as consistency. Consistency is a ratio and
+ * it forgives — a missed week disappears into an average, and 92% stays 92%.
+ * A streak is a run: it breaks, and it can be rebuilt. That's the whole reason
+ * it's worth having as well.
+ *
+ * The week in progress is never counted against you. On a Monday you have had
+ * no chance to train yet, and a streak that reads zero every Monday morning is
+ * one nobody would keep. So a target not yet met this week leaves the run
+ * standing on the completed weeks behind it; meeting it extends the run early.
+ */
+export function computeWeekStreak(
+  sessions: { completed_at: string }[],
+  weeklyTarget: number,
+  now: Date = new Date(),
+): WeekStreak {
+  if (weeklyTarget <= 0 || sessions.length === 0) {
+    return { current: 0, longest: 0, thisWeekCounts: false };
+  }
+
+  const counts = new Map<string, number>();
+  for (const s of sessions) {
+    const k = weekStartISO(new Date(s.completed_at));
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  const hit = (d: Date) => (counts.get(weekStartISO(d)) ?? 0) >= weeklyTarget;
+
+  const thisWeekCounts = hit(now);
+  let current = thisWeekCounts ? 1 : 0;
+  for (let i = 1; ; i++) {
+    if (!hit(addWeeks(now, -i))) break;
+    current += 1;
+  }
+
+  // Longest runs over finished weeks only, then the run in progress is offered
+  // alongside it — an unfinished week can't be the thing that breaks a record.
+  const weeks = [...counts.keys()].sort();
+  let longest = 0;
+  let run = 0;
+  const thisWeekKey = weekStartISO(now);
+  for (
+    let d = new Date(`${weeks[0]}T00:00:00`);
+    weekStartISO(d) < thisWeekKey;
+    d = addWeeks(d, 1)
+  ) {
+    if (hit(d)) {
+      run += 1;
+      if (run > longest) longest = run;
+    } else {
+      run = 0;
+    }
+  }
+
+  return { current, longest: Math.max(longest, current), thisWeekCounts };
+}
+
+// --- Training load ---------------------------------------------------------------------
+
+export interface WeeklyLoadPoint {
+  /** Monday (yyyy-mm-dd) of the week. */
+  weekStart: string;
+  /** Sets logged that week. */
+  sets: number;
+}
+
+/**
+ * Sets per week over the last `weeks` weeks, oldest first.
+ *
+ * Sets rather than kilograms, and not as a consolation: the weight column
+ * mixes kilograms with the pin positions a stack machine logs (see units.ts),
+ * so a total across machines isn't a quantity of anything. Sets are exactly
+ * true, they include the press-up and mobility work a weight total scores as
+ * zero, and weekly set count is the measure training programmes are actually
+ * written in.
+ *
+ * Every week in the window is returned, including the empty ones. A series
+ * that omits them draws a straight line over a fortnight off and hides the
+ * one thing a twelve-week chart exists to show.
+ */
+export function computeWeeklyLoad(
+  sets: { completedAt: string }[],
+  weeks = 12,
+  now: Date = new Date(),
+): WeeklyLoadPoint[] {
+  const counts = new Map<string, number>();
+  for (const s of sets) {
+    const k = weekStartISO(new Date(s.completedAt));
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  const out: WeeklyLoadPoint[] = [];
+  for (let i = weeks - 1; i >= 0; i--) {
+    const weekStart = weekStartISO(addWeeks(now, -i));
+    out.push({ weekStart, sets: counts.get(weekStart) ?? 0 });
+  }
+  return out;
+}
