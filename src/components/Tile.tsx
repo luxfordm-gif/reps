@@ -11,7 +11,6 @@ export function Tile({
   label,
   value,
   hint,
-  visual,
   onClick,
 }: {
   icon: ReactNode;
@@ -19,18 +18,21 @@ export function Tile({
   /** A node, not just a string, so a unit can be set smaller than its number. */
   value: ReactNode;
   hint?: string;
-  visual?: ReactNode;
   onClick?: () => void;
 }) {
   // Icon above the words, not beside them: at phone width two tiles share
   // ~330px, and an icon column left the label with room for "Body wei…".
   //
-  // Two tiles in a row are the same height whatever is in them, so where the
-  // slack goes decides whether they look aligned. The rule: the icon is pinned
-  // to the top and the visual to the bottom, and the words flow down from the
-  // icon. Labels, numbers and hints then line up across the pair, the visuals
-  // sit on a shared baseline, and any spare height collects in the middle
-  // where nothing has to line up with anything.
+  // Four lines, always, in this order — and deliberately nothing else. This
+  // used to take a `visual` too, so one tile carried a row of dots, its
+  // neighbour a bar chart and a third nothing at all, and a grid of them read
+  // as a pile of separate designs. The fix isn't to give every tile a picture,
+  // it's that a stat tile doesn't have one: a number and a line of context,
+  // the same shape every time. Anything that needs a chart is a card of its
+  // own, full width, where a chart can be read.
+  //
+  // The floor height is a minimum rather than a fixed height: at the largest
+  // accessibility text sizes a fixed one clips the hint.
   const body = (
     <>
       <div className="flex items-center justify-between">
@@ -44,12 +46,12 @@ export function Tile({
         {value}
       </div>
       {hint && <div className="mt-1 truncate text-xs text-muted">{hint}</div>}
-      {visual && <div className="mt-auto pt-3">{visual}</div>}
     </>
   );
-  const cls = 'flex h-full flex-col rounded-card bg-paper-card p-4 shadow-card';
+  const cls =
+    'flex h-full min-h-[156px] flex-col rounded-card bg-paper-card p-4 text-left shadow-card';
   return onClick ? (
-    <button type="button" onClick={onClick} className={`${cls} w-full text-left active:bg-surface`}>
+    <button type="button" onClick={onClick} className={`${cls} w-full active:bg-surface`}>
       {body}
     </button>
   ) : (

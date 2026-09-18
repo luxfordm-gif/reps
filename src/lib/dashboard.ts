@@ -376,11 +376,6 @@ export interface WeekStreak {
   longest: number;
   /** Whether this week is already among them. */
   thisWeekCounts: boolean;
-  /**
-   * The last seven weeks, oldest first, this one last: did each hit the
-   * target. The week-scale twin of the day dots on the consistency tile.
-   */
-  recentWeeks: boolean[];
 }
 
 /**
@@ -401,9 +396,8 @@ export function computeWeekStreak(
   weeklyTarget: number,
   now: Date = new Date(),
 ): WeekStreak {
-  const noWeeks = Array.from({ length: 7 }, () => false);
   if (weeklyTarget <= 0 || sessions.length === 0) {
-    return { current: 0, longest: 0, thisWeekCounts: false, recentWeeks: noWeeks };
+    return { current: 0, longest: 0, thisWeekCounts: false };
   }
 
   const counts = new Map<string, number>();
@@ -439,9 +433,7 @@ export function computeWeekStreak(
     }
   }
 
-  const recentWeeks = Array.from({ length: 7 }, (_, i) => hit(addWeeks(now, i - 6)));
-
-  return { current, longest: Math.max(longest, current), thisWeekCounts, recentWeeks };
+  return { current, longest: Math.max(longest, current), thisWeekCounts };
 }
 
 // --- Training load ---------------------------------------------------------------------
