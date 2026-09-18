@@ -96,6 +96,22 @@ h1, h2, h3, h4 {
   --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Keyboard focus, in the app's own colour.
+
+   The browser's default ring is blue, which in a black-and-white app is the
+   only colour on the screen and reads as an error before it reads as focus.
+   This is a replacement, not a removal: take the ring away and someone
+   navigating by keyboard has no idea where they are. `:focus-visible` rather
+   than `:focus`, so it answers the keyboard and stays out of the way of a tap.
+
+   Text fields opt out of this with `focus:outline-none` and darken their own
+   border instead, which is the clearer signal inside a field. That utility
+   outranks this rule, so they keep it. */
+:focus-visible {
+  outline: 2px solid #0a0a0a;
+  outline-offset: 2px;
+}
+
 /* A panel arriving over the screen.
 
    It used to travel translateY(100%) — its own full height. That looks right
