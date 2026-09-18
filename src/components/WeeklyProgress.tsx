@@ -88,7 +88,7 @@ export function WeeklyProgress({
               disabled={!hasAny}
               aria-label={`${FULL_DAYS[i]} workouts`}
               aria-pressed={isSelected}
-              className={`flex flex-1 flex-col items-center gap-1.5 rounded-panel px-0.5 py-1.5 disabled:cursor-default ${
+              className={`flex flex-1 flex-col items-center gap-1.5 rounded-md px-0.5 py-1.5 disabled:cursor-default ${
                 isToday ? 'bg-white/[0.07]' : ''
               }`}
             >
