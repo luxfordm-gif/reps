@@ -112,6 +112,23 @@ h1, h2, h3, h4 {
   outline-offset: 2px;
 }
 
+/* Charts, when you tap one.
+
+   Recharts moves focus onto an internal <g tabindex="-1"> as the tooltip
+   opens, and the browser paints its own `outline: auto` around it — a hard
+   rectangle across the whole plot area, which on a phone reads as a
+   rendering fault rather than as focus. It isn't this app's ring: the
+   element doesn't match :focus-visible, so the rule above never gets a say
+   and restyling it wouldn't help either.
+
+   Suppressed only where the focus didn't come from a keyboard. Tab to a
+   chart and :focus-visible still matches, so the black ring above still
+   does its job. */
+.recharts-wrapper :focus:not(:focus-visible),
+.recharts-wrapper:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* A panel arriving over the screen.
 
    It used to travel translateY(100%) — its own full height. That looks right

@@ -41,15 +41,17 @@ import {
   type WeekSummary,
 } from '../lib/sessionsApi';
 import {
+  bodyWeightChange,
   bodyWeightRange,
-  weekDailyAverage,
-  weekStartISO,
+  dailyAverage,
+  HABIT_WINDOW_DAYS,
   computeWeekStreak,
   computeWeeklyVolume,
   weekVsAveragePct,
   computeWorkoutsPerWeek,
   compareWeeks,
   compareWindow,
+  countSessionsByExercise,
   summarizeBodyWeight,
   type WeekStreak,
   type WeeklyVolumePoint,
@@ -134,9 +136,13 @@ const EMPTY_WEEK: WeekSummary = {
 
 /** Each source fails on its own; one missing table must not blank the tab. */
 async function loadAll(): Promise<Loaded> {
-  // Only this week is needed for the habit averages, so the water query is
-  // bounded rather than fetching a year to divide seven days by.
-  const weekFrom = weekStartISO(new Date());
+  // Bounded to what the habit average actually reads rather than fetching a
+  // year of rows to divide by. This used to ask for the current week only,
+  // which quietly capped the average at however much of this week had
+  // happened however wide the window said it was.
+  const from = new Date();
+  from.setDate(from.getDate() - (HABIT_WINDOW_DAYS - 1));
+  const weekFrom = `${from.getFullYear()}-${pad2(from.getMonth() + 1)}-${pad2(from.getDate())}`;
   const [perf, records, plan, sessions, week, water, steps] = await Promise.all([
     loadPerformanceData().catch(() => ({ sets: [], bodyWeights: [] })),
     loadRecords().catch(() => []),
@@ -198,14 +204,17 @@ export function Performance() {
     return {
       weeklyTarget,
       streak: computeWeekStreak(gymSessions, weeklyTarget),
-      water: weekDailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
-      steps: weekDailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
+      water: dailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
+      steps: dailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
       volume: computeWeeklyVolume(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       bodyWeight: summarizeBodyWeight(perf.bodyWeights, activatedAt),
       // Every lift that has ever been logged has a record, so this is what
       // decides whether a name anywhere on the tab is worth making tappable.
       recordNames: new Set(records.map((r) => r.normalizedName)),
+      // How often each movement has actually been trained, for the library's
+      // ordering and for holding back the ones done once.
+      sessionsByExercise: countSessionsByExercise(perf.sets),
     };
   }, [data]);
 
@@ -259,14 +268,16 @@ export function Performance() {
     return (
       <div className="pb-nav min-h-screen bg-paper">
         <div
+          // No safe-area padding here: PageHeader's sticky bar carries it,
+          // and adding it again left the status-bar gap doubled.
           className="mx-auto max-w-md px-5"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}
         >
           <PageHeader title="All-time records" onBack={() => setView('dashboard')} />
           <div className="mt-4">
             <RecordsBoard
               records={data.records}
               improvement={improvement}
+              sessions={derived?.sessionsByExercise}
               onSelect={(n) => openRecord(n, 'records')}
             />
           </div>
@@ -344,9 +355,11 @@ export function Performance() {
               </Block>
             )}
 
-            {/* How often, and the two habits. Averaged over the days actually
-                logged — see weekDailyAverage — so a well-tracked Tuesday and
-                Wednesday don't read as a failed week. */}
+            {/* How often, and the two habits. The habits average over three
+                weeks and over the days actually logged — see dailyAverage —
+                so a couple of missed days don't read as a collapse, and a
+                Monday with nothing written down yet doesn't blank the tile
+                entirely, which is what made steps look broken. */}
             <Block>
               <div className="grid grid-cols-3 gap-2.5">
                 <MiniTile
@@ -361,9 +374,9 @@ export function Performance() {
                   value={
                     derived.water.average != null
                       ? String(Math.round(derived.water.average * 10) / 10)
-                      : '–'
+                      : '—'
                   }
-                  hint="per day"
+                  hint={derived.water.average != null ? 'per day · 3w' : 'Not tracked'}
                 />
                 <MiniTile
                   icon={<StepsIcon />}
@@ -371,9 +384,9 @@ export function Performance() {
                   value={
                     derived.steps.average != null
                       ? formatSteps(Math.round(derived.steps.average))
-                      : '–'
+                      : '—'
                   }
-                  hint="per day"
+                  hint={derived.steps.average != null ? 'per day · 3w' : 'Not tracked'}
                 />
               </div>
             </Block>
@@ -989,13 +1002,16 @@ function Block({ children }: { children: React.ReactNode }) {
 
 type DetailRange = 7 | 14 | 30 | 90 | 182 | 365 | 0;
 
+// The pill governs the figure, so the words beside it only have to name the
+// span — "in the last three months" wrapped onto a second line to say what
+// "3 months" already said.
 const RANGE_LABELS: { days: DetailRange; label: string; prose: string }[] = [
-  { days: 7, label: '1w', prose: 'in the last week' },
-  { days: 14, label: '2w', prose: 'in the last fortnight' },
-  { days: 30, label: '1m', prose: 'in the last month' },
-  { days: 90, label: '3m', prose: 'in the last three months' },
-  { days: 182, label: '6m', prose: 'in the last six months' },
-  { days: 365, label: '1y', prose: 'in the last year' },
+  { days: 7, label: '1w', prose: 'this week' },
+  { days: 14, label: '2w', prose: '2 weeks' },
+  { days: 30, label: '1m', prose: '1 month' },
+  { days: 90, label: '3m', prose: '3 months' },
+  { days: 182, label: '6m', prose: '6 months' },
+  { days: 365, label: '1y', prose: '1 year' },
   { days: 0, label: 'All', prose: 'all time' },
 ];
 
@@ -1068,8 +1084,8 @@ function RecordDetail({
   return (
     <div className="pb-nav min-h-screen bg-paper">
       <div
+        // No safe-area padding here: PageHeader's sticky bar carries it.
         className="mx-auto max-w-md px-5"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}
       >
         {/* PageHeader already draws the large title and collapses it into the
             sticky bar on scroll, so the movement's name is not repeated here.
@@ -1159,7 +1175,7 @@ function RecordDetail({
               }
             />
             <PersonalRecord
-              label="Best estimated 1RM"
+              label="Estimated 1RM"
               value={record.best1RMkg > 0 ? formatLoadShort(record.best1RMkg, record.unit) : '–'}
             />
             <PersonalRecord label="Most reps" value={mostReps != null ? String(mostReps) : '–'} />
@@ -1206,8 +1222,9 @@ function RecordDetail({
 function PersonalRecord({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col px-2 first:pl-0 last:pr-0">
-      {/* Wraps rather than clips: "Best estimated 1RM" is three words and a
-          numeral, and there is no shorter way to say it that stays honest. */}
+      {/* Wraps rather than clips, for a label too long for a third of a
+          phone. The card's own heading says these are personal records, so
+          none of them repeats the word "best". */}
       <div className="text-caption leading-tight text-muted">{label}</div>
       <div className="mt-auto truncate pt-1 text-lg font-bold leading-tight tracking-tight text-ink tabular-nums">
         {value}
@@ -1341,13 +1358,19 @@ function BodyWeightCard({
   /** "over 12 weeks" — names the window the change is measured across. */
   rangeLabel: string;
 }) {
+  // Sorted on the date the chart is keyed by, so no caller's ordering can
+  // flip it — see bodyWeightChange, which had to learn this the hard way.
+  const ascending = useMemo(
+    () => [...rows].sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1)),
+    [rows],
+  );
   const points = useMemo(
     () =>
-      [...rows].reverse().map((r) => ({
+      ascending.map((r) => ({
         label: r.recorded_on,
         value: bwUnit === 'kg' ? r.weight_kg : toDecimalStones(r.weight_kg),
       })),
-    [rows, bwUnit],
+    [ascending, bwUnit],
   );
 
   // Both figures come from the rows the chart is drawing, so the number and
@@ -1355,9 +1378,7 @@ function BodyWeightCard({
   // of the plan however far back the pills were set, which meant moving the
   // range redrew the graph and left the delta saying something about a
   // different span of time.
-  const latestKg = rows.length > 0 ? rows[0].weight_kg : null;
-  const earliestKg = rows.length > 1 ? rows[rows.length - 1].weight_kg : null;
-  const deltaKg = latestKg != null && earliestKg != null ? latestKg - earliestKg : null;
+  const { latestKg, deltaKg } = useMemo(() => bodyWeightChange(rows), [rows]);
 
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">

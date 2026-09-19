@@ -26,6 +26,11 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+/** Local yyyy-mm-dd, for anything that counts by calendar day. */
+function dayISO(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Monday (yyyy-mm-dd) of the week containing `d`. Weeks start Monday here. */
 export function weekStartISO(d: Date): string {
   const dow = (d.getDay() + 6) % 7;
@@ -303,6 +308,36 @@ export function bodyWeightRange<T extends { recorded_on: string }>(
     .sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1));
 }
 
+export interface BodyWeightChange {
+  /** Most recent reading in the range. */
+  latestKg: number | null;
+  /** Oldest reading in the range, or null when there is only one. */
+  earliestKg: number | null;
+  /** Latest minus earliest. Positive is a gain. */
+  deltaKg: number | null;
+}
+
+/**
+ * What a range of weigh-ins says, without caring how they arrived.
+ *
+ * Sorted here rather than assumed, because assuming is exactly what went
+ * wrong: the card read the rows newest-first and reversed them, while
+ * bodyWeightRange hands them over oldest-first. The graph came out mirrored,
+ * the headline quoted a reading from three months ago as though it were
+ * today's, and a four-kilo gain was reported as a four-kilo loss.
+ */
+export function bodyWeightChange(rows: { recorded_on: string; weight_kg: number }[]): BodyWeightChange {
+  if (rows.length === 0) return { latestKg: null, earliestKg: null, deltaKg: null };
+  const sorted = [...rows].sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1));
+  const latestKg = sorted[sorted.length - 1].weight_kg;
+  const earliestKg = sorted.length > 1 ? sorted[0].weight_kg : null;
+  return {
+    latestKg,
+    earliestKg,
+    deltaKg: earliestKg != null ? latestKg - earliestKg : null,
+  };
+}
+
 // --- Records -------------------------------------------------------------------------
 
 /** Records whose headline set was hit in the last `days` days. */
@@ -483,40 +518,51 @@ export function computeWeeklyLoad(
 // --- Daily habits ----------------------------------------------------------------------
 
 export interface DailyAverage {
-  /** Mean across the days that carry an entry. Null when none do. */
+  /** Mean across the days in the window that carry an entry. Null when none do. */
   average: number | null;
-  /** How many days this week carry one. */
+  /** How many days in the window carry one. */
   daysLogged: number;
 }
 
+/** The window the habit tiles average over, in days. */
+export const HABIT_WINDOW_DAYS = 21;
+
 /**
- * This week's average for something logged once a day — water, steps.
+ * A daily average for something logged once a day — water, steps.
  *
  * Averaged over the days that were actually logged, not over the days that
- * have passed. Both of these are entered by hand, so a day with no row means
- * "didn't write it down" far more often than it means zero, and dividing by
- * the calendar would turn three well-tracked days into a number that looks
- * like failure. The count of days comes back alongside the figure so the tile
- * can say what it was averaged over rather than implying a full week.
+ * have passed. Both are entered by hand, so a day with no row means "didn't
+ * write it down" far more often than it means zero, and dividing by the
+ * calendar would turn three well-tracked days into a number that reads as
+ * failure.
+ *
+ * The window is three weeks rather than the current one. A calendar week is
+ * too short a sample for something logged by hand: the figure lurched around
+ * all week and, worse, it vanished entirely — a Monday with nothing written
+ * down yet left the tile showing a dash, which reads as "this feature is
+ * broken" rather than "nothing logged since Sunday". Three weeks is long
+ * enough that a missed day is a rounding error and short enough to still
+ * describe how you are training now.
  *
  * A row of zero doesn't count as a day. The water tile decrements as well as
- * increments, so zero is usually a tap taken back rather than a day's honest
- * total.
+ * increments, so zero is usually a tap taken back rather than a day's total.
  */
-export function weekDailyAverage(
+export function dailyAverage(
   entries: { date: string; value: number }[],
+  days = HABIT_WINDOW_DAYS,
   now: Date = new Date(),
 ): DailyAverage {
-  const from = weekStartISO(now);
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
+  const from = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
   const to = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   // Dates are yyyy-mm-dd, so lexical order is chronological order.
-  const inWeek = entries.filter((e) => e.value > 0 && e.date >= from && e.date <= to);
-  if (inWeek.length === 0) return { average: null, daysLogged: 0 };
+  const inWindow = entries.filter((e) => e.value > 0 && e.date >= from && e.date <= to);
+  if (inWindow.length === 0) return { average: null, daysLogged: 0 };
 
   // One row per day is the shape of both tables, but a duplicate would double
   // count a day, so they're folded by date first.
   const byDay = new Map<string, number>();
-  for (const e of inWeek) byDay.set(e.date, (byDay.get(e.date) ?? 0) + e.value);
+  for (const e of inWindow) byDay.set(e.date, (byDay.get(e.date) ?? 0) + e.value);
   const total = [...byDay.values()].reduce((sum, v) => sum + v, 0);
   return { average: total / byDay.size, daysLogged: byDay.size };
 }
@@ -604,6 +650,32 @@ export function weekVsAveragePct(
   return Math.round(((current - mean) / mean) * 1000) / 10;
 }
 
+/**
+ * How many separate days each movement has been trained on.
+ *
+ * Days rather than sets, because "how often do I do this" and "how much do I
+ * do of it" are different questions and the records board is asking the
+ * first. Five sets in one session is one outing, not five.
+ *
+ * Used for two things there: ordering a body part's movements by how much of
+ * your training they actually account for, and holding back the ones with a
+ * single session behind them — a machine tried once in June says nothing
+ * about your training and sits in the list as if it did.
+ */
+export function countSessionsByExercise(sets: StrengthSet[]): Map<string, number> {
+  const days = new Map<string, Set<string>>();
+  for (const s of sets) {
+    const day = dayISO(new Date(s.completedAt));
+    let seen = days.get(s.normalizedName);
+    if (!seen) {
+      seen = new Set();
+      days.set(s.normalizedName, seen);
+    }
+    seen.add(day);
+  }
+  return new Map([...days].map(([name, seen]) => [name, seen.size]));
+}
+
 // --- One period against another ----------------------------------------------------------
 
 export interface PeriodTotals {
@@ -658,10 +730,6 @@ interface Period {
   bests: Map<string, Best>;
   sets: number;
   exercises: Set<string>;
-}
-
-function dayISO(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /** Everything a comparison needs to know about one span of time. */

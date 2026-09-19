@@ -3,6 +3,7 @@
 // weight delta, and the small helpers. Usage: npm test  —  or:
 // node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-dashboard.mjs
 import {
+  bodyWeightChange,
   bodyWeightRange,
   computeConsistency,
   computeMostImproved,
@@ -175,6 +176,40 @@ check('no rows → null', summarizeBodyWeight([], null), null);
 console.log('\n=== helpers ===');
 check('week dots from bars', weekDots([[0.5], [], [0.7, 0.2], [], [], [], []]), [true, false, true, false, false, false, false]);
 check('week start is a Monday', weekStartISO(new Date(2026, 8, 4)), '2026-08-31');
+
+console.log('\n=== a range of weigh-ins, whichever order they arrive in ===');
+{
+  const oldestFirst = [
+    { recorded_on: '2026-06-27', weight_kg: 90.9 },
+    { recorded_on: '2026-08-20', weight_kg: 92.0 },
+    { recorded_on: '2026-09-12', weight_kg: 95.2 },
+  ];
+  const newestFirst = [...oldestFirst].reverse();
+  // The bug this exists to stop: read newest-first, the card quoted 90.9 as
+  // today's weight and called a 4.3 kg gain a loss.
+  check('oldest-first: the latest reading is the newest date',
+    bodyWeightChange(oldestFirst).latestKg, 95.2);
+  check('newest-first: the same answer',
+    bodyWeightChange(newestFirst).latestKg, 95.2);
+  check('a gain is positive', Math.round(bodyWeightChange(oldestFirst).deltaKg * 10) / 10, 4.3);
+  check('and reads the same either way',
+    Math.round(bodyWeightChange(newestFirst).deltaKg * 10) / 10, 4.3);
+}
+{
+  const losing = [
+    { recorded_on: '2026-09-12', weight_kg: 90.9 },
+    { recorded_on: '2026-06-27', weight_kg: 95.2 },
+  ];
+  check('a loss is negative', Math.round(bodyWeightChange(losing).deltaKg * 10) / 10, -4.3);
+}
+{
+  const one = [{ recorded_on: '2026-09-12', weight_kg: 95.2 }];
+  check('one reading has a value', bodyWeightChange(one).latestKg, 95.2);
+  check('but no change to report', bodyWeightChange(one).deltaKg, null);
+  check('and none at all is null throughout', bodyWeightChange([]), {
+    latestKg: null, earliestKg: null, deltaKg: null,
+  });
+}
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -14,20 +14,49 @@ interface Props {
 export function PageHeader({ title, onBack, rightAction, large = true, bottomSlot }: Props) {
   const [collapsed, setCollapsed] = useState(!large);
   const largeTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
 
+  // Whether the large title has slid up behind the bar.
+  //
+  // This was an IntersectionObserver against a hard-coded `-44px` root
+  // margin, and it had two faults. The observer reports once when you call
+  // observe(), so on a screen whose content was still settling — fonts
+  // loading, a long list measuring itself — that single reading could catch
+  // the title before it had been laid out, latch collapsed, and leave the
+  // small title sitting on top of the large one until something scrolled.
+  // And 44 was the bar's height only where the status-bar inset was zero;
+  // anywhere else the threshold was in the wrong place.
+  //
+  // Measuring the bar and reading the title's own position on each scroll is
+  // both deterministic and self-correcting: whatever the layout does after
+  // mount, the next frame puts it right.
   useEffect(() => {
     if (!large) {
       setCollapsed(true);
       return;
     }
-    const el = largeTitleRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => setCollapsed(!entry.isIntersecting),
-      { rootMargin: '-44px 0px 0px 0px', threshold: 0 }
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const el = largeTitleRef.current;
+      if (!el) return;
+      const barHeight = barRef.current?.getBoundingClientRect().height ?? 44;
+      setCollapsed(el.getBoundingClientRect().bottom <= barHeight);
+    };
+    const schedule = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(measure);
+    };
+    measure();
+    // A second pass once layout has settled, for the case the first reading
+    // was taken too early.
+    schedule();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
   }, [large]);
 
   const isTabHeader = !onBack && !rightAction;
@@ -78,7 +107,11 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
   return (
     <>
       <div
+        ref={barRef}
         className={`sticky top-0 z-20 -mx-5 bg-paper transition-shadow ${detailShadow} ${detailDivider}`}
+        // The safe-area inset belongs here and nowhere else: the bar is what
+        // sits under the status bar. Screens that also padded their own
+        // container by it ended up with the gap twice over.
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="relative flex h-11 items-center justify-center px-5">
