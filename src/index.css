@@ -190,8 +190,7 @@ h1, h2, h3, h4 {
     transform: none;
   }
 
-  .animate-shake,
-  .live-dot {
+  .animate-shake {
     animation: none;
   }
 
@@ -217,18 +216,6 @@ h1, h2, h3, h4 {
    it. */
 .pb-nav {
   padding-bottom: calc(7rem + var(--active-bar-h, 0px));
-}
-
-/* The dot on the active-workout bar. It breathes rather than blinks — this is
-   saying "still running", not asking for attention, and a hard on/off in the
-   corner of the eye is the second thing you'd want to turn off. */
-.live-dot {
-  animation: live-pulse 2.4s ease-in-out infinite;
-}
-
-@keyframes live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }
 
 /* A tab arriving. 110ms is about as short as a fade can be and still register

@@ -35,6 +35,12 @@ interface Props {
  * the two things you'd go looking for — how long you've been at it, and what
  * you were last on.
  *
+ * There is no "live" dot. One sat before the day name, and because it lived
+ * inside that row it pushed the name a dot's width in from the exercise name
+ * directly beneath it — two lines of text in one block that didn't share a
+ * left edge. The running clock already says the session is live, which is
+ * what the dot was for.
+ *
  * It does not carry a bare bin. A workout is up to an hour of logging, and an
  * "undo this" button placed a thumb's width from the control you're actually
  * aiming for is how that hour gets thrown away. End opens the dialog the
@@ -68,7 +74,6 @@ export function ActiveWorkoutBar({ info, onEnd }: Props) {
         )}
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2 text-sm font-semibold text-white">
-            <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[#4ADE80]" />
             <span className="truncate">{context.trainingDayName}</span>
             <span className="shrink-0 font-mono tabular-nums text-white/70">{label}</span>
           </span>
