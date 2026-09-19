@@ -1,18 +1,35 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Area,
+  AreaChart,
+  Bar,
+  Cell,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from 'recharts';
 import { PageHeader } from '../components/PageHeader';
-import { Tile, ChevronRight, BarsIcon, BoltIcon, WaterIcon, StepsIcon } from '../components/Tile';
+import {
+  MiniTile,
+  ChevronRight,
+  BarsIcon,
+  BoltIcon,
+  WaterIcon,
+  StepsIcon,
+} from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
   buildExerciseHistory,
   buildWeeklySeries,
+  est1RMChangePct,
+  mostRepsIn,
   type PerformanceData,
-  type ExerciseHistoryPoint,
-  type SessionSet,
 } from '../lib/performanceApi';
 import { loadRecords, type LiftRecord } from '../lib/recordsApi';
-import { headlineRecords, recordAchievedAt } from '../lib/records';
 import { listWaterSince, type WaterDay } from '../lib/waterApi';
 import { listSteps, formatSteps, type StepRow } from '../lib/stepsApi';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
@@ -25,18 +42,19 @@ import {
 } from '../lib/sessionsApi';
 import {
   bodyWeightRange,
-  computeConsistency,
   weekDailyAverage,
   weekStartISO,
   computeWeekStreak,
-  computeWeeklyLoad,
-  type WeekStreak,
-  type WeeklyLoadPoint,
-  computeMostImproved,
-  computeOverallStrength,
+  computeWeeklyVolume,
+  weekVsAveragePct,
   computeWorkoutsPerWeek,
-  newRecordCount,
+  compareWeeks,
+  compareWindow,
   summarizeBodyWeight,
+  type WeekStreak,
+  type WeeklyVolumePoint,
+  type MoverComparison,
+  type ExerciseMove,
 } from '../lib/dashboard';
 import {
   getBodyWeightUnit,
@@ -50,15 +68,53 @@ import {
 
 // The Performance tab.
 //
-// A dashboard first: where you are on the plan, what's changed this month,
-// body weight, how consistently you've turned up, and whether you're getting
-// stronger — each as a tile with one number and the picture behind it. Every
-// figure comes from lib/dashboard.ts, which says "not enough data" rather than
-// invent a number. "View all" on the records tile opens the full records board,
-// which is where a lift's history lives.
+// The job, which everything here is answerable to: in about five seconds,
+// show whether the last week went better than the one before it — and be the
+// way into any single exercise's history.
+//
+// The screen had no stated job for a long time, so it accumulated. At its
+// widest it carried three separate lists of lifts (this week against last,
+// most improved, all-time records), four charts, two hero cards and a
+// paragraph under most figures. Three lists of lifts is one list: what's
+// moving. The record book is a real thing to want and a bad thing to land
+// on, so it lives one tap away behind "See all".
+//
+// Three rules hold the rest together:
+//
+//   Weight. A big number gets a card and the chart that explains it. A
+//   supporting number gets a mini tile a third of the height.
+//
+//   Copy. A label names a number, it does not explain it — two words where
+//   two will do, and never a sentence. A figure that needs a paragraph to be
+//   trusted is the wrong figure. Charts carry no legend; tooltips can be as
+//   wordy as they like, because they're asked for.
+//
+//   Depth. Any lift named anywhere opens its own history in one tap, from
+//   wherever it was tapped. Nothing routes through an index on the way.
+//
+// Every figure comes from lib/dashboard.ts, which says "not enough data"
+// rather than invent a number.
 
 type View = 'dashboard' | 'records' | 'record';
 type BwRange = 84 | 182 | 365;
+
+/** What the body-weight change is measured across, in words. */
+const BW_RANGE_LABEL: Record<BwRange, string> = {
+  84: 'over 12 weeks',
+  182: 'over 6 months',
+  365: 'over a year',
+};
+/**
+ * What the movers list is comparing against.
+ *
+ * Two named weeks, or a rolling four — the plan runs on a fortnight's
+ * rotation, so last week can be the wrong week to ask about, and over a month
+ * which week it was stops mattering.
+ */
+type MoverPeriod = 'week' | 'fortnight' | 'season';
+
+/** Which way the training-volume card is counting. */
+type VolumeMetric = 'kg' | 'sets';
 
 interface Loaded {
   perf: PerformanceData;
@@ -98,7 +154,13 @@ export function Performance() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('dashboard');
   const [selected, setSelected] = useState<string | null>(null);
+  // Where the open lift was tapped, so Back returns there. A lift reached from
+  // the dashboard goes back to the dashboard; one reached from the board goes
+  // back to the board. Without this every lift's Back led to the records
+  // index, which is the screen you were trying not to visit.
+  const [recordFrom, setRecordFrom] = useState<Exclude<View, 'record'>>('dashboard');
   const [bwRange, setBwRange] = useState<BwRange>(84);
+  const [period, setPeriod] = useState<MoverPeriod>('week');
   const bwUnit = getBodyWeightUnit();
   const liftUnit = getLiftWeightUnit();
 
@@ -133,25 +195,58 @@ export function Performance() {
       (plan?.training_days ?? []).filter((d) => d.reference_only).map((d) => d.name),
     );
     const gymSessions = sessions.filter((s) => !referenceNames.has(s.day_name));
-    const mostImproved = computeMostImproved(perf.sets);
     return {
       weeklyTarget,
-      consistency: computeConsistency(gymSessions, activatedAt, weeklyTarget),
       streak: computeWeekStreak(gymSessions, weeklyTarget),
       water: weekDailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
       steps: weekDailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
-      load: computeWeeklyLoad(perf.sets),
+      volume: computeWeeklyVolume(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
-      strength: computeOverallStrength(perf.sets, activatedAt),
-      mostImproved,
-      mostImprovedSeries: mostImproved
-        ? buildWeeklySeries(perf.sets, 'est1rm', { normalizedName: mostImproved.normalizedName })
-        : [],
       bodyWeight: summarizeBodyWeight(perf.bodyWeights, activatedAt),
-      newPrs: newRecordCount(records),
-      topRecords: headlineRecords(records),
+      // Every lift that has ever been logged has a record, so this is what
+      // decides whether a name anywhere on the tab is worth making tappable.
+      recordNames: new Set(records.map((r) => r.normalizedName)),
     };
   }, [data]);
+
+  // Its own memo rather than part of `derived`: the pills above it change what
+  // is being compared, and nothing else on the tab should recompute for that.
+  // Sessions are counted before the reference day is filtered out — this is
+  // "what did I do", not "did I hit the plan".
+  const movers = useMemo(() => {
+    if (!data) return null;
+    const { sets } = data.perf;
+    if (period === 'season') return compareWindow(sets, data.sessions, 28);
+    return compareWeeks(sets, data.sessions, period === 'fortnight' ? 2 : 1);
+  }, [data, period]);
+
+  // What the library's "Top increased" order sorts on. Built from the movers
+  // the tab has already computed rather than by the board walking every set
+  // again — and it follows the period pills, so the library agrees with the
+  // list you came from.
+  const improvement = useMemo(
+    () => new Map((movers?.movers ?? []).map((m) => [m.normalizedName, m.deltaPct])),
+    [movers],
+  );
+
+  // The lift at the top of the list gets the hero card, and a hero card gets a
+  // graph. Scoped to that one lift, so it's the shape of its own progress
+  // rather than the tab's.
+  const leadSeries = useMemo(() => {
+    const lead = movers?.movers[0];
+    if (!data || !lead) return [];
+    return buildWeeklySeries(data.perf.sets, 'est1rm', {
+      normalizedName: lead.normalizedName,
+    }).map((p) => p.value);
+  }, [data, movers]);
+
+  /** Open one lift's history. Ignored for a name with no record behind it. */
+  function openRecord(normalizedName: string, from: Exclude<View, 'record'> = 'dashboard') {
+    if (!derived?.recordNames.has(normalizedName)) return;
+    setSelected(normalizedName);
+    setRecordFrom(from);
+    setView('record');
+  }
 
   const hasAnyData =
     !!data &&
@@ -171,10 +266,8 @@ export function Performance() {
           <div className="mt-4">
             <RecordsBoard
               records={data.records}
-              onSelect={(n) => {
-                setSelected(n);
-                setView('record');
-              }}
+              improvement={improvement}
+              onSelect={(n) => openRecord(n, 'records')}
             />
           </div>
         </div>
@@ -190,7 +283,7 @@ export function Performance() {
           record={record}
           sets={data.perf.sets}
           onBack={() => {
-            setView('records');
+            setView(recordFrom);
             setSelected(null);
           }}
         />
@@ -211,104 +304,20 @@ export function Performance() {
         ) : !hasAnyData || !data || !derived ? (
           <EmptyState />
         ) : (
-          <div className="mt-2 space-y-3">
+          <div className="mt-2">
             <Block>
               <PlanHero
                 plan={data.plan}
                 done={data.week.workoutsDone}
                 target={derived.weeklyTarget}
+                streak={derived.streak}
               />
-            </Block>
-
-            {derived.streak.longest > 0 && (
-              <Block>
-                <div className="grid grid-cols-2 gap-3">
-                  <StreakTile streak={derived.streak} target={derived.weeklyTarget} />
-                  <Tile
-                    icon={<CalendarIcon />}
-                    label="Consistency"
-                    value={derived.consistency.pct != null ? `${derived.consistency.pct}%` : '–'}
-                    hint={
-                      derived.consistency.pct != null
-                        ? `${derived.consistency.done} of ${derived.consistency.planned} this plan`
-                        : 'needs an active plan'
-                    }
-                  />
-                </div>
-              </Block>
-            )}
-
-            <Block>
-              <div className="grid grid-cols-2 gap-3">
-                <Tile
-                  icon={<BarsIcon />}
-                  label="New PRs"
-                  value={String(derived.newPrs)}
-                  hint="this month"
-                  onClick={() => setView('records')}
-                />
-                <Tile
-                  icon={<BoltIcon />}
-                  label="Workouts / week"
-                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
-                  hint={
-                    derived.perWeek.average != null ? 'average on this plan' : 'nothing logged yet'
-                  }
-                />
-              </div>
-            </Block>
-
-            {/* The daily habits, in the same shape as the training numbers
-                above them. Both are averaged over the days they were actually
-                logged — see weekDailyAverage — so the hint names that count
-                rather than letting "a day" imply a full week. */}
-            <Block>
-              <div className="grid grid-cols-2 gap-3">
-                <Tile
-                  icon={<WaterIcon />}
-                  label="Water"
-                  value={
-                    derived.water.average != null
-                      ? String(Math.round(derived.water.average * 10) / 10)
-                      : '–'
-                  }
-                  hint={
-                    derived.water.average != null
-                      ? `a day over ${derived.water.daysLogged} ${derived.water.daysLogged === 1 ? 'day' : 'days'}`
-                      : 'none logged this week'
-                  }
-                />
-                <Tile
-                  icon={<StepsIcon />}
-                  label="Steps"
-                  value={
-                    derived.steps.average != null
-                      ? formatSteps(Math.round(derived.steps.average))
-                      : '–'
-                  }
-                  hint={
-                    derived.steps.average != null
-                      ? `a day over ${derived.steps.daysLogged} ${derived.steps.daysLogged === 1 ? 'day' : 'days'}`
-                      : 'none logged this week'
-                  }
-                />
-              </div>
             </Block>
 
             {data.perf.bodyWeights.length > 0 && (
               <Block>
-                <BodyWeightCard
-                  rows={bodyWeightRange(data.perf.bodyWeights, bwRange).slice().reverse()}
-                  bwUnit={bwUnit}
-                  latestKg={derived.bodyWeight?.latestKg ?? null}
-                  delta={
-                    derived.bodyWeight?.deltaKg != null
-                      ? `${derived.bodyWeight.deltaKg > 0 ? '↑' : derived.bodyWeight.deltaKg < 0 ? '↓' : '·'} ${formatBwDelta(
-                          Math.abs(derived.bodyWeight.deltaKg),
-                          bwUnit,
-                        )} ${derived.bodyWeight.since === 'plan' ? 'this plan' : 'overall'}`
-                      : null
-                  }
+                <SectionHeader
+                  title="Body weight"
                   controls={
                     <div className="flex rounded-pill bg-surface-strong p-0.5">
                       {([84, 182, 365] as BwRange[]).map((r) => (
@@ -325,32 +334,68 @@ export function Performance() {
                     </div>
                   }
                 />
+                <div className="mt-3">
+                  <BodyWeightCard
+                    rows={bodyWeightRange(data.perf.bodyWeights, bwRange)}
+                    bwUnit={bwUnit}
+                    rangeLabel={BW_RANGE_LABEL[bwRange]}
+                  />
+                </div>
               </Block>
             )}
 
-            {derived.load.some((p) => p.sets > 0) && (
-              <Block>
-                <TrainingLoadCard load={derived.load} perWeek={derived.perWeek.average} />
-              </Block>
-            )}
-
+            {/* How often, and the two habits. Averaged over the days actually
+                logged — see weekDailyAverage — so a well-tracked Tuesday and
+                Wednesday don't read as a failed week. */}
             <Block>
-              <StrengthCard strength={derived.strength} />
+              <div className="grid grid-cols-3 gap-2.5">
+                <MiniTile
+                  icon={<BoltIcon />}
+                  label="Workouts"
+                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
+                  hint="per week"
+                />
+                <MiniTile
+                  icon={<WaterIcon />}
+                  label="Water"
+                  value={
+                    derived.water.average != null
+                      ? String(Math.round(derived.water.average * 10) / 10)
+                      : '–'
+                  }
+                  hint="per day"
+                />
+                <MiniTile
+                  icon={<StepsIcon />}
+                  label="Steps"
+                  value={
+                    derived.steps.average != null
+                      ? formatSteps(Math.round(derived.steps.average))
+                      : '–'
+                  }
+                  hint="per day"
+                />
+              </div>
             </Block>
 
-            {derived.mostImproved && (
+            {derived.volume.some((p) => p.sets > 0) && (
               <Block>
-                <MostImprovedCard
-                  mi={derived.mostImproved}
-                  series={derived.mostImprovedSeries.map((p) => p.value)}
-                  unit={liftUnit}
-                />
+                <TrainingVolumeCard volume={derived.volume} />
               </Block>
             )}
 
-            {derived.topRecords.length > 0 && (
+            {movers && (
               <Block>
-                <TopRecords records={derived.topRecords} onViewAll={() => setView('records')} />
+                <MoversCard
+                  comparison={movers}
+                  leadSeries={leadSeries}
+                  period={period}
+                  onPeriod={setPeriod}
+                  unit={liftUnit}
+                  canOpen={(n) => derived.recordNames.has(n)}
+                  onOpen={(n) => openRecord(n)}
+                  onSeeAll={() => setView('records')}
+                />
               </Block>
             )}
           </div>
@@ -362,7 +407,17 @@ export function Performance() {
 
 // --- Tiles ---------------------------------------------------------------------------
 
-function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number; target: number }) {
+function PlanHero({
+  plan,
+  done,
+  target,
+  streak,
+}: {
+  plan: FullPlan | null;
+  done: number;
+  target: number;
+  streak: WeekStreak;
+}) {
   if (!plan) {
     return (
       <div className="rounded-card bg-ink p-5 text-white shadow-card">
@@ -370,14 +425,16 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
           Current plan
         </div>
         <div className="mt-1 text-xl font-bold tracking-tight">No active plan</div>
-        <div className="mt-0.5 text-sm text-white/70">
-          Upload one from your profile to start tracking.
-        </div>
+        <div className="mt-0.5 text-sm text-white/70">Upload one from your profile.</div>
       </div>
     );
   }
   const week = weeksOnPlan(plan.activated_at);
   const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
+  // The run, when there is one — otherwise the best there has been. A tile of
+  // its own sat a 44px chip next to a short word and left half a row empty;
+  // one line under the plan name says the same thing.
+  const weeks = streak.current > 0 ? streak.current : streak.longest;
   return (
     <div className="rounded-card bg-ink p-5 text-white shadow-card">
       <div className="flex items-start justify-between gap-4">
@@ -386,18 +443,24 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
             Current plan
           </div>
           <div className="mt-1 text-display font-bold leading-none tracking-tight">Week {week}</div>
-          <div className="mt-2 text-sm text-white/70">
-            {week === 1 ? 'First week on plan' : `${week} weeks on plan`}
-          </div>
-          <div className="truncate text-sm text-white/70">{plan.name}</div>
+          <div className="mt-2 truncate text-sm text-white/70">{plan.name}</div>
+          {weeks > 0 && (
+            <div className="mt-1.5 flex items-center gap-1 text-sm font-semibold tabular-nums">
+              <span className="text-white/70">
+                <FlameIcon />
+              </span>
+              {weeks} {weeks === 1 ? 'week' : 'weeks'}
+              {streak.current === 0 && <span className="font-normal text-white/60">best</span>}
+            </div>
+          )}
         </div>
         {target > 0 && (
-          <div className="w-32 shrink-0 pt-1 text-right">
+          <div className="w-28 shrink-0 pt-1 text-right">
             <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
               This week
             </div>
-            <div className="mt-1 text-sm font-semibold tabular-nums">
-              {done} of {target} workouts
+            <div className="mt-1 text-xl font-bold tabular-nums">
+              {done} / {target}
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-pill bg-white/20">
               <div className="h-full rounded-pill bg-white" style={{ width: `${pct}%` }} />
@@ -409,82 +472,112 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
   );
 }
 
-/** A small line with a soft fill under it. Values only; no axes. */
 /**
- * Weeks in a row hitting the plan's target.
+ * A section's name, on the page rather than inside the card.
  *
- * A tile rather than a card of its own. It carries exactly what the tiles
- * beside it carry — a chip, a label, one number, a line under it — and given
- * a full-width card to fill it just sat a 44px chip next to a short word and
- * left half the row empty.
- *
- * Paired with consistency because they answer the same question from two
- * sides: the ratio that forgives, and the run that doesn't.
+ * Used where a section has controls that act on the whole of it — the body
+ * weight range, the movers period. Putting the heading and its pills above
+ * the card says the controls govern everything below them, and gives the
+ * screen a spine you can scan without reading a single number.
  */
-function StreakTile({ streak, target }: { streak: WeekStreak; target: number }) {
-  const { current, longest, thisWeekCounts } = streak;
-  const live = current > 0;
-  const weeks = live ? current : longest;
+function SectionHeader({
+  title,
+  controls,
+  children,
+}: {
+  title: string;
+  controls?: React.ReactNode;
+  /** An optional short line under the title. Never a sentence. */
+  children?: React.ReactNode;
+}) {
   return (
-    <Tile
-      icon={<FlameIcon />}
-      label={live ? 'Streak' : 'Best streak'}
-      value={
-        <>
-          {weeks}
-          <span className="ml-1 text-base font-semibold text-muted">
-            {weeks === 1 ? 'week' : 'weeks'}
-          </span>
-        </>
-      }
-      hint={
-        live
-          ? thisWeekCounts
-            ? 'this week counted'
-            : `finish this week for ${current + 1}`
-          : `${target} a week starts one`
-      }
-    />
+    <div className="flex items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="text-2xl font-bold tracking-tight text-ink">{title}</h2>
+        {children && <div className="mt-0.5 text-sm text-muted tabular-nums">{children}</div>}
+      </div>
+      {controls && <div className="shrink-0 pb-1">{controls}</div>}
+    </div>
   );
 }
 
 /**
- * Twelve weeks of training, in sets.
+ * Twelve weeks of training, counted two ways.
  *
- * The rest of the tab looks at a fortnight or at one lift. This is the only
- * place that answers "how has it been going lately", which is the question a
- * chart is for — and the empty weeks are drawn, because a month off is the
- * most informative thing a season of training has to say.
+ * The only place on the tab that answers "how has it been going lately",
+ * which is the question a chart is for — and the empty weeks are drawn,
+ * because a month off is the most informative thing a season of training has
+ * to say.
  *
- * Built like the body-weight chart rather than as a sparkline: two charts on
- * one screen drawn in two different idioms read as two different apps, and
- * this one has axes worth labelling.
+ * Volume leads and sets are a tap away, because the two disagree in exactly
+ * the case worth noticing: a block that gets heavier and shorter loses sets
+ * while gaining kilograms, and either number alone reads as a verdict it
+ * can't give. This replaced a sets line with an "intensity" line drawn over
+ * it — a ratio against the window's own average, which needed a sentence of
+ * explanation under every reading and still wasn't the number anyone wanted.
+ * Kilograms are.
  */
-function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek: number | null }) {
-  const thisWeek = load[load.length - 1]?.sets ?? 0;
-  const average = Math.round(load.reduce((sum, p) => sum + p.sets, 0) / load.length);
-  const points = load.map((p) => ({ label: p.weekStart, value: p.sets }));
+function TrainingVolumeCard({ volume }: { volume: WeeklyVolumePoint[] }) {
+  const [metric, setMetric] = useState<VolumeMetric>('kg');
+  // The week in progress, not the window's total: the total is a number that
+  // barely moves and that nobody acts on, while "is this a big week" is the
+  // question the bar beside it is already answering.
+  const thisWeek = volume[volume.length - 1]?.[metric] ?? 0;
+  const change = weekVsAveragePct(volume, metric);
+  const ticks = niceTicks(Math.max(...volume.map((p) => p[metric]), 0));
+  const points = volume.map((p, i) => ({
+    label: p.weekStart,
+    value: p[metric],
+    // The week in progress, drawn in ink so it reads as "now" rather than as
+    // another finished bar that happens to be short.
+    current: i === volume.length - 1,
+  }));
 
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <div className="flex items-center justify-between">
-        <SectionLabel>Training load</SectionLabel>
-        <div className="text-xs text-muted">Past 12 weeks</div>
+      <div className="flex items-center justify-between gap-3">
+        <SectionLabel>Training volume</SectionLabel>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-pill bg-surface-strong p-0.5">
+            {(['kg', 'sets'] as VolumeMetric[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMetric(m)}
+                className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
+                  metric === m ? 'bg-ink text-white' : 'text-muted'
+                }`}
+              >
+                {m === 'kg' ? 'Volume' : 'Sets'}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
-      <div className="mt-1 flex items-baseline gap-2">
+      <div className="mt-0.5 text-xs text-muted">Past 12 weeks</div>
+
+      <div className="mt-1 flex items-baseline gap-1.5">
         <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
-          {thisWeek}
+          {Math.round(thisWeek).toLocaleString('en-GB')}
         </div>
-        <div className="text-sm font-semibold text-muted">
-          {thisWeek === 1 ? 'set this week' : 'sets this week'}
+        <div className="text-base font-semibold text-muted">{metric === 'kg' ? 'kg' : 'sets'}</div>
+      </div>
+      {change != null && (
+        <div className="mt-1.5 text-xs tabular-nums">
+          <span
+            className={`font-semibold ${
+              change > 0 ? 'text-good' : change < 0 ? 'text-danger' : 'text-muted'
+            }`}
+          >
+            {deltaArrow(change)} {fmtNum(Math.abs(change))}%
+          </span>{' '}
+          <span className="text-muted">vs 12-week average</span>
         </div>
-      </div>
-      <div className="mt-0.5 text-xs text-muted tabular-nums">
-        {average} a week on average{perWeek != null && ` · ${perWeek} workouts a week`}
-      </div>
+      )}
+
       <div className="mt-3">
-        <ResponsiveContainer width="100%" height={140}>
-          <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <ResponsiveContainer width="100%" height={150}>
+          <BarChart data={points} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
             <XAxis
               dataKey="label"
               tick={{ fill: '#8E8E93', fontSize: 10 }}
@@ -498,20 +591,28 @@ function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek:
                 })
               }
             />
-            {/* Anchored at zero, unlike body weight. A week off is a real zero,
-                and an axis that starts at the smallest value would draw the
-                gap as a shallow dip instead of the floor it is. */}
+            {/* Anchored at zero. A week off is a real zero, and an axis that
+                started at the smallest value would draw the gap as a shallow
+                dip instead of the floor it is. */}
             <YAxis
               tick={{ fill: '#8E8E93', fontSize: 10 }}
               axisLine={false}
               tickLine={false}
               width={40}
               allowDecimals={false}
-              domain={[0, 'dataMax + 4']}
+              domain={[0, ticks[ticks.length - 1]]}
+              ticks={ticks}
+              tickFormatter={(n) => compactNumber(Number(n))}
             />
             <Tooltip
+              cursor={{ fill: 'rgba(10,10,10,0.04)' }}
               contentStyle={{ borderRadius: 12, border: '1px solid #E5E5EA', fontSize: 12 }}
-              formatter={(v) => [`${v} ${Number(v) === 1 ? 'set' : 'sets'}`, 'Logged']}
+              formatter={(v) => [
+                metric === 'kg'
+                  ? `${Math.round(Number(v)).toLocaleString('en-GB')} kg`
+                  : `${v} ${Number(v) === 1 ? 'set' : 'sets'}`,
+                metric === 'kg' ? 'Volume' : 'Sets',
+              ]}
               labelFormatter={(d) =>
                 `Week of ${new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', {
                   day: 'numeric',
@@ -519,22 +620,47 @@ function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek:
                 })}`
               }
             />
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke="#0A0A0A"
-              strokeWidth={2}
-              dot={{ r: 2.5, fill: '#0A0A0A' }}
-              activeDot={{ r: 4 }}
-              isAnimationActive
-              animationDuration={900}
-              animationEasing="ease-out"
-            />
-          </LineChart>
+            <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={18} isAnimationActive={false}>
+              {points.map((p) => (
+                <Cell key={p.label} fill={p.current ? '#0A0A0A' : 'rgba(10,10,10,0.14)'} />
+              ))}
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
   );
+}
+
+/**
+ * Axis marks at round numbers.
+ *
+ * Left to itself recharts divides the largest bar into five, which on real
+ * volume gives an axis reading 38K, 28.5K, 19K — arithmetically correct and
+ * unreadable at a glance. This rounds the step to a 1, 2, 2.5 or 5 and works
+ * up from zero, so the marks land where a reader expects them.
+ */
+function niceTicks(max: number, count = 4): number[] {
+  if (!(max > 0)) return [0];
+  const rough = max / count;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+  const normalized = rough / magnitude;
+  const step =
+    (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10) *
+    magnitude;
+  const ticks: number[] = [];
+  for (let v = 0; v < max; v += step) ticks.push(Math.round(v * 1000) / 1000);
+  ticks.push(ticks[ticks.length - 1] + step);
+  return ticks;
+}
+
+/** 30000 → "30K". Keeps a 12-week volume axis inside 40px. */
+function compactNumber(n: number): string {
+  if (n >= 1000) {
+    const k = n / 1000;
+    return `${Number.isInteger(k) ? k : Math.round(k * 10) / 10}K`;
+  }
+  return String(Math.round(n));
 }
 
 function FlameIcon() {
@@ -550,6 +676,7 @@ function FlameIcon() {
   );
 }
 
+/** A small line with a soft fill under it. Values only; no axes. */
 function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string; fill: string }) {
   if (values.length < 2) return null;
   const w = 100;
@@ -587,125 +714,243 @@ function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string;
   );
 }
 
+
+// --- What's moving ------------------------------------------------------------------
+
+const PERIODS: { key: MoverPeriod; pill: string; prose: string }[] = [
+  { key: 'week', pill: '1w', prose: 'last week' },
+  { key: 'fortnight', pill: '2w', prose: 'two weeks ago' },
+  { key: 'season', pill: '4w', prose: 'the four before' },
+];
+
+/** Top six, hero included. Beyond that it stops being a glance. */
+const MOVERS_SHOWN = 6;
+
 /**
- * Overall strength, as a data card rather than a shape of its own.
+ * What's going up, and what isn't.
  *
- * Label, headline, graph — the same three parts as body weight and training
- * load, so "not enough data yet" is this card's empty state rather than a
- * fourth kind of component. The sentence sits where the number will, at the
- * size of prose rather than of a headline, because it is standing in for a
- * figure we haven't got rather than being one.
+ * This is the screen's answer to its own question, and it replaced three
+ * lists that were each a different view of it: this week against last week,
+ * the single most improved lift, and the all-time records board. They were
+ * three renderings of "which lifts, and what are they doing", stacked one
+ * above another, and the record book — which is a real thing to want — was
+ * the worst of the three to land on, because it's a reference work rather
+ * than a report. It moved behind "See all".
+ *
+ * The lift at the top keeps the black card the most-improved figure used to
+ * have. It earns it: one movement, named, with the number and the shape of
+ * how it got there.
+ *
+ * Ranked on estimated 1RM rather than on weight, so five more kilos for three
+ * fewer reps doesn't read as a clean gain — but the rows print the set as it
+ * was logged, because that's the number you'd recognise.
  */
-function StrengthCard({ strength }: { strength: ReturnType<typeof computeOverallStrength> }) {
-  const hint =
-    strength.reason === 'no_plan'
-      ? 'Needs an active plan'
-      : strength.reason === 'too_early'
-        ? 'Shows after four weeks on the plan'
-        : strength.reason === 'too_few_lifts'
-          ? 'Needs three lifts trained early and recently'
-          : 'Since starting this plan';
+function MoversCard({
+  comparison,
+  leadSeries,
+  period,
+  onPeriod,
+  unit,
+  canOpen,
+  onOpen,
+  onSeeAll,
+}: {
+  comparison: MoverComparison;
+  /** Weekly best est. 1RM for the lead lift, for the hero's graph. */
+  leadSeries: number[];
+  period: MoverPeriod;
+  onPeriod: (p: MoverPeriod) => void;
+  unit: MachineUnit;
+  canOpen: (normalizedName: string) => boolean;
+  onOpen: (normalizedName: string) => void;
+  onSeeAll: () => void;
+}) {
+  const { movers, previous } = comparison;
+  const [lead, ...rest] = movers;
+  const prose = PERIODS.find((p) => p.key === period)?.prose ?? 'last week';
+
   return (
-    <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <SectionLabel>Overall strength</SectionLabel>
-      {strength.pct != null ? (
-        <div className="mt-1 text-display font-bold leading-none tracking-tight text-ink tabular-nums">
-          {`${strength.pct > 0 ? '+' : ''}${fmtNum(strength.pct)}%`}
+    <div>
+      <SectionHeader
+        title="Strength trends"
+        controls={
+          <div className="flex rounded-pill bg-surface-strong p-0.5">
+            {PERIODS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => onPeriod(p.key)}
+                className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
+                  period === p.key ? 'bg-ink text-white' : 'text-muted'
+                }`}
+              >
+                {p.pill}
+              </button>
+            ))}
+          </div>
+        }
+      />
+
+      {movers.length === 0 ? (
+        <div className="mt-3 rounded-card bg-paper-card p-5 text-sm text-muted shadow-card">
+          {previous.sets === 0
+            ? `Nothing logged ${prose}.`
+            : `Nothing trained in both ${period === 'season' ? 'windows' : 'weeks'}.`}
         </div>
       ) : (
-        <div className="mt-1 text-base font-semibold leading-tight text-muted">
-          Not enough data yet
-        </div>
+        <>
+          <div className="mt-3">
+            <MoverHero
+              move={lead}
+              series={leadSeries}
+              unit={unit}
+              onOpen={canOpen(lead.normalizedName) ? () => onOpen(lead.normalizedName) : undefined}
+            />
+          </div>
+          {rest.length > 0 && (
+            <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
+              {rest.slice(0, MOVERS_SHOWN - 1).map((m) => (
+                <MoverRow
+                  key={m.normalizedName}
+                  move={m}
+                  unit={unit}
+                  onOpen={canOpen(m.normalizedName) ? () => onOpen(m.normalizedName) : undefined}
+                />
+              ))}
+            </ul>
+          )}
+        </>
       )}
-      <div className="mt-1 text-xs text-muted">{hint}</div>
-      {strength.series.length >= 2 && (
-        <div className="mt-3 h-20 w-full">
-          <Sparkline
-            values={strength.series.map((p) => p.pct)}
-            stroke="#0A0A0A"
-            fill="rgba(10,10,10,0.08)"
-          />
-        </div>
-      )}
+
+      <button
+        type="button"
+        onClick={onSeeAll}
+        className="mt-3 flex w-full items-center justify-center gap-1 rounded-card bg-surface-strong py-3.5 text-sm font-semibold text-muted active:bg-pressed active:text-ink"
+      >
+        See all exercises <ChevronRight />
+      </button>
     </div>
   );
 }
 
-function MostImprovedCard({
-  mi,
+/** The lift at the top of the list, with the shape of how it got there. */
+function MoverHero({
+  move,
   series,
   unit,
+  onOpen,
 }: {
-  mi: NonNullable<ReturnType<typeof computeMostImproved>>;
+  move: ExerciseMove;
   series: number[];
   unit: MachineUnit;
+  onOpen?: () => void;
 }) {
-  return (
-    <div className="rounded-card bg-ink p-5 text-white shadow-card">
-      <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
-        Most improved this month
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        {/* Only a gain when it gained. In a deload week every lift is down
+            and the top of the list is the smallest drop — still worth the
+            card, not worth calling a gain. */}
+        <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
+          {move.deltaPct > 1 ? 'Biggest gain' : 'Top mover'}
+        </div>
+        {onOpen && (
+          <span className="text-white/60">
+            <ChevronRight />
+          </span>
+        )}
       </div>
       <div className="mt-2 flex items-end justify-between gap-4">
         <div className="min-w-0">
-          <div className="truncate text-base font-semibold">{mi.displayName}</div>
+          <div className="truncate text-base font-semibold">{move.displayName}</div>
           <div className="mt-1 text-display font-bold leading-none tracking-tight tabular-nums">
-            {fmtNum(fromKgFor(mi.toKg, unit))}
-            <span className="ml-1 text-base font-semibold text-white/70">{unit}</span>
+            {formatLoadShort(move.currentKg, unit)}
           </div>
-          <div className="mt-1 text-xs text-white/60">estimated 1RM</div>
-          <div className="mt-2 text-sm font-semibold tabular-nums">
-            ↑ +{fmtNum(fromKgFor(mi.deltaKg, unit))} {unit} · +{fmtNum(mi.deltaPct)}%
+          <div
+            className={`mt-1.5 text-sm font-semibold tabular-nums ${
+              move.deltaPct > 1
+                ? 'text-good'
+                : move.deltaPct < -1
+                  ? 'text-danger'
+                  : 'text-white/70'
+            }`}
+          >
+            {deltaArrow(move.deltaPct)} {fmtNum(Math.abs(move.deltaPct))}%
           </div>
         </div>
         {series.length >= 2 && (
-          <div className="h-16 w-32 shrink-0">
+          <div className="h-16 w-28 shrink-0">
             <Sparkline values={series} stroke="#FFFFFF" fill="rgba(255,255,255,0.12)" />
           </div>
         )}
       </div>
-    </div>
+    </>
+  );
+  const cls = 'w-full rounded-card bg-ink p-5 text-left text-white shadow-card';
+  return onOpen ? (
+    <button type="button" onClick={onOpen} className={`${cls} active:bg-ink-soft`}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 
-function TopRecords({ records, onViewAll }: { records: LiftRecord[]; onViewAll: () => void }) {
-  return (
-    <div className="rounded-card bg-paper-card shadow-card">
-      <div className="flex items-center justify-between px-5 pt-4">
-        <div className="text-base font-bold tracking-tight text-ink">All-time records</div>
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="flex items-center gap-1 text-sm text-muted active:text-ink"
-        >
-          View all <ChevronRight />
-        </button>
-      </div>
-      <ul className="mt-2 divide-y divide-line/60">
-        {records.map((r) => (
-          <li key={r.normalizedName}>
-            <button
-              type="button"
-              onClick={onViewAll}
-              className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left active:bg-surface"
-            >
-              <span className="min-w-0 truncate text-sm text-ink">{r.displayName}</span>
-              <span className="flex shrink-0 items-center gap-2 text-sm font-semibold text-ink tabular-nums">
-                {r.heaviest ? formatLoadShort(r.heaviest.weightKg ?? 0, r.unit) : '–'}
-                <ChevronRight />
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+/**
+ * One lift under the hero.
+ *
+ * Name, the set as it was logged, the change — one line, because that is all
+ * three of them are. They were stacked in a right-hand column, which cost a
+ * row's height to say the same thing and left the delta floating under a
+ * weight it wasn't about. The earlier set isn't printed: the arrow and the
+ * percentage say which way it went, and the set itself is one tap away.
+ */
+function MoverRow({
+  move,
+  unit,
+  onOpen,
+}: {
+  move: ExerciseMove;
+  unit: MachineUnit;
+  /** Absent for a lift with no record behind it — nothing to open. */
+  onOpen?: () => void;
+}) {
+  const up = move.deltaPct > 1;
+  const down = move.deltaPct < -1;
+  const body = (
+    <div className="flex items-center gap-2 px-4 py-3.5">
+      <span className="min-w-0 flex-1 truncate text-sm text-ink">{move.displayName}</span>
+      <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-ink tabular-nums">
+        {formatSetShort(move.currentKg, move.currentReps, unit)}
+      </span>
+      <span
+        className={`w-14 shrink-0 whitespace-nowrap text-right text-xs font-semibold tabular-nums ${
+          up ? 'text-good' : down ? 'text-danger' : 'text-muted'
+        }`}
+      >
+        {deltaArrow(move.deltaPct)} {fmtNum(Math.abs(move.deltaPct))}%
+      </span>
+      {onOpen && <ChevronRight />}
     </div>
   );
+  return (
+    <li>
+      {onOpen ? (
+        <button type="button" onClick={onOpen} className="w-full text-left active:bg-surface">
+          {body}
+        </button>
+      ) : (
+        body
+      )}
+    </li>
+  );
+}
+
+function deltaArrow(pct: number): string {
+  return pct > 1 ? '↑' : pct < -1 ? '↓' : '·';
 }
 
 // --- Formatting -------------------------------------------------------------------------
-
-function formatBw(kg: number, unit: BodyWeightUnit): string {
-  return unit === 'st' ? formatStoneLb(kg) : `${fmtNum(kg)} kg`;
-}
 
 function formatBwDelta(kg: number, unit: BodyWeightUnit): string {
   if (unit === 'st') {
@@ -715,6 +960,11 @@ function formatBwDelta(kg: number, unit: BodyWeightUnit): string {
   return `${fmtNum(kg)} kg`;
 }
 
+/** A set as it was logged: the weight, then the reps hit on it. */
+function formatSetShort(kg: number, reps: number, unit: MachineUnit): string {
+  return `${formatLoadShort(kg, unit)} × ${reps}`;
+}
+
 function formatLoadShort(kg: number, unit: MachineUnit): string {
   const v = fmtNum(fromKgFor(kg, unit));
   return unit === 'pin' ? `pin ${v}` : `${v} ${unit}`;
@@ -722,19 +972,6 @@ function formatLoadShort(kg: number, unit: MachineUnit): string {
 
 // --- Icons -------------------------------------------------------------------------------
 
-function CalendarIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="4" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M3 8h12M6.5 2.5v3M11.5 2.5v3"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 /**
  * One block of the dashboard.
  *
@@ -745,28 +982,40 @@ function CalendarIcon() {
  * the loading state had already cleared.
  */
 function Block({ children }: { children: React.ReactNode }) {
-  return <div className="mt-7 first:mt-6">{children}</div>;
+  return <div className="mt-9 first:mt-6">{children}</div>;
 }
 
-// --- One lift's history, under its record ---------------------------------
+// --- One movement, on its own screen ---------------------------------------
 
-type DetailRange = 30 | 90 | 182 | 0;
+type DetailRange = 7 | 14 | 30 | 90 | 182 | 365 | 0;
 
-const RANGE_LABELS: { days: DetailRange; label: string }[] = [
-  { days: 30, label: '1M' },
-  { days: 90, label: '3M' },
-  { days: 182, label: '6M' },
-  { days: 0, label: 'All' },
+const RANGE_LABELS: { days: DetailRange; label: string; prose: string }[] = [
+  { days: 7, label: '1w', prose: 'in the last week' },
+  { days: 14, label: '2w', prose: 'in the last fortnight' },
+  { days: 30, label: '1m', prose: 'in the last month' },
+  { days: 90, label: '3m', prose: 'in the last three months' },
+  { days: 182, label: '6m', prose: 'in the last six months' },
+  { days: 365, label: '1y', prose: 'in the last year' },
+  { days: 0, label: 'All', prose: 'all time' },
 ];
+
+/** Sessions before the list offers to show the rest. */
+const PROGRESSION_ROWS = 5;
 
 /**
  * One movement, on its own screen.
  *
- * This used to unfold inside the records list: tapping a row dropped a chart,
- * a range of dates and every set you had ever done into the middle of it, and
- * the list you were reading stopped being a list. A record is an overview and
- * a movement is a detail, so they are now a screen apart — the list stays
- * scannable, and the analysis gets the room it needs.
+ * Built around estimated 1RM rather than around the heaviest set ever done.
+ * An all-time best is a fact you check once; what you come back for is
+ * whether the thing is moving, and 1RM is the measure that answers it across
+ * changing rep ranges — 60×10 and 80×3 are the same lift told two ways, and
+ * only an estimate can say which was stronger.
+ *
+ * The all-time figures keep their place, but as three supporting numbers in
+ * one card rather than as the headline. The range pills govern everything
+ * above the records card — the figure, the percentage and the chart all
+ * describe the same span, so the page can't quote one window while drawing
+ * another.
  */
 function RecordDetail({
   record,
@@ -777,7 +1026,8 @@ function RecordDetail({
   sets: PerformanceData['sets'];
   onBack: () => void;
 }) {
-  const [range, setRange] = useState<DetailRange>(0);
+  const [range, setRange] = useState<DetailRange>(30);
+  const [showAll, setShowAll] = useState(false);
   const history = useMemo(
     () => buildExerciseHistory(sets, record.normalizedName),
     [sets, record.normalizedName],
@@ -790,24 +1040,30 @@ function RecordDetail({
     return history.filter((p) => p.date >= from);
   }, [history, range]);
 
-  const points = useMemo(
-    () =>
-      inRange
-        .filter((p) => p.topWeightKg != null && p.repsAtTopWeight != null)
-        .map((p) => ({
-          label: p.date,
-          weight: fromKgFor(p.topWeightKg!, record.unit),
-          reps: p.repsAtTopWeight!,
-        })),
-    [inRange, record.unit],
-  );
+  const points = useMemo(() => {
+    const scored = inRange.filter((p) => p.bestEst1RMkg != null);
+    return scored.map((p, i) => {
+      const value = fromKgFor(p.bestEst1RMkg!, record.unit);
+      const before = i > 0 ? fromKgFor(scored[i - 1].bestEst1RMkg!, record.unit) : null;
+      return {
+        label: p.date,
+        value,
+        // Against the session before it, so the tooltip answers "was that one
+        // better than the last one" without any arithmetic.
+        delta: before != null && before > 0 ? ((value - before) / before) * 100 : null,
+      };
+    });
+  }, [inRange, record.unit]);
+  const changePct = useMemo(() => est1RMChangePct(inRange), [inRange]);
+  const prose = RANGE_LABELS.find((r) => r.days === range)?.prose ?? '';
 
-  const best =
-    record.kind === 'weighted' && record.heaviest
-      ? formatLoadShort(record.heaviest.weightKg ?? 0, record.unit)
-      : record.kind === 'reps' && record.mostReps
-        ? `${record.mostReps.reps} reps`
-        : '–';
+  // The headline: the best estimate in this window, not all time — the card
+  // below carries the all-time one.
+  const latest = points.length > 0 ? points[points.length - 1].value : null;
+  const mostReps = useMemo(() => mostRepsIn(history), [history]);
+
+  const rows = useMemo(() => [...inRange].reverse(), [inRange]);
+  const shown = showAll ? rows : rows.slice(0, PROGRESSION_ROWS);
 
   return (
     <div className="pb-nav min-h-screen bg-paper">
@@ -815,74 +1071,145 @@ function RecordDetail({
         className="mx-auto max-w-md px-5"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}
       >
+        {/* PageHeader already draws the large title and collapses it into the
+            sticky bar on scroll, so the movement's name is not repeated here.
+            The body part stands in for the machine note the design asks for —
+            there is nowhere in the schema to keep "the white one". */}
         <PageHeader title={record.displayName} onBack={onBack} />
+        {record.bodyPart && <p className="mt-1 text-base text-muted">{record.bodyPart}</p>}
 
-        <div className="mt-3">
-          <SectionLabel>All-time best</SectionLabel>
-        </div>
-        <div className="mt-1 text-display-lg font-bold leading-none tracking-tight text-ink tabular-nums">
-          {best}
-        </div>
-
-        {/* Three across, and compact: these support the headline above them
-            rather than being the headline, which is why they aren't the
-            dashboard's stat tile. */}
-        <div className="mt-5 grid grid-cols-3 gap-2.5">
-          <MiniStat
-            label="Est. 1RM"
-            value={record.best1RMkg > 0 ? formatLoadShort(record.best1RMkg, record.unit) : '–'}
-          />
-          <MiniStat
-            label="Best reps"
-            value={record.mostReps?.reps != null ? String(record.mostReps.reps) : '–'}
-          />
-          <MiniStat label="Record date" value={shortDate(recordAchievedAt(record))} />
+        {/* Seven windows, from a week to everything. The old four started at a
+            month, which is too coarse to see whether this week went well. */}
+        <div className="mt-4 flex rounded-pill bg-surface-strong p-0.5">
+          {RANGE_LABELS.map((r) => (
+            <button
+              key={r.label}
+              type="button"
+              onClick={() => setRange(r.days)}
+              className={`flex-1 rounded-pill py-1.5 text-caption font-semibold ${
+                range === r.days ? 'bg-ink text-white' : 'text-muted'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
 
-        {record.kind === 'weighted' && (
-          <>
-            <div className="mt-5 flex rounded-pill bg-surface-strong p-0.5">
-              {RANGE_LABELS.map((r) => (
-                <button
-                  key={r.label}
-                  type="button"
-                  onClick={() => setRange(r.days)}
-                  className={`flex-1 rounded-pill py-1.5 text-xs font-semibold ${
-                    range === r.days ? 'bg-ink text-white' : 'text-muted'
-                  }`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-3 rounded-card bg-paper-card p-4 shadow-card">
-              <SectionLabel>Strength progress</SectionLabel>
-              <div className="mt-0.5 text-xs text-muted">Top working set</div>
-              {points.length < 2 ? (
-                <div className="flex h-[140px] items-center justify-center px-6 text-center text-sm text-muted">
-                  {points.length === 0
-                    ? 'Nothing logged in this range.'
-                    : 'Just one session in this range — keep logging to see the trend.'}
+        <div className="mt-5">
+          {/* Sentence case, not the tracked uppercase the dashboard uses for
+              its section labels: this names the number directly under it
+              rather than heading a region of the page. */}
+          <div className="text-sm text-muted">Estimated 1RM</div>
+          {latest != null ? (
+            <>
+              <div className="mt-1 flex items-baseline gap-1.5">
+                <div className="text-display-lg font-bold leading-none tracking-tight text-ink tabular-nums">
+                  {fmtNum(latest)}
                 </div>
-              ) : (
-                <DualAxisChart points={points} unitLabel={record.unit} />
+                <div className="text-base font-semibold text-muted">
+                  {record.unit === 'pin' ? 'pin' : record.unit}
+                </div>
+              </div>
+              {changePct != null && (
+                <div className="mt-1.5 text-sm tabular-nums">
+                  <span
+                    className={`font-semibold ${
+                      changePct > 1
+                        ? 'text-good'
+                        : changePct < -1
+                          ? 'text-danger'
+                          : 'text-muted'
+                    }`}
+                  >
+                    {deltaArrow(changePct)} {fmtNum(Math.abs(changePct))}%
+                  </span>{' '}
+                  <span className="text-muted">{prose}</span>
+                </div>
               )}
-            </div>
-          </>
+            </>
+          ) : (
+            <div className="mt-1 text-base font-semibold text-muted">Nothing logged in range</div>
+          )}
+        </div>
+
+        {points.length >= 2 ? (
+          <div className="mt-4">
+            <Est1RMChart points={points} unitLabel={record.unit} />
+          </div>
+        ) : (
+          <div className="mt-4 flex h-[180px] items-center justify-center rounded-card bg-paper-card px-6 text-center text-sm text-muted shadow-card">
+            {points.length === 0
+              ? 'Nothing logged in this range.'
+              : 'One session in this range — keep logging to see the trend.'}
+          </div>
         )}
 
-        <SessionHistoryList history={inRange} unit={record.unit} />
+        <div className="mt-7 rounded-card bg-paper-card p-4 shadow-card">
+          <div className="flex items-center gap-2">
+            <span className="text-ink">
+              <BarsIcon />
+            </span>
+            <div className="text-base font-bold tracking-tight text-ink">Personal records</div>
+          </div>
+          <div className="mt-4 flex items-stretch divide-x divide-line">
+            <PersonalRecord
+              label="Heaviest weight"
+              value={
+                record.heaviest ? formatLoadShort(record.heaviest.weightKg ?? 0, record.unit) : '–'
+              }
+            />
+            <PersonalRecord
+              label="Best estimated 1RM"
+              value={record.best1RMkg > 0 ? formatLoadShort(record.best1RMkg, record.unit) : '–'}
+            />
+            <PersonalRecord label="Most reps" value={mostReps != null ? String(mostReps) : '–'} />
+          </div>
+        </div>
+
+        {rows.length > 0 && (
+          <div className="mt-4 rounded-card bg-paper-card p-4 shadow-card">
+            <div className="text-base font-bold tracking-tight text-ink">Recent progression</div>
+            <ul className="mt-2 divide-y divide-line/60">
+              {shown.map((p) => (
+                <li key={p.date} className="flex items-baseline gap-3 py-3">
+                  <span className="w-20 shrink-0 text-sm text-muted">{shortDate(p.at)}</span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-ink tabular-nums">
+                    {p.topWeightKg != null && p.repsAtTopWeight != null
+                      ? formatSetShort(p.topWeightKg, p.repsAtTopWeight, record.unit)
+                      : '–'}
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap text-sm text-muted tabular-nums">
+                    {p.bestEst1RMkg != null
+                      ? `${formatLoadShort(p.bestEst1RMkg, record.unit)} e1RM`
+                      : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {rows.length > shown.length && (
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="mt-2 flex w-full items-center justify-center gap-1 rounded-card bg-surface-strong py-3.5 text-sm font-semibold text-muted active:bg-pressed active:text-ink"
+              >
+                View full history <ChevronRight />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: string }) {
+/** One of the three all-time figures, in a divided row. */
+function PersonalRecord({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-panel bg-paper-card p-3 shadow-card">
-      <div className="truncate text-caption text-muted">{label}</div>
-      <div className="mt-0.5 truncate text-base font-bold leading-tight tracking-tight text-ink tabular-nums">
+    <div className="flex min-w-0 flex-1 flex-col px-2 first:pl-0 last:pr-0">
+      {/* Wraps rather than clips: "Best estimated 1RM" is three words and a
+          numeral, and there is no shorter way to say it that stays honest. */}
+      <div className="text-caption leading-tight text-muted">{label}</div>
+      <div className="mt-auto truncate pt-1 text-lg font-bold leading-tight tracking-tight text-ink tabular-nums">
         {value}
       </div>
     </div>
@@ -899,157 +1226,106 @@ function shortDate(iso: string): string {
 
 // --- Chart -------------------------------------------------------------------
 
-function DualAxisChart({
+/**
+ * Estimated 1RM over the chosen window.
+ *
+ * One series where there used to be two. The old chart drew top weight and
+ * reps on separate axes, which made every question a two-step read — was that
+ * dip a lighter day or the same weight for fewer reps? — and answered it in a
+ * legend. Estimated 1RM folds both into the figure the page is already
+ * headlined with, so the line and the number agree by construction.
+ */
+/**
+ * The reading under the pointer: when, how much, and whether it beat the
+ * session before it. Three short lines, because a chart tooltip is asked for
+ * rather than read in passing — the page itself stays wordless.
+ */
+function Est1RMTooltip({
+  active,
+  payload,
+  unitLabel,
+}: {
+  active?: boolean;
+  payload?: { payload: { label: string; value: number; delta: number | null } }[];
+  unitLabel: MachineUnit;
+}) {
+  const point = payload?.[0]?.payload;
+  if (!active || !point) return null;
+  return (
+    <div className="rounded-control bg-ink px-3 py-2 shadow-lift">
+      <div className="text-caption text-white/60">
+        {new Date(point.label).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+      </div>
+      <div className="mt-0.5 text-sm font-bold text-white tabular-nums">
+        {fmtNum(point.value)} {unitLabel === 'pin' ? 'pin' : unitLabel}
+      </div>
+      {point.delta != null && Math.abs(point.delta) >= 0.05 && (
+        <div
+          className={`text-caption font-semibold tabular-nums ${
+            point.delta > 0 ? 'text-good' : 'text-danger-strong'
+          }`}
+        >
+          {point.delta > 0 ? '+' : '−'}
+          {fmtNum(Math.abs(point.delta))}%
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Est1RMChart({
   points,
   unitLabel,
 }: {
-  points: { label: string; weight: number; reps: number }[];
-  unitLabel: string;
+  points: { label: string; value: number }[];
+  unitLabel: MachineUnit;
 }) {
   return (
-    <div className="mt-4">
+    <div className="rounded-card bg-paper-card p-4 shadow-card">
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+        <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="e1rm-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#0A0A0A" stopOpacity={0.12} />
+              <stop offset="100%" stopColor="#0A0A0A" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="#E5E5EA" strokeDasharray="3 4" vertical={false} />
           <XAxis
             dataKey="label"
             tick={{ fill: '#8E8E93', fontSize: 10 }}
             axisLine={false}
             tickLine={false}
-            minTickGap={24}
+            minTickGap={28}
             tickFormatter={(d) =>
               new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
             }
           />
           <YAxis
-            yAxisId="w"
+            tick={{ fill: '#8E8E93', fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
             width={36}
-            tick={{ fill: '#0A0A0A', fontSize: 10 }}
-            axisLine={false}
-            tickLine={false}
-            domain={['dataMin - 2', 'dataMax + 2']}
-            tickFormatter={(n) => String(Math.round(n))}
+            domain={['dataMin - 4', 'dataMax + 4']}
+            tickFormatter={(n) => String(Math.round(Number(n)))}
           />
-          <YAxis
-            yAxisId="r"
-            orientation="right"
-            width={28}
-            tick={{ fill: '#9CA3AF', fontSize: 10 }}
-            axisLine={false}
-            tickLine={false}
-            allowDecimals={false}
-            domain={[0, 'dataMax + 1']}
-          />
-          <Tooltip
-            contentStyle={{ borderRadius: 12, border: '1px solid #E5E5EA', fontSize: 12 }}
-            labelFormatter={(d) =>
-              new Date(d).toLocaleDateString('en-GB', {
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric',
-              })
-            }
-            formatter={(value, name) =>
-              name === 'Top weight'
-                ? [`${fmtNum(Number(value))} ${unitLabel}`, name]
-                : [`${value} reps`, name]
-            }
-          />
-          <Legend
-            verticalAlign="top"
-            height={24}
-            iconType="plainline"
-            wrapperStyle={{ fontSize: 11, color: '#8E8E93' }}
-          />
-          <Line
-            yAxisId="w"
-            name="Top weight"
+          <Tooltip cursor={{ stroke: '#C9C9CE', strokeWidth: 1 }} content={<Est1RMTooltip unitLabel={unitLabel} />} />
+          <Area
             type="monotone"
-            dataKey="weight"
+            dataKey="value"
             stroke="#0A0A0A"
             strokeWidth={2}
-            dot={{ r: 2.5, fill: '#0A0A0A' }}
+            fill="url(#e1rm-fill)"
+            dot={false}
             activeDot={{ r: 4 }}
             isAnimationActive
             animationDuration={900}
             animationEasing="ease-out"
           />
-          <Line
-            yAxisId="r"
-            name="Reps"
-            type="monotone"
-            dataKey="reps"
-            stroke="#9CA3AF"
-            strokeWidth={2}
-            strokeDasharray="4 3"
-            dot={{ r: 2, fill: '#9CA3AF' }}
-            activeDot={{ r: 3.5 }}
-            isAnimationActive
-            animationDuration={900}
-            animationEasing="ease-out"
-          />
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );
-}
-
-// --- Session list --------------------------------------------------------------
-
-function SessionHistoryList({
-  history,
-  unit,
-  compact = false,
-}: {
-  history: ExerciseHistoryPoint[];
-  unit: MachineUnit;
-  /** Under a record row: tighter, and no section label. */
-  compact?: boolean;
-}) {
-  if (history.length === 0) return null;
-  const rows = [...history].reverse(); // newest first
-  return (
-    <div className={compact ? 'mt-3' : 'mt-7'}>
-      {!compact && <SectionLabel>History</SectionLabel>}
-      <ul
-        className={
-          compact
-            ? 'divide-y divide-line/60'
-            : 'mt-3 divide-y divide-line overflow-hidden rounded-card bg-paper-card shadow-card'
-        }
-      >
-        {rows.map((p) => (
-          <li key={p.date} className={compact ? 'py-3' : 'px-5 py-3.5'}>
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-sm font-semibold text-ink">
-                {new Date(p.at).toLocaleDateString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
-              </span>
-              {p.bestEst1RMkg != null && (
-                <span className="shrink-0 text-xs text-muted tabular-nums">
-                  1RM {fmtNum(fromKgFor(p.bestEst1RMkg, unit))} {unit}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-sm text-muted tabular-nums">{formatSets(p.sets, unit)}</div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function formatSets(sets: SessionSet[], unit: MachineUnit): string {
-  if (sets.length === 0) return 'No sets';
-  return sets
-    .map((s) => {
-      const w = s.weightKg != null ? `${fmtNum(fromKgFor(s.weightKg, unit))}${unit}` : '—';
-      const r = s.reps != null ? `${s.reps}` : '—'; // reps raw
-      return `${w} × ${r}`;
-    })
-    .join(', ');
 }
 
 // --- Body weight ---------------------------------------------------------------
@@ -1057,18 +1333,13 @@ function formatSets(sets: SessionSet[], unit: MachineUnit): string {
 function BodyWeightCard({
   rows,
   bwUnit,
-  controls,
-  latestKg,
-  delta,
+  rangeLabel,
 }: {
+  /** Newest first, already filtered to the selected range. */
   rows: PerformanceData['bodyWeights'];
   bwUnit: BodyWeightUnit;
-  /** Rendered beside the label — the range pills. */
-  controls?: React.ReactNode;
-  /** Most recent reading, for the headline above the graph. */
-  latestKg?: number | null;
-  /** The change under it, already worded. */
-  delta?: string | null;
+  /** "over 12 weeks" — names the window the change is measured across. */
+  rangeLabel: string;
 }) {
   const points = useMemo(
     () =>
@@ -1079,21 +1350,40 @@ function BodyWeightCard({
     [rows, bwUnit],
   );
 
+  // Both figures come from the rows the chart is drawing, so the number and
+  // the picture can't disagree. The change used to be measured from the start
+  // of the plan however far back the pills were set, which meant moving the
+  // range redrew the graph and left the delta saying something about a
+  // different span of time.
+  const latestKg = rows.length > 0 ? rows[0].weight_kg : null;
+  const earliestKg = rows.length > 1 ? rows[rows.length - 1].weight_kg : null;
+  const deltaKg = latestKg != null && earliestKg != null ? latestKg - earliestKg : null;
+
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <div className="flex items-center justify-between gap-3">
-        <SectionLabel>Body weight</SectionLabel>
-        {controls}
-      </div>
-      {/* The headline the stat grid used to carry. It belonged here all along,
-          above the graph that explains it, rather than in a tile directly
-          above a card showing the same figure. */}
+      {/* No heading of its own: the section is titled on the page above, where
+          the range pills that govern it also sit. */}
       {latestKg != null && (
-        <div className="mt-1">
-          <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
-            {formatBw(latestKg, bwUnit)}
+        <div>
+          <div className="flex items-baseline gap-1.5">
+            <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
+              {bwUnit === 'st' ? formatStoneLb(latestKg) : fmtNum(latestKg)}
+            </div>
+            {bwUnit === 'kg' && <div className="text-base font-semibold text-muted">kg</div>}
           </div>
-          {delta && <div className="mt-1 text-xs text-muted tabular-nums">{delta}</div>}
+          {deltaKg != null && (
+            <div className="mt-1.5 text-xs tabular-nums">
+              <span
+                className={`font-semibold ${
+                  deltaKg > 0 ? 'text-good' : deltaKg < 0 ? 'text-danger' : 'text-muted'
+                }`}
+              >
+                {deltaKg > 0 ? '↑' : deltaKg < 0 ? '↓' : '·'}{' '}
+                {formatBwDelta(Math.abs(deltaKg), bwUnit)}
+              </span>{' '}
+              <span className="text-muted">{rangeLabel}</span>
+            </div>
+          )}
         </div>
       )}
       <div className="mt-3">
@@ -1103,7 +1393,13 @@ function BodyWeightCard({
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={140}>
-            <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="bw-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0A0A0A" stopOpacity={0.1} />
+                  <stop offset="100%" stopColor="#0A0A0A" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <XAxis
                 dataKey="label"
                 tick={{ fill: '#8E8E93', fontSize: 10 }}
@@ -1133,18 +1429,22 @@ function BodyWeightCard({
                   })
                 }
               />
-              <Line
+              {/* A dot on every reading turned a year of daily weigh-ins into a
+                  string of beads. Only the latest is marked — the one the
+                  headline above is quoting. */}
+              <Area
                 type="monotone"
                 dataKey="value"
                 stroke="#0A0A0A"
                 strokeWidth={2}
-                dot={{ r: 2.5, fill: '#0A0A0A' }}
+                fill="url(#bw-fill)"
+                dot={false}
                 activeDot={{ r: 4 }}
                 isAnimationActive
                 animationDuration={900}
                 animationEasing="ease-out"
               />
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         )}
       </div>

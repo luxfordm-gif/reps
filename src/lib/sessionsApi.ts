@@ -1,5 +1,4 @@
 import { supabase, currentUserId, currentUserIdSync } from './supabase';
-import { getCachedExerciseUnit } from './exercisePrefsApi';
 import { getActivePlan, getCachedActivePlan } from './plansApi';
 import { prefetchAlternativesForExercises } from './alternativesApi';
 import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
@@ -868,18 +867,20 @@ export interface WeekSessionBreakdown {
   /** Reps across those sets. Sets logged without a rep count contribute 0. */
   repCount: number;
   /**
-   * Total weight moved, in kilograms — or null when we can't stand behind a
-   * figure.
+   * Total weight moved, in kilograms.
    *
-   * The weight column stores kilograms for every machine except a 'pin' one,
-   * where it holds the pin position 1:1 (see units.ts). A pin number isn't a
-   * weight, so adding it to a kilogram total produces a number that means
-   * nothing. `kudos` gets away with the same column because it only ever
-   * compares one exercise against itself, where the unit cancels out; a
-   * printed total has no such cover. So a session containing any pin-logged
-   * set reports null rather than a figure that reads precise and isn't.
+   * This used to report null for any session containing a set on a 'pin'-unit
+   * machine, on the grounds that a pin number isn't a weight. That was the
+   * wrong call twice over. A multi-peg or cam machine — the common case, and
+   * the one this was really aimed at — stores the total actually lifted in
+   * `weight`, with `position_weights` recording only how it was distributed
+   * across the pegs (see 0017_weight_profiles.sql, which says as much: the
+   * total is there "so volume, PRs, records and history carry on reading the
+   * one number they always have"). And it was decided per session, so one
+   * such set blanked the figure for everything logged beside it. Withholding
+   * a real number is worse than including an odd one.
    */
-  volumeKg: number | null;
+  volumeKg: number;
   /**
    * How this session's volume compares with the last time this same workout
    * was done, as a percentage — or null when there's nothing to compare with.
@@ -1035,9 +1036,6 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
   const bodyPartsBySession = new Map<string, Set<string>>();
   const setCountBySession = new Map<string, number>();
   const repCountBySession = new Map<string, number>();
-  // Sessions holding a set logged in pin positions rather than weight. Their
-  // volume is not a number of kilograms and isn't reported as one.
-  const pinTainted = new Set<string>();
   for (const r of (sets as LRow[]) ?? []) {
     const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
 
@@ -1047,15 +1045,10 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
     }
 
     if (r.weight != null && r.reps != null) {
-      // The bar heights keep using every set, pin or not: they're relative to
-      // the week's own biggest day, so a consistent arbitrary number still
-      // ranks the days correctly. Only the printed total has to be honest.
       volumeBySession.set(
         r.session_id,
         (volumeBySession.get(r.session_id) ?? 0) + r.weight * r.reps,
       );
-      const name = pe?.normalized_name;
-      if (name && getCachedExerciseUnit(name) === 'pin') pinTainted.add(r.session_id);
     }
 
     const bp = pe?.body_part?.trim();
@@ -1112,7 +1105,7 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
       bodyParts: [...(bodyPartsBySession.get(s.id) ?? [])],
       setCount: setCountBySession.get(s.id) ?? 0,
       repCount: repCountBySession.get(s.id) ?? 0,
-      volumeKg: pinTainted.has(s.id) ? null : (volumeBySession.get(s.id) ?? 0),
+      volumeKg: volumeBySession.get(s.id) ?? 0,
       volumeChangePct: changePctFor(s),
     });
   }

@@ -59,6 +59,60 @@ export function Tile({
   );
 }
 
+/**
+ * The same tile, at a third of the height.
+ *
+ * For the numbers that belong on the tab without being what you came for —
+ * the day's water, the week's steps. Three fit across a phone where two full
+ * tiles do, which is the point: a supporting figure shouldn't take a stat
+ * tile's 156px and a whole row to say "2.4".
+ *
+ * Same parts in the same order as `Tile`, just tighter and with the icon
+ * beside the label rather than above it — at this size a 36px chip would be
+ * most of the card. Anything that wants a chart is still a card of its own.
+ */
+export function MiniTile({
+  icon,
+  label,
+  value,
+  hint,
+  onClick,
+}: {
+  /** Optional: a mini tile supporting a headline above it doesn't need one. */
+  icon?: ReactNode;
+  label: string;
+  value: ReactNode;
+  hint?: string;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
+      <div className="flex items-center gap-1.5 text-muted">
+        {/* The icons are drawn at 18px for the full tile; at this size they
+            sit at 14, which the viewBox handles. */}
+        {icon && (
+          <span className="flex shrink-0 items-center justify-center [&>svg]:h-3.5 [&>svg]:w-3.5">
+            {icon}
+          </span>
+        )}
+        <span className="truncate text-caption">{label}</span>
+      </div>
+      <div className="mt-1.5 truncate text-xl font-bold leading-none tracking-tight text-ink tabular-nums">
+        {value}
+      </div>
+      {hint && <div className="mt-1 truncate text-caption text-muted">{hint}</div>}
+    </>
+  );
+  const cls = 'flex h-full flex-col rounded-panel bg-paper-card p-3 text-left shadow-card';
+  return onClick ? (
+    <button type="button" onClick={onClick} className={`${cls} w-full active:bg-surface`}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
+  );
+}
+
 /** The unit that trails a tile value, sized to sit under it rather than shout. */
 export function TileUnit({ children }: { children: ReactNode }) {
   return <span className="ml-1 text-base font-semibold text-muted">{children}</span>;

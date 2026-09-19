@@ -184,6 +184,36 @@ export function buildExerciseHistory(
   return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+/**
+ * How much an exercise's estimated 1RM moved across a span of history.
+ *
+ * First scoreable day against the last, as a percentage — the figure under
+ * the headline on a movement's own screen, which is why it takes an already
+ * filtered slice rather than a range of its own: the number and the chart
+ * above it are then guaranteed to be describing the same days.
+ *
+ * Null when the span holds fewer than two days with a weight on them. One
+ * session is a reading, not a trend, and 0% would claim it was flat.
+ */
+export function est1RMChangePct(history: ExerciseHistoryPoint[]): number | null {
+  const scored = history.filter((p) => p.bestEst1RMkg != null && p.bestEst1RMkg > 0);
+  if (scored.length < 2) return null;
+  const first = scored[0].bestEst1RMkg!;
+  const last = scored[scored.length - 1].bestEst1RMkg!;
+  return Math.round(((last - first) / first) * 1000) / 10;
+}
+
+/** The most reps hit on any set of this exercise, loaded or not. */
+export function mostRepsIn(history: ExerciseHistoryPoint[]): number | null {
+  let best: number | null = null;
+  for (const p of history) {
+    for (const set of p.sets) {
+      if (set.reps != null && (best == null || set.reps > best)) best = set.reps;
+    }
+  }
+  return best;
+}
+
 // All-time bests live in lib/records.ts now (every set, three record kinds);
 // the top-eight leaderboard that used to be computed here went with the card
 // that showed it.
