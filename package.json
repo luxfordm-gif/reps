@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "for f in scripts/test-*.mjs; do echo \"\\n$f\"; node --experimental-strip-types --import ./scripts/register-ts.mjs \"$f\" || exit 1; done",
+    "stress:pdfs": "node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/stress-pdfs.mjs scripts/fixtures/plans",
     "preview": "vite preview"
   },
   "dependencies": {

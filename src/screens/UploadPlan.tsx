@@ -10,8 +10,17 @@ import { parseSetMods } from '../lib/parseSetMods';
 import { rotationWeeks, savePlan } from '../lib/plansApi';
 import { listMachines } from '../lib/machinesApi';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
+import { describePlanFileProblem } from '../lib/planUpload';
+import {
+  carriesHistory,
+  computeMatch,
+  isAnswerable,
+  type Match,
+  type PreviousExercise,
+} from '../lib/machineMatch';
 import { restLabel, restSecondsForExercises } from '../lib/restDefaults';
 import { formatNameList, groupedSetLabel } from '../lib/supersets';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { PageHeader } from '../components/PageHeader';
 import { DayEditorSheet, ExerciseEditorSheet } from '../components/PlanRepairSheets';
 import {
@@ -40,75 +49,6 @@ function parseTargetReps(repRange: string): number | null {
   if (!match) return null;
   const hi = match[2] ? parseInt(match[2], 10) : parseInt(match[1], 10);
   return Number.isFinite(hi) ? hi : null;
-}
-
-function tokenize(s: string): Set<string> {
-  return new Set(
-    s
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter((t) => t.length >= 2)
-  );
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  let inter = 0;
-  for (const x of a) if (b.has(x)) inter += 1;
-  const union = a.size + b.size - inter;
-  return union === 0 ? 0 : inter / union;
-}
-
-type PreviousExercise = {
-  name: string;
-  normalizedName: string;
-  // How many sets you've logged on it, used to break ties between equally
-  // similar candidates — the machine you actually train is the likelier match.
-  setCount: number;
-};
-type MatchKind = 'exact' | 'fuzzy' | 'none';
-type Match = {
-  kind: MatchKind;
-  candidate?: PreviousExercise;
-  decision: 'pending' | 'same' | 'different';
-};
-
-const FUZZY_THRESHOLD = 0.5;
-
-function computeMatch(
-  ex: ParsedExercise,
-  previous: PreviousExercise[]
-): Match {
-  if (previous.length === 0) return { kind: 'none', decision: 'pending' };
-  const exact = previous.find((p) => p.normalizedName === ex.normalizedName);
-  if (exact) return { kind: 'exact', candidate: exact, decision: 'same' };
-  const newTokens = tokenize(ex.name);
-  let best: { p: PreviousExercise; score: number } | null = null;
-  for (const p of previous) {
-    const score = jaccard(newTokens, tokenize(p.name));
-    if (!best || score > best.score) {
-      best = { p, score };
-    } else if (score === best.score && p.setCount > best.p.setCount) {
-      // Matching against your whole history means near-ties are more common
-      // than they were against a single plan; prefer the better-used machine.
-      best = { p, score };
-    }
-  }
-  if (best && best.score >= FUZZY_THRESHOLD) {
-    return { kind: 'fuzzy', candidate: best.p, decision: 'pending' };
-  }
-  return { kind: 'none', decision: 'pending' };
-}
-
-// An exercise "carries history" when it's been tied to a machine from the previous
-// plan — either an exact name match, or a fuzzy match the user confirmed is the same
-// machine. Those are the only exercises where keep-vs-reset is a meaningful choice.
-function carriesHistory(match?: Match): boolean {
-  if (!match) return false;
-  return (
-    match.kind === 'exact' || (match.kind === 'fuzzy' && match.decision === 'same')
-  );
 }
 
 interface Props {
@@ -145,6 +85,8 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   // The repair sheets: fixing a row the parser got wrong, or a day's name/week.
   const [editor, setEditor] = useState<EditorState>(null);
   const [dayEditor, setDayEditor] = useState<{ dayIdx: number } | 'new' | null>(null);
+  // Saving with lines still unread is allowed, but not by accident.
+  const [confirmDrop, setConfirmDrop] = useState(false);
 
 
   // Candidates are every machine you have actually logged sets on, across all
@@ -203,6 +145,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
+    const problem = describePlanFileProblem(f);
+    if (problem) {
+      // Leave the previous selection alone — nothing about this file was read.
+      setError(problem);
+      return;
+    }
     setError(null);
     setParsing(true);
     setFile(f);
@@ -298,7 +246,15 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     });
   }
 
-  function answerSameMachine(dayIdx: number, exIdx: number) {
+  /**
+   * Tie this row to a machine already in the history.
+   *
+   * `adoptName` also takes the old spelling. That matters for a typo: the
+   * Machines screen shows whichever name the newest plan used, so accepting
+   * "Dedlift" as the same machine without this would keep the history and
+   * rename the machine to the typo everywhere.
+   */
+  function answerSameMachine(dayIdx: number, exIdx: number, adoptName = false) {
     const target = parsed?.days[dayIdx]?.exercises[exIdx];
     if (!target) return;
     const key = keyOf(target);
@@ -315,7 +271,13 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
             : {
                 ...d,
                 exercises: d.exercises.map((e, j) =>
-                  j !== exIdx ? e : { ...e, normalizedName: candidate.normalizedName }
+                  j !== exIdx
+                    ? e
+                    : {
+                        ...e,
+                        normalizedName: candidate.normalizedName,
+                        ...(adoptName ? { name: candidate.name } : {}),
+                      }
                 ),
               }
         ),
@@ -427,6 +389,10 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   );
   const dayNames = useMemo(() => new Set((parsed?.days ?? []).map((d) => d.name)), [parsed]);
   const orphanLines = unparsed.filter((u) => u.dayName == null || !dayNames.has(u.dayName));
+  // Lines the parser couldn't read and the user hasn't dealt with. Adding one as
+  // an exercise or ignoring it takes it off this list, so what's left is only
+  // what hasn't been decided.
+  const droppedCount = unparsed.length;
   const problems = parsed ? planProblems(parsed) : [];
   // "No exercises" is a blocker shown by the save button now, not a warning.
   const visibleWarnings = (parsed?.warnings ?? []).filter(
@@ -472,7 +438,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const pendingMatchCount = useMemo(() => {
     let n = 0;
     for (const m of matches.values()) {
-      if (m.kind === 'fuzzy' && m.decision === 'pending') n += 1;
+      if (isAnswerable(m) && m.decision === 'pending') n += 1;
     }
     return n;
   }, [matches]);
@@ -516,7 +482,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                   <div className="mt-2 text-sm font-semibold text-ink">
                     Tap to choose a PDF
                   </div>
-                  <div className="mt-0.5 text-xs text-muted">Max ~10MB</div>
+                  <div className="mt-0.5 text-xs text-muted">Max 10MB</div>
                 </>
               )}
             </div>
@@ -569,7 +535,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               {pendingMatchCount > 0 && (
                 <div className="mt-2 text-xs text-muted">
                   <span className="font-semibold text-ink">{pendingMatchCount}</span>{' '}
-                  {pendingMatchCount === 1 ? 'exercise looks' : 'exercises look'} similar to your previous plan — confirm whether it's the same machine.
+                  {pendingMatchCount === 1 ? 'exercise matches' : 'exercises match'} a machine
+                  you already train, give or take the spelling — confirm each one below so its
+                  history follows it.
                 </div>
               )}
               {weeklyAltCount > 0 && (
@@ -612,7 +580,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                           match={matches.get(keyOf(ex))}
                           onEdit={() => setEditor({ mode: 'edit', dayIdx, exIdx })}
                           onNotesChange={(notes) => setExerciseNotes(dayIdx, exIdx, notes)}
-                          onSameMachine={() => answerSameMachine(dayIdx, exIdx)}
+                          onSameMachine={(adoptName) => answerSameMachine(dayIdx, exIdx, adoptName)}
                           onDifferentMachine={() => answerDifferentMachine(dayIdx, exIdx)}
                           onAlternativeChange={(alt) =>
                             setExerciseAlternative(dayIdx, exIdx, alt)
@@ -723,8 +691,21 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
         >
           <div className="mx-auto max-w-md">
+            {/* The lines that couldn't be read are shown where they were found,
+                which can be a long way up a long page. Saving drops them, so
+                the count belongs next to the button that does it. */}
+            {droppedCount > 0 && (
+              <div className="mb-2.5 flex items-start gap-2 text-xs text-warn">
+                <WarnGlyph />
+                <span>
+                  <span className="font-semibold">{droppedCount}</span>{' '}
+                  {droppedCount === 1 ? 'line' : 'lines'} couldn't be read and won't be
+                  imported.
+                </span>
+              </div>
+            )}
             <button
-              onClick={handleSave}
+              onClick={() => (droppedCount > 0 ? setConfirmDrop(true) : handleSave())}
               disabled={saving || !planName || problems.length > 0}
               className="pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
             >
@@ -732,6 +713,24 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
             </button>
           </div>
         </div>
+      )}
+
+      {confirmDrop && (
+        <ConfirmModal
+          title={`${droppedCount} ${droppedCount === 1 ? 'line' : 'lines'} won't be imported`}
+          message={
+            droppedCount === 1
+              ? "One line couldn't be read as an exercise. Save now and it's left out of the plan — you can add it by hand first instead."
+              : `${droppedCount} lines couldn't be read as exercises. Save now and they're left out of the plan — you can add them by hand first instead.`
+          }
+          confirmLabel="Save anyway"
+          cancelLabel="Go back"
+          onConfirm={() => {
+            setConfirmDrop(false);
+            handleSave();
+          }}
+          onCancel={() => setConfirmDrop(false)}
+        />
       )}
 
       {parsed && editor && (
@@ -811,6 +810,21 @@ function UnreadLineCard({
   );
   if (tone === 'plain') return <li className="rounded-control bg-paper-card px-3 py-2.5">{body}</li>;
   return <div className="border-t border-line/60 bg-warn-soft/60 px-5 py-3">{body}</div>;
+}
+
+function WarnGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden className="mt-px shrink-0">
+      <path
+        d="M8 1.5 15 14H1L8 1.5Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path d="M8 6v3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="8" cy="11.75" r="0.75" fill="currentColor" />
+    </svg>
+  );
 }
 
 function PlusIcon() {
@@ -954,7 +968,7 @@ function ExerciseReviewRow({
   restSeconds: number | null;
   match?: Match;
   onNotesChange: (notes: string) => void;
-  onSameMachine: () => void;
+  onSameMachine: (adoptName: boolean) => void;
   onDifferentMachine: () => void;
   onAlternativeChange: (alt: WeeklyAlternative | null) => void;
   onEdit: () => void;
@@ -1041,13 +1055,17 @@ function ExerciseReviewRow({
         </div>
       )}
 
-      {match && match.kind === 'fuzzy' && (
+      {isAnswerable(match) && (
         <div className="mt-3">
-          {match.decision === 'pending' && (
+          {match?.decision === 'pending' && (
             // Both names, side by side, then yes or no. The answer decides
             // whether this row inherits the other name's history and PRs.
             <div className="rounded-control bg-ink/5 px-3 py-2.5">
-              <div className="text-xs font-semibold text-ink">Is this the same machine?</div>
+              <div className="text-xs font-semibold text-ink">
+                {match.kind === 'typo'
+                  ? 'Is this a spelling of one you already train?'
+                  : 'Is this the same machine?'}
+              </div>
               <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                 <dt className="text-muted">This plan</dt>
                 <dd className="min-w-0 break-words font-semibold text-ink">{exercise.name}</dd>
@@ -1058,10 +1076,10 @@ function ExerciseReviewRow({
               </dl>
               <div className="mt-2.5 flex gap-2">
                 <button
-                  onClick={onSameMachine}
+                  onClick={() => onSameMachine(match.kind === 'typo')}
                   className="pressable flex-1 rounded-pill bg-ink py-1.5 text-xs font-semibold text-white active:opacity-80"
                 >
-                  Yes, same machine
+                  {match.kind === 'typo' ? 'Yes, fix the spelling' : 'Yes, same machine'}
                 </button>
                 <button
                   onClick={onDifferentMachine}
@@ -1070,16 +1088,26 @@ function ExerciseReviewRow({
                   No, different
                 </button>
               </div>
+              {match.kind === 'typo' && (
+                // The plan's spelling can be the deliberate one — a different
+                // machine whose name happens to be a character away.
+                <button
+                  onClick={() => onSameMachine(false)}
+                  className="pressable mt-2 w-full text-center text-label font-semibold text-muted active:text-ink"
+                >
+                  Same machine, but keep “{exercise.name}”
+                </button>
+              )}
             </div>
           )}
-          {match.decision === 'same' && (
+          {match?.decision === 'same' && (
             <div className="text-xs text-muted">
               Same machine as{' '}
               <span className="font-medium text-ink">{match.candidate?.name}</span> — its
               history and PRs carry on.
             </div>
           )}
-          {match.decision === 'different' && (
+          {match?.decision === 'different' && (
             <div className="text-xs text-muted">Treated as a new machine.</div>
           )}
         </div>

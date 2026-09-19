@@ -6,7 +6,7 @@ import { haptics } from '../lib/haptics';
 import { baseDayName } from '../lib/daySlots';
 import {
   formatNameList,
-  groupedSetLabel,
+  exerciseBadges,
   supersetPartnerNames,
 } from '../lib/supersets';
 import {
@@ -605,10 +605,9 @@ function ExerciseRow({
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const hasNotes = !!exercise.notes && exercise.notes.trim().length > 0;
-  const schemeLabel =
-    partnerNames.length > 0
-      ? groupedSetLabel(partnerNames.length + 1)
-      : schemeToLabel(exercise.set_scheme);
+  // The group it's performed in, and what happens inside its own sets — an
+  // exercise can have both, and only one used to show.
+  const badges = exerciseBadges(partnerNames.length, exercise.set_scheme);
 
   function openImages(e: React.MouseEvent) {
     e.stopPropagation();
@@ -633,11 +632,19 @@ function ExerciseRow({
             <span>
               {exercise.total_sets ?? '–'} × {exercise.rep_range}
             </span>
-            {schemeLabel && (
-              <span className="rounded-pill bg-ink px-2 py-0.5 text-label font-semibold uppercase tracking-wider text-white">
-                {schemeLabel}
+            {badges.map((badge, i) => (
+              // The first badge keeps the weight it always had; a second one
+              // sits behind it so the pair reads as one thing and its detail,
+              // rather than two competing labels.
+              <span
+                key={badge}
+                className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-wider ${
+                  i === 0 ? 'bg-ink text-white' : 'bg-ink/10 text-ink'
+                }`}
+              >
+                {badge}
               </span>
-            )}
+            ))}
           </div>
           {partnerNames.length > 0 && (
             <div onClick={onTap} className="mt-1 cursor-pointer text-xs text-muted">
@@ -740,23 +747,6 @@ function MoveArrow({ up = false }: { up?: boolean }) {
       />
     </svg>
   );
-}
-
-function schemeToLabel(scheme: string | null | undefined): string | null {
-  switch (scheme) {
-    case 'dropset':
-      return 'Dropset';
-    case 'superset':
-      return 'Superset';
-    case 'muscle_round':
-      return 'Muscle Round';
-    case 'rest_pause':
-      return 'Rest-Pause';
-    case 'hold':
-      return 'Hold';
-    default:
-      return null;
-  }
 }
 
 function Chevron({ rotate = 0, small = false }: { rotate?: number; small?: boolean }) {

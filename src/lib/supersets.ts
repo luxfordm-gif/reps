@@ -14,6 +14,45 @@ export function groupedSetLabel(size: number): string {
   return 'Superset';
 }
 
+/** How a set scheme reads on a card. Null for an ordinary straight-set row. */
+export function setSchemeLabel(scheme: string | null | undefined): string | null {
+  switch (scheme) {
+    case 'dropset':
+      return 'Dropset';
+    case 'superset':
+      return 'Superset';
+    case 'muscle_round':
+      return 'Muscle Round';
+    case 'rest_pause':
+      return 'Rest-Pause';
+    case 'hold':
+      return 'Hold';
+    default:
+      return null;
+  }
+}
+
+/**
+ * The badges an exercise row carries, in order.
+ *
+ * These are two different things and an exercise can have both: the group it's
+ * performed in, and what happens within its own sets. A drop set on the last
+ * round of a superset is both, and showing only one of them hid the drop.
+ *
+ * The exception is a scheme of "superset" alongside a real group — that's the
+ * same fact told twice, so the group badge says it and the scheme stays quiet.
+ */
+export function exerciseBadges(
+  partnerCount: number,
+  scheme: string | null | undefined
+): string[] {
+  const out: string[] = [];
+  if (partnerCount > 0) out.push(groupedSetLabel(partnerCount + 1));
+  const schemeLabel = setSchemeLabel(scheme);
+  if (schemeLabel && !(partnerCount > 0 && scheme === 'superset')) out.push(schemeLabel);
+  return out;
+}
+
 /** "A", "A and B", "A, B and C". */
 export function formatNameList(names: string[]): string {
   if (names.length === 0) return '';
