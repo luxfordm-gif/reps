@@ -321,8 +321,9 @@ export function weekDots(bars: number[][]): boolean[] {
  *
  * Sets lead because they're the one figure that survives every kind of
  * training — a press-up has no weight to report, and a session of them would
- * otherwise read as nothing at all. Weight follows when there is one to give;
- * see WeekSessionBreakdown.volumeKg for when there isn't.
+ * otherwise read as nothing at all. Weight follows when there is one to give:
+ * a bodyweight-only session totals zero, which formatSessionVolume reports as
+ * nothing rather than as "0".
  */
 export function formatSessionMetrics(s: {
   setCount: number;

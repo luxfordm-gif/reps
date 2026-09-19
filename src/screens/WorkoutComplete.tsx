@@ -447,9 +447,39 @@ const CELEBRATION_PIECES = Array.from({ length: 44 }, (_, i) => {
   };
 });
 
+/** When the last piece lands, to the millisecond the animation actually ends. */
+const CELEBRATION_MS = Math.max(...CELEBRATION_PIECES.map((p) => p.delay + p.duration));
+
+/**
+ * The burst, and then nothing.
+ *
+ * Three things used to leave the pieces parked in the middle of a long recap,
+ * showing up as a row of grey dots above the footer — blurred, because the
+ * fixed footer's backdrop-blur strip sat over them.
+ *
+ * The layer was `absolute` inside a `relative min-h-screen` root, so it
+ * spanned the whole scrolling document rather than the viewport: a fall of
+ * `110vh` from `top-[18vh]` reaches the bottom of a one-screen page and stops
+ * a third of the way down a five-screen one. It's `fixed` now, so the fall is
+ * measured against the window however long the page is.
+ *
+ * The keyframe also ended at `opacity: 0.85` with `forwards`, so the pieces
+ * held their final frame for as long as the screen was open rather than
+ * leaving. They fade out now.
+ *
+ * And the component unmounts once the slowest piece is done, so nothing
+ * lingers in the DOM over the content behind it.
+ */
 function CelebrationConfetti() {
+  const [running, setRunning] = useState(true);
+  useEffect(() => {
+    const t = window.setTimeout(() => setRunning(false), CELEBRATION_MS + 100);
+    return () => window.clearTimeout(t);
+  }, []);
+  if (!running) return null;
+
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden>
       <style>{`
         @keyframes reps-celebration-burst {
           0% {
@@ -461,9 +491,10 @@ function CelebrationConfetti() {
             transform: translate(var(--peakX), var(--peakY)) rotate(var(--midRot));
             animation-timing-function: cubic-bezier(0.4, 0, 0.7, 0.3);
           }
+          90% { opacity: 0.85; }
           100% {
             transform: translate(var(--endX), 110vh) rotate(var(--endRot));
-            opacity: 0.85;
+            opacity: 0;
           }
         }
       `}</style>
