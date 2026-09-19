@@ -10,6 +10,7 @@ import { parseSetMods } from '../lib/parseSetMods';
 import { rotationWeeks, savePlan } from '../lib/plansApi';
 import { listMachines } from '../lib/machinesApi';
 import { normalizeExerciseName } from '../lib/normalizeExerciseName';
+import { describePlanFileProblem } from '../lib/planUpload';
 import {
   carriesHistory,
   computeMatch,
@@ -144,6 +145,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }, [parsed, previousExercises]);
 
   async function handleFile(f: File) {
+    const problem = describePlanFileProblem(f);
+    if (problem) {
+      // Leave the previous selection alone — nothing about this file was read.
+      setError(problem);
+      return;
+    }
     setError(null);
     setParsing(true);
     setFile(f);
@@ -475,7 +482,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                   <div className="mt-2 text-sm font-semibold text-ink">
                     Tap to choose a PDF
                   </div>
-                  <div className="mt-0.5 text-xs text-muted">Max ~10MB</div>
+                  <div className="mt-0.5 text-xs text-muted">Max 10MB</div>
                 </>
               )}
             </div>
