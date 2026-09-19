@@ -10,6 +10,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-19',
+    title: "What's new",
+    bullets: [
+      'A workout in progress now follows you around the app \u2014 a bar sits over the tab bar on every tab with the day, the running clock and the exercise you were last on, so a session can no longer disappear the moment you leave Home',
+      'Tap it to go straight back to where you left off, or End to save it or throw it away without having to walk back into the workout first',
+      'On Home it waits until the in-progress card has scrolled out of sight, so you never see the same workout twice on one screen',
+      'The in-progress card counts you through the day \u2014 \u201C2-8\u201D means you\u2019re on the second exercise of eight \u2014 and it now sits where the greeting normally starts rather than half a screen down',
+    ],
+  },
+  {
     version: '2026-09-18',
     title: "What's new",
     bullets: [

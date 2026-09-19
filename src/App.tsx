@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { EndWorkoutDialog } from './components/EndWorkoutDialog';
 import { LATEST_CHANGELOG_ENTRY } from './lib/changelog';
@@ -26,6 +26,7 @@ import {
   deleteAllOpenSessions,
 } from './lib/sessionsApi';
 import { BottomNav, type Tab } from './components/BottomNav';
+import { ActiveWorkoutBar, type ActiveWorkoutInfo } from './components/ActiveWorkoutBar';
 import { InstallPrompt } from './components/InstallPrompt';
 import { Splash } from './components/Splash';
 import { clearHomeCache, loadHomeData } from './lib/homeCache';
@@ -118,6 +119,15 @@ function Root() {
   );
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [endWorkoutOpen, setEndWorkoutOpen] = useState(false);
+  // The workout in progress, as Home found it. Held up here so the bar over
+  // the tab bar can show it on every tab — a running session used to exist
+  // only on Home, and walking to Performance made it vanish.
+  const [activeWorkout, setActiveWorkout] = useState<ActiveWorkoutInfo | null>(null);
+  // Whether Home's own in-progress card is still on screen. Assumed true the
+  // moment we land on Home, because every screen change scrolls to the top and
+  // the card lives there — without that the bar flashes in for a frame before
+  // the observer has had anything to report.
+  const [activeCardVisible, setActiveCardVisible] = useState(true);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
 
@@ -214,6 +224,52 @@ function Root() {
     screenKey === 'tab:home' ||
     screenKey === 'tab:performance' ||
     screenKey === 'tab:profile';
+
+  // Both of these are read by effects in Home, so they have to keep the same
+  // identity across renders — an inline arrow would re-run the effect that
+  // calls it, which sets the state that caused the render.
+  const handleResumeWorkout = useCallback(
+    ({
+      day,
+      exerciseIdx: idx,
+      sessionId: sid,
+      startedAt,
+    }: {
+      day: FullPlan['training_days'][number];
+      exerciseIdx: number;
+      sessionId: string;
+      startedAt: string;
+    }) => {
+      setActiveDay(day);
+      setSessionId(sid);
+      setSessionStartedAt(startedAt);
+      setExerciseIdx(idx);
+    },
+    [],
+  );
+
+  function changeTab(next: Tab) {
+    // Arriving at Home puts its in-progress card back at the top of the page,
+    // so the docked bar steps aside until a scroll says otherwise.
+    if (next === 'home') setActiveCardVisible(true);
+    setTab(next);
+  }
+
+  // The bar shows wherever the tab bar does, except on Home while the card it
+  // stands in for is still in view — two of the same thing on one screen reads
+  // as a mistake.
+  const barVisible = !!activeWorkout && navVisible && !(tab === 'home' && activeCardVisible);
+
+  // Screens marked `pb-nav` leave room for the tab bar; this tops it up with
+  // the bar's own height so the last card on a screen can't end up behind it.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (barVisible) root.style.setProperty('--active-bar-h', '72px');
+    else root.style.removeProperty('--active-bar-h');
+    return () => {
+      root.style.removeProperty('--active-bar-h');
+    };
+  }, [barVisible]);
 
   let body: React.ReactNode = null;
 
@@ -337,6 +393,7 @@ function Root() {
             setSessionId(null);
             setSessionStartedAt(null);
             setActiveDay(null);
+            setActiveWorkout(null);
             if (sid) {
               setCompletedSession({ id: sid, dayName: finishedDay });
               clearHomeCache();
@@ -344,13 +401,6 @@ function Root() {
             }
           }}
         />
-        {endWorkoutOpen && (
-          <EndWorkoutDialog
-            onSave={handleEndSave}
-            onDiscard={handleEndDiscard}
-            onCancel={() => setEndWorkoutOpen(false)}
-          />
-        )}
       </>
     );
   } else if (activeDay) {
@@ -400,12 +450,9 @@ function Root() {
             }}
             profile={profile}
             onResumeOnboarding={() => setModal('onboarding')}
-            onResumeWorkout={({ day, exerciseIdx, sessionId: sid, startedAt }) => {
-              setActiveDay(day);
-              setSessionId(sid);
-              setSessionStartedAt(startedAt);
-              setExerciseIdx(exerciseIdx);
-            }}
+            onResumeWorkout={handleResumeWorkout}
+            onActiveWorkoutChange={setActiveWorkout}
+            onActiveCardVisibilityChange={setActiveCardVisible}
           />
         );
         break;
@@ -428,7 +475,7 @@ function Root() {
     }
     body = (
       <>
-        <TabSwipeContainer tab={tab} onTabChange={setTab}>{screen}</TabSwipeContainer>
+        <TabSwipeContainer tab={tab} onTabChange={changeTab}>{screen}</TabSwipeContainer>
         {/* Home only, and never over the top of the release notes — the app
             gets one thing to ask for at a time. */}
         {tab === 'home' && !showWhatsNew && <InstallPrompt />}
@@ -444,10 +491,22 @@ function Root() {
       {body}
       <BottomNav
         active={tab}
-        onChange={setTab}
+        onChange={changeTab}
         visible={navVisible}
         onFeedback={session ? () => setFeedbackOpen(true) : undefined}
+        above={
+          barVisible && activeWorkout ? (
+            <ActiveWorkoutBar info={activeWorkout} onEnd={() => setEndWorkoutOpen(true)} />
+          ) : null
+        }
       />
+      {endWorkoutOpen && (
+        <EndWorkoutDialog
+          onSave={handleEndSave}
+          onDiscard={handleEndDiscard}
+          onCancel={() => setEndWorkoutOpen(false)}
+        />
+      )}
       {feedbackOpen && (
         <FeedbackSheet screen={screenKey} onClose={() => setFeedbackOpen(false)} />
       )}
@@ -474,8 +533,11 @@ function Root() {
   }
 
   async function handleEndSave() {
-    const sid = sessionId;
-    const finishedDay = activeDay?.name ?? 'Workout';
+    // Ending from the docked bar means no logger is on screen and none of the
+    // per-workout state is set — the session is whatever the bar is showing.
+    const sid = sessionId ?? activeWorkout?.context.sessionId ?? null;
+    const finishedDay =
+      activeDay?.name ?? activeWorkout?.context.trainingDayName ?? 'Workout';
     setEndWorkoutOpen(false);
     if (sid) {
       try {
@@ -490,6 +552,7 @@ function Root() {
     setSessionId(null);
     setSessionStartedAt(null);
     setActiveDay(null);
+    setActiveWorkout(null);
     if (sid) {
       setCompletedSession({ id: sid, dayName: finishedDay });
       clearHomeCache();
@@ -511,6 +574,7 @@ function Root() {
     setSessionId(null);
     setSessionStartedAt(null);
     setActiveDay(null);
+    setActiveWorkout(null);
     clearHomeCache();
     setRefreshKey((k) => k + 1);
   }

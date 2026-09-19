@@ -61,6 +61,13 @@ interface Props {
   visible?: boolean;
   /** Opens the feedback sheet. An action, not a place — it never shows as active. */
   onFeedback?: () => void;
+  /**
+   * Docked directly above the bar — the active-workout bar, today. It rides in
+   * here rather than being positioned over the top of the nav from outside so
+   * the two travel as one: same stacking order, same slide off the screen when
+   * a workout opens, and no second guess at how tall the nav is.
+   */
+  above?: ReactNode;
 }
 
 export function BottomNav({
@@ -68,6 +75,7 @@ export function BottomNav({
   onChange,
   visible = true,
   onFeedback,
+  above,
 }: Props) {
   return (
     <div
@@ -76,6 +84,7 @@ export function BottomNav({
       }`}
       aria-hidden={!visible}
     >
+      {above}
       <nav
         aria-label="Main"
         className="mx-auto grid max-w-md grid-flow-col auto-cols-fr items-center rounded-pill bg-ink p-1.5 shadow-lift"

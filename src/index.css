@@ -208,6 +208,16 @@ h1, h2, h3, h4 {
   }
 }
 
+/* Room at the bottom of a scrolling screen for the floating tab bar, plus the
+   active-workout bar when one is docked above it. The allowance is a variable
+   rather than two classes because the bar comes and goes while the screen
+   stays put: App sets --active-bar-h when it mounts the bar, and the padding
+   under every tab grows to match instead of the last card disappearing behind
+   it. */
+.pb-nav {
+  padding-bottom: calc(7rem + var(--active-bar-h, 0px));
+}
+
 /* A tab arriving. 110ms is about as short as a fade can be and still register
    as a transition rather than a flicker — long enough to soften the swap,
    nowhere near long enough to make the app feel like it's thinking. No

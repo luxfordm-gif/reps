@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrainingDayCard } from '../components/TrainingDayCard';
+import type { ActiveWorkoutInfo } from '../components/ActiveWorkoutBar';
 import { WeeklyProgress } from '../components/WeeklyProgress';
 import { weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import {
@@ -20,6 +21,7 @@ import { warmLastSetsForPlan } from '../lib/sessionsApi';
 import { useNetStatus } from '../lib/offline/net';
 import type { Profile } from '../lib/profileApi';
 import { greetingName } from '../lib/displayName';
+import { useElapsedLabel } from '../lib/elapsed';
 import { haptics } from '../lib/haptics';
 import { WaterIcon, StepsIcon } from '../components/Tile';
 
@@ -40,6 +42,22 @@ interface Props {
     sessionId: string;
     startedAt: string;
   }) => void;
+  /**
+   * Hands the workout in progress to App, which docks a bar for it over the
+   * tab bar. Home is the screen that loads the session and the plan, so it is
+   * also the one that can say which day it belongs to and where resuming
+   * should land — rather than have App fetch all of it a second time.
+   *
+   * Must be stable (useCallback): it fires from an effect that runs whenever
+   * its identity changes, and App re-renders on what it sets.
+   */
+  onActiveWorkoutChange?: (info: ActiveWorkoutInfo | null) => void;
+  /**
+   * Whether the in-progress card is still on screen. The docked bar is the
+   * card's stand-in, so on Home it stays out of the way until the card it
+   * duplicates has actually scrolled off. Stable, for the same reason.
+   */
+  onActiveCardVisibilityChange?: (visible: boolean) => void;
 }
 
 const ONBOARDING_BANNER_DISMISSED_KEY = 'reps.onboardingBannerDismissed';
@@ -149,6 +167,8 @@ export function Home({
   onResumeWorkout,
   profile,
   onResumeOnboarding,
+  onActiveWorkoutChange,
+  onActiveCardVisibilityChange,
 }: Props) {
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -246,6 +266,66 @@ export function Home({
     };
   }, []);
 
+  // The day the open session belongs to, and the exercise to drop back into:
+  // the last one a set was logged on, or the first if nothing has been logged
+  // yet. Worked out once here and shared by the card and the docked bar, so
+  // the two can never disagree about where "resume" goes.
+  const activeDay = active
+    ? (plan?.training_days.find((d) => d.id === active.trainingDayId) ?? null)
+    : null;
+  const activeExercises = activeDay?.plan_exercises ?? [];
+  const activeIdxRaw = active?.lastPlanExerciseId
+    ? activeExercises.findIndex((e) => e.id === active.lastPlanExerciseId)
+    : 0;
+  const activeIdx = Math.max(0, activeIdxRaw);
+
+  useEffect(() => {
+    if (!onActiveWorkoutChange) return;
+    if (!active || !activeDay || !onResumeWorkout) {
+      onActiveWorkoutChange(null);
+      return;
+    }
+    onActiveWorkoutChange({
+      context: active,
+      exerciseName: activeExercises[activeIdx]?.name ?? null,
+      resume: () =>
+        onResumeWorkout({
+          day: activeDay,
+          exerciseIdx: activeIdx,
+          sessionId: active.sessionId,
+          startedAt: active.startedAt,
+        }),
+    });
+    // activeExercises is derived from activeDay and changes with it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, activeDay, activeIdx, onActiveWorkoutChange, onResumeWorkout]);
+
+  // Is the in-progress card still on screen? Below a third of it showing, the
+  // docked bar takes over — the threshold matters because the card sits at the
+  // very top of the page, so "partly visible" is the state you're in for the
+  // whole first flick of a scroll.
+  const activeCardRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!onActiveCardVisibilityChange) return;
+    const el = activeCardRef.current;
+    if (!el) {
+      onActiveCardVisibilityChange(false);
+      return;
+    }
+    if (typeof IntersectionObserver === 'undefined') {
+      // No observer (older WebKit): keep the bar out of Home rather than show
+      // it alongside the card it stands in for.
+      onActiveCardVisibilityChange(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => onActiveCardVisibilityChange(entry.isIntersecting),
+      { threshold: 0.35 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [active, onActiveCardVisibilityChange]);
+
   async function handleWaterTap(delta: number) {
     if (waterBusy) return;
     setWaterBusy(true);
@@ -265,7 +345,7 @@ export function Home({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper pb-28">
+      <div className="pb-nav min-h-screen bg-paper">
         <div
           className="mx-auto max-w-md px-5"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
@@ -282,7 +362,7 @@ export function Home({
 
   if (!plan) {
     return (
-      <div className="min-h-screen bg-paper pb-28">
+      <div className="pb-nav min-h-screen bg-paper">
         <div
           className="mx-auto max-w-md px-5"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
@@ -398,38 +478,39 @@ export function Home({
   }
 
   return (
-    <div className="min-h-screen bg-paper pb-28">
+    <div className="pb-nav min-h-screen bg-paper">
       <div
         className="mx-auto max-w-md px-5"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
+        style={{
+          // 40px is the room a 34px display title needs under the status bar.
+          // When the in-progress card leads instead, that much air reads as the
+          // screen having forgotten to start — it's a filled object with a
+          // badge overhanging it, not a line of text. 24px puts the badge where
+          // the title's first line would have sat.
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${active ? 24 : 40}px)`,
+        }}
       >
         {showOnboardingBanner && (
           <OnboardingBanner onResume={() => onResumeOnboarding?.()} onDismiss={dismissBanner} />
         )}
 
         {active && (
-          <ActiveWorkoutBanner
-            context={active}
-            exerciseCount={
-              plan?.training_days.find((d) => d.id === active.trainingDayId)?.plan_exercises
-                ?.length ?? null
-            }
-            onResume={() => {
-              if (!plan || !onResumeWorkout) return;
-              const day = plan.training_days.find((d) => d.id === active.trainingDayId);
-              if (!day) return;
-              const exercises = day.plan_exercises ?? [];
-              const lastIdx = active.lastPlanExerciseId
-                ? exercises.findIndex((e) => e.id === active.lastPlanExerciseId)
-                : 0;
-              onResumeWorkout({
-                day,
-                exerciseIdx: Math.max(0, lastIdx === -1 ? 0 : lastIdx),
-                sessionId: active.sessionId,
-                startedAt: active.startedAt,
-              });
-            }}
-          />
+          <div ref={activeCardRef}>
+            <ActiveWorkoutBanner
+              context={active}
+              exerciseCount={activeDay?.plan_exercises?.length ?? null}
+              exercisePosition={activeDay ? activeIdx + 1 : null}
+              onResume={() => {
+                if (!activeDay || !onResumeWorkout) return;
+                onResumeWorkout({
+                  day: activeDay,
+                  exerciseIdx: activeIdx,
+                  sessionId: active.sessionId,
+                  startedAt: active.startedAt,
+                });
+              }}
+            />
+          </div>
         )}
 
         <SyncStatus className={active || showOnboardingBanner ? 'mt-5' : ''} />
@@ -598,39 +679,28 @@ function OnboardingBanner({
 function ActiveWorkoutBanner({
   context,
   exerciseCount,
+  exercisePosition,
   onResume,
 }: {
   context: ActiveSessionContext;
   exerciseCount: number | null;
+  exercisePosition: number | null;
   onResume: () => void;
 }) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const elapsed = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(context.startedAt).getTime()) / 1000),
-  );
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-  // Hours only when needed.
-  const displayLabel =
-    mins >= 60
-      ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-      : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const displayLabel = useElapsedLabel(context.startedAt);
 
   // The same card as the rest of Home, in its dark variant — so a workout in
   // progress reads as the day it belongs to, photo and all, with the elapsed
   // time where the body parts normally sit.
+  // No top margin: the card is the first thing on the page, and the screen's
+  // own padding has already been set for it.
   return (
-    <div className="mt-4">
+    <div>
       <TrainingDayCard
         name={context.trainingDayName}
         bodyParts={<span className="font-mono tabular-nums">{displayLabel}</span>}
         exerciseCount={exerciseCount}
+        exercisePosition={exercisePosition}
         accent={accentFor(context.trainingDayName)}
         isNext
         badgeLabel="Workout in progress"
