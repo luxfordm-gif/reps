@@ -24,10 +24,10 @@ import type { MachineUnit } from '../lib/units';
 import { clearHomeCache } from '../lib/homeCache';
 import { getActivePlan } from '../lib/plansApi';
 import {
-  findDuplicatePairs,
+  findDuplicateGroups,
   loadDismissedPairs,
-  dismissPair,
-  type DuplicatePair,
+  dismissPairs,
+  type DuplicateGroup,
 } from '../lib/duplicateExercises';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
@@ -125,7 +125,7 @@ export function Machines({ onBack }: Props) {
   // current plan hides the older half of most pairs, which is exactly the
   // half you are trying to merge away.
   const duplicates = useMemo(
-    () => (machines ? findDuplicatePairs(machines, dismissed) : []),
+    () => (machines ? findDuplicateGroups(machines, dismissed) : []),
     [machines, dismissed],
   );
 
@@ -336,12 +336,12 @@ export function Machines({ onBack }: Props) {
             </button>
             {duplicatesOpen && (
               <ul className="mt-1 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
-                {duplicates.map((pair) => (
+                {duplicates.map((group) => (
                   <DuplicateRow
-                    key={pair.key}
-                    pair={pair}
-                    onMerge={() => setMerging([pair.survivor, pair.loser])}
-                    onDismiss={() => setDismissed(dismissPair(pair.key))}
+                    key={group.key}
+                    group={group}
+                    onMerge={() => setMerging([group.survivor, ...group.losers])}
+                    onDismiss={() => setDismissed(dismissPairs(group.pairKeys))}
                   />
                 ))}
               </ul>
@@ -544,33 +544,41 @@ function DupChevron({ open }: { open: boolean }) {
 }
 
 /**
- * One suggested pair, and the two answers to it.
+ * One suggested group, and the two answers to it.
  *
- * Both names in full, because the whole question is which of two similar
- * strings you meant, and truncating either makes it unanswerable. The set
- * counts are there because they decide which name survives a merge.
+ * Every name on its own line with its own set count, because the counts are
+ * what decide which name is worth keeping, and a group of three has no
+ * sensible single count to print. Names are not truncated: the whole question
+ * is which of several similar names you meant, and a clipped name is one you
+ * cannot answer about.
  */
 function DuplicateRow({
-  pair,
+  group,
   onMerge,
   onDismiss,
 }: {
-  pair: DuplicatePair<MachineRow>;
+  group: DuplicateGroup<MachineRow>;
   onMerge: () => void;
   onDismiss: () => void;
 }) {
   return (
     <li className="flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        {/* Not truncated: the whole question is which of two similar names you
-            meant, and a clipped name is one you cannot answer about. Long
-            names wrap instead — most rows still sit on three lines. */}
-        <div className="text-sm font-semibold leading-snug text-ink">{pair.survivor.displayName}</div>
-        <div className="text-sm leading-snug text-muted">{pair.loser.displayName}</div>
-        <div className="mt-0.5 text-caption text-muted tabular-nums">
-          {pair.survivor.setCount} sets · {pair.loser.setCount} sets
-          {pair.unitDiffers && ' · different units'}
+        <div className="text-sm font-semibold leading-snug text-ink">
+          {group.survivor.displayName}{' '}
+          <span className="font-normal text-muted tabular-nums">
+            {group.survivor.setCount} sets
+          </span>
         </div>
+        {group.losers.map((loser) => (
+          <div key={loser.normalizedName} className="text-sm leading-snug text-muted">
+            {loser.displayName}{' '}
+            <span className="tabular-nums">{loser.setCount} sets</span>
+          </div>
+        ))}
+        {group.unitDiffers && (
+          <div className="mt-0.5 text-caption text-muted">different units</div>
+        )}
       </div>
       <div className="flex shrink-0 flex-col items-stretch gap-1.5">
         <button
@@ -585,7 +593,7 @@ function DuplicateRow({
           onClick={onDismiss}
           className="rounded-pill border border-line px-3.5 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
         >
-          Keep both
+          {group.losers.length === 1 ? 'Keep both' : 'Keep all'}
         </button>
       </div>
     </li>

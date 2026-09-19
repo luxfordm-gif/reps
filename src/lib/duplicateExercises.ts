@@ -175,13 +175,112 @@ export function loadDismissedPairs(): Set<string> {
   }
 }
 
-export function dismissPair(key: string): Set<string> {
+export function dismissPairs(keys: readonly string[]): Set<string> {
   const next = loadDismissedPairs();
-  next.add(key);
+  for (const key of keys) next.add(key);
   try {
     window.localStorage.setItem(DISMISS_KEY, JSON.stringify([...next]));
   } catch {
     // A full or blocked store just means it asks again next time.
   }
   return next;
+}
+
+// --- Groups ---------------------------------------------------------------
+
+export interface DuplicateGroup<T extends DuplicateCandidate = DuplicateCandidate> {
+  /** Stable and order-independent, built from every name in the group. */
+  key: string;
+  /** The name worth keeping: most logged history, then most plan references. */
+  survivor: T;
+  /** Everything that would fold into it, most history first. */
+  losers: T[];
+  /** The pair keys this group was built from, so dismissing it dismisses all. */
+  pairKeys: string[];
+  /** True when at least one name would have its numbers reinterpreted. */
+  unitDiffers: boolean;
+}
+
+/**
+ * The same movement under three or more names, as one decision.
+ *
+ * Pairs alone are not enough once a third name joins: "Pec deck", "Pec deck
+ * fly" and "Prime pec deck fly" produce two pairs that share a name, so the
+ * list offers two choices that each invalidate the other, and merging either
+ * one leaves the other pointing at a machine that no longer exists.
+ *
+ * Joining pairs that share a name turns that into a single question with a
+ * single answer. Similarity is not transitive in general, which is why the
+ * pair rules stay as strict as they are — a chain is only ever as trustworthy
+ * as the links it is built from.
+ */
+export function findDuplicateGroups<T extends DuplicateCandidate>(
+  machines: T[],
+  dismissed: ReadonlySet<string> = new Set(),
+): DuplicateGroup<T>[] {
+  const pairs = findDuplicatePairs(machines, dismissed);
+
+  // Union-find over normalized names.
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    let root = parent.get(x) ?? x;
+    if (root !== x) {
+      root = find(root);
+      parent.set(x, root);
+    }
+    return root;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const p of pairs) {
+    parent.set(p.survivor.normalizedName, find(p.survivor.normalizedName));
+    parent.set(p.loser.normalizedName, find(p.loser.normalizedName));
+    union(p.survivor.normalizedName, p.loser.normalizedName);
+  }
+
+  const members = new Map<string, Map<string, T>>();
+  const pairKeys = new Map<string, string[]>();
+  for (const p of pairs) {
+    const root = find(p.survivor.normalizedName);
+    let bucket = members.get(root);
+    if (!bucket) {
+      bucket = new Map();
+      members.set(root, bucket);
+    }
+    bucket.set(p.survivor.normalizedName, p.survivor);
+    bucket.set(p.loser.normalizedName, p.loser);
+    pairKeys.set(root, [...(pairKeys.get(root) ?? []), p.key]);
+  }
+
+  const groups: DuplicateGroup<T>[] = [];
+  for (const [root, bucket] of members) {
+    const all = [...bucket.values()].sort(rank);
+    const [survivor, ...losers] = all;
+    const units = new Set(all.map((m) => m.unit));
+    groups.push({
+      key: all
+        .map((m) => m.normalizedName)
+        .sort()
+        .join('\u0000'),
+      survivor,
+      losers,
+      pairKeys: pairKeys.get(root) ?? [],
+      unitDiffers: units.size > 1,
+    });
+  }
+
+  // Most history at stake first: the groups worth clearing lead.
+  return groups.sort(
+    (a, b) =>
+      totalSets(b) - totalSets(a) ||
+      b.losers.length - a.losers.length ||
+      a.key.localeCompare(b.key),
+  );
+}
+
+function totalSets(g: DuplicateGroup<DuplicateCandidate>): number {
+  return g.survivor.setCount + g.losers.reduce((n, m) => n + m.setCount, 0);
 }

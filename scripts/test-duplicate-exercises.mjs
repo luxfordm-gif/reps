@@ -1,7 +1,7 @@
 // Tests the duplicate-exercise detector — in particular what it refuses to
 // suggest, since accepting a wrong pair merges two histories irreversibly.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-duplicate-exercises.mjs
-import { findDuplicatePairs } from '../src/lib/duplicateExercises.ts';
+import { findDuplicatePairs, findDuplicateGroups } from '../src/lib/duplicateExercises.ts';
 
 let failures = 0;
 function eq(label, got, want) {
@@ -106,6 +106,69 @@ console.log('\n=== dismissals and ordering ===');
 {
   eq('nothing to compare', findDuplicatePairs([]), []);
   eq('one machine is never a pair', findDuplicatePairs([m('Deadlift', 'Back', 8)]), []);
+}
+
+
+console.log('\n=== groups, not overlapping pairs ===');
+{
+  // The defect this exists to prevent: "Pec deck fly" was the loser of two
+  // different pairs at once, so the list offered two choices that each
+  // invalidated the other.
+  const groups = findDuplicateGroups([
+    m('Prime pec deck fly', 'Chest', 18),
+    m('Pec deck fly', 'Chest', 2),
+    m('Pec deck', 'Chest', 15),
+    m('Deadlift from floor', 'Back', 10),
+    m('Deadlift', 'Back', 8),
+  ]);
+  eq('three pec deck names collapse into one group', groups.length, 2);
+
+  const pec = groups.find((g) => g.survivor.displayName === 'Prime pec deck fly');
+  eq('the group carries both other names', pec.losers.length, 2);
+  eq(
+    'losers are ordered by history, not alphabetically',
+    pec.losers.map((l) => l.displayName),
+    ['Pec deck', 'Pec deck fly'],
+  );
+  eq('it remembers every pair it was built from', pec.pairKeys.length, 2);
+
+  const seen = new Map();
+  for (const g of groups) {
+    for (const x of [g.survivor, ...g.losers]) seen.set(x.displayName, (seen.get(x.displayName) ?? 0) + 1);
+  }
+  eq('no name appears in two groups', [...seen.values()].every((n) => n === 1), true);
+}
+
+console.log('\n=== grouping does not loosen the rules ===');
+{
+  eq(
+    'abductor and adductor still never group',
+    findDuplicateGroups([m('Abductor', 'Legs', 12), m('Adductor', 'Legs', 11)]).length,
+    0,
+  );
+  eq(
+    'two unrelated pairs stay two groups',
+    findDuplicateGroups([
+      m('Assisted pullup', 'Back', 3),
+      m('Assisted pullups', 'Back', 30),
+      m('Leg extension', 'Legs', 2),
+      m('Hammer strength leg extension', 'Legs', 25),
+    ]).length,
+    2,
+  );
+}
+
+console.log('\n=== group dismissal and units ===');
+{
+  const rows = [m('Assisted pullup', 'Back', 3), m('Assisted pullups', 'Back', 30)];
+  const [g] = findDuplicateGroups(rows);
+  eq('dismissing its pairs drops the group', findDuplicateGroups(rows, new Set(g.pairKeys)).length, 0);
+
+  const mixed = [
+    m('Long rope extension', 'Arms', 9, 'kg'),
+    m('Long rope extensions', 'Arms', 6, 'lb'),
+  ];
+  eq('a unit difference is carried to the group', findDuplicateGroups(mixed)[0].unitDiffers, true);
 }
 
 console.log(failures === 0 ? '\nAll passed.' : `\n${failures} failed.`);
