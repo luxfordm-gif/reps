@@ -56,6 +56,7 @@ export function Machines({ onBack }: Props) {
   /** Normalized names the active plan actually uses. Null until it loads. */
   const [planNames, setPlanNames] = useState<Set<string> | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissedPairs());
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<MachineRow | null>(null);
@@ -319,19 +320,32 @@ export function Machines({ onBack }: Props) {
 
         {duplicates.length > 0 && !selectMode && (
           <div className="mt-5">
-            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-              Possible duplicates
-            </div>
-            <ul className="mt-2 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
-              {duplicates.map((pair) => (
-                <DuplicateRow
-                  key={pair.key}
-                  pair={pair}
-                  onMerge={() => setMerging([pair.survivor, pair.loser])}
-                  onDismiss={() => setDismissed(dismissPair(pair.key))}
-                />
-              ))}
-            </ul>
+            <button
+              type="button"
+              onClick={() => setDuplicatesOpen((v) => !v)}
+              aria-expanded={duplicatesOpen}
+              className="flex w-full items-center gap-2 rounded-panel px-1 py-2.5 text-left active:bg-surface"
+            >
+              <DupChevron open={duplicatesOpen} />
+              <span className="flex-1 truncate text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                Possible duplicates
+              </span>
+              <span className="text-xs font-semibold text-muted tabular-nums">
+                {duplicates.length}
+              </span>
+            </button>
+            {duplicatesOpen && (
+              <ul className="mt-1 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
+                {duplicates.map((pair) => (
+                  <DuplicateRow
+                    key={pair.key}
+                    pair={pair}
+                    onMerge={() => setMerging([pair.survivor, pair.loser])}
+                    onDismiss={() => setDismissed(dismissPair(pair.key))}
+                  />
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
@@ -512,6 +526,23 @@ function buildDeleteWarning(rows: MachineRow[]): string {
   return `Also deletes ${parts.join(' and ')}. This cannot be undone.`;
 }
 
+function DupChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+      className={`shrink-0 text-muted transition-transform duration-pop ease-snap ${
+        open ? 'rotate-90' : ''
+      }`}
+    >
+      <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /**
  * One suggested pair, and the two answers to it.
  *
@@ -529,27 +560,32 @@ function DuplicateRow({
   onDismiss: () => void;
 }) {
   return (
-    <li className="px-4 py-3.5">
-      <div className="text-sm font-semibold text-ink">{pair.survivor.displayName}</div>
-      <div className="text-sm text-muted">{pair.loser.displayName}</div>
-      <div className="mt-1 text-caption text-muted tabular-nums">
-        {pair.survivor.setCount} sets · {pair.loser.setCount} sets
-        {pair.unitDiffers && ' · different units'}
+    <li className="flex items-center gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        {/* Not truncated: the whole question is which of two similar names you
+            meant, and a clipped name is one you cannot answer about. Long
+            names wrap instead — most rows still sit on three lines. */}
+        <div className="text-sm font-semibold leading-snug text-ink">{pair.survivor.displayName}</div>
+        <div className="text-sm leading-snug text-muted">{pair.loser.displayName}</div>
+        <div className="mt-0.5 text-caption text-muted tabular-nums">
+          {pair.survivor.setCount} sets · {pair.loser.setCount} sets
+          {pair.unitDiffers && ' · different units'}
+        </div>
       </div>
-      <div className="mt-2.5 flex gap-2">
+      <div className="flex shrink-0 flex-col items-stretch gap-1.5">
         <button
           type="button"
           onClick={onMerge}
-          className="rounded-pill bg-ink px-4 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
+          className="rounded-pill bg-ink px-3.5 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
         >
           Merge
         </button>
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-pill border border-line px-4 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
+          className="rounded-pill border border-line px-3.5 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
         >
-          Not the same
+          Keep both
         </button>
       </div>
     </li>
