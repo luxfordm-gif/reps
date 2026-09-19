@@ -1175,7 +1175,7 @@ function RecordDetail({
               }
             />
             <PersonalRecord
-              label="Best estimated 1RM"
+              label="Estimated 1RM"
               value={record.best1RMkg > 0 ? formatLoadShort(record.best1RMkg, record.unit) : '–'}
             />
             <PersonalRecord label="Most reps" value={mostReps != null ? String(mostReps) : '–'} />
@@ -1222,8 +1222,9 @@ function RecordDetail({
 function PersonalRecord({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col px-2 first:pl-0 last:pr-0">
-      {/* Wraps rather than clips: "Best estimated 1RM" is three words and a
-          numeral, and there is no shorter way to say it that stays honest. */}
+      {/* Wraps rather than clips, for a label too long for a third of a
+          phone. The card's own heading says these are personal records, so
+          none of them repeats the word "best". */}
       <div className="text-caption leading-tight text-muted">{label}</div>
       <div className="mt-auto truncate pt-1 text-lg font-bold leading-tight tracking-tight text-ink tabular-nums">
         {value}
