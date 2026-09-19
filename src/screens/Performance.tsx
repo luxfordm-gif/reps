@@ -41,6 +41,7 @@ import {
   type WeekSummary,
 } from '../lib/sessionsApi';
 import {
+  bodyWeightChange,
   bodyWeightRange,
   weekDailyAverage,
   weekStartISO,
@@ -361,9 +362,9 @@ export function Performance() {
                   value={
                     derived.water.average != null
                       ? String(Math.round(derived.water.average * 10) / 10)
-                      : '–'
+                      : '—'
                   }
-                  hint="per day"
+                  hint={derived.water.average != null ? 'per day' : 'Not tracked'}
                 />
                 <MiniTile
                   icon={<StepsIcon />}
@@ -371,9 +372,9 @@ export function Performance() {
                   value={
                     derived.steps.average != null
                       ? formatSteps(Math.round(derived.steps.average))
-                      : '–'
+                      : '—'
                   }
-                  hint="per day"
+                  hint={derived.steps.average != null ? 'per day' : 'Not tracked'}
                 />
               </div>
             </Block>
@@ -989,13 +990,16 @@ function Block({ children }: { children: React.ReactNode }) {
 
 type DetailRange = 7 | 14 | 30 | 90 | 182 | 365 | 0;
 
+// The pill governs the figure, so the words beside it only have to name the
+// span — "in the last three months" wrapped onto a second line to say what
+// "3 months" already said.
 const RANGE_LABELS: { days: DetailRange; label: string; prose: string }[] = [
-  { days: 7, label: '1w', prose: 'in the last week' },
-  { days: 14, label: '2w', prose: 'in the last fortnight' },
-  { days: 30, label: '1m', prose: 'in the last month' },
-  { days: 90, label: '3m', prose: 'in the last three months' },
-  { days: 182, label: '6m', prose: 'in the last six months' },
-  { days: 365, label: '1y', prose: 'in the last year' },
+  { days: 7, label: '1w', prose: 'this week' },
+  { days: 14, label: '2w', prose: '2 weeks' },
+  { days: 30, label: '1m', prose: '1 month' },
+  { days: 90, label: '3m', prose: '3 months' },
+  { days: 182, label: '6m', prose: '6 months' },
+  { days: 365, label: '1y', prose: '1 year' },
   { days: 0, label: 'All', prose: 'all time' },
 ];
 
@@ -1341,13 +1345,19 @@ function BodyWeightCard({
   /** "over 12 weeks" — names the window the change is measured across. */
   rangeLabel: string;
 }) {
+  // Sorted on the date the chart is keyed by, so no caller's ordering can
+  // flip it — see bodyWeightChange, which had to learn this the hard way.
+  const ascending = useMemo(
+    () => [...rows].sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1)),
+    [rows],
+  );
   const points = useMemo(
     () =>
-      [...rows].reverse().map((r) => ({
+      ascending.map((r) => ({
         label: r.recorded_on,
         value: bwUnit === 'kg' ? r.weight_kg : toDecimalStones(r.weight_kg),
       })),
-    [rows, bwUnit],
+    [ascending, bwUnit],
   );
 
   // Both figures come from the rows the chart is drawing, so the number and
@@ -1355,9 +1365,7 @@ function BodyWeightCard({
   // of the plan however far back the pills were set, which meant moving the
   // range redrew the graph and left the delta saying something about a
   // different span of time.
-  const latestKg = rows.length > 0 ? rows[0].weight_kg : null;
-  const earliestKg = rows.length > 1 ? rows[rows.length - 1].weight_kg : null;
-  const deltaKg = latestKg != null && earliestKg != null ? latestKg - earliestKg : null;
+  const { latestKg, deltaKg } = useMemo(() => bodyWeightChange(rows), [rows]);
 
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">

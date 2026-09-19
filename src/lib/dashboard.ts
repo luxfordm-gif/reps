@@ -303,6 +303,36 @@ export function bodyWeightRange<T extends { recorded_on: string }>(
     .sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1));
 }
 
+export interface BodyWeightChange {
+  /** Most recent reading in the range. */
+  latestKg: number | null;
+  /** Oldest reading in the range, or null when there is only one. */
+  earliestKg: number | null;
+  /** Latest minus earliest. Positive is a gain. */
+  deltaKg: number | null;
+}
+
+/**
+ * What a range of weigh-ins says, without caring how they arrived.
+ *
+ * Sorted here rather than assumed, because assuming is exactly what went
+ * wrong: the card read the rows newest-first and reversed them, while
+ * bodyWeightRange hands them over oldest-first. The graph came out mirrored,
+ * the headline quoted a reading from three months ago as though it were
+ * today's, and a four-kilo gain was reported as a four-kilo loss.
+ */
+export function bodyWeightChange(rows: { recorded_on: string; weight_kg: number }[]): BodyWeightChange {
+  if (rows.length === 0) return { latestKg: null, earliestKg: null, deltaKg: null };
+  const sorted = [...rows].sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : 1));
+  const latestKg = sorted[sorted.length - 1].weight_kg;
+  const earliestKg = sorted.length > 1 ? sorted[0].weight_kg : null;
+  return {
+    latestKg,
+    earliestKg,
+    deltaKg: earliestKg != null ? latestKg - earliestKg : null,
+  };
+}
+
 // --- Records -------------------------------------------------------------------------
 
 /** Records whose headline set was hit in the last `days` days. */
