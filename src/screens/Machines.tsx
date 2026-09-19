@@ -564,36 +564,38 @@ function DuplicateRow({
   return (
     <li className="flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold leading-snug text-ink">
-          {group.survivor.displayName}{' '}
-          <span className="font-normal text-muted tabular-nums">
-            {group.survivor.setCount} sets
-          </span>
-        </div>
-        {group.losers.map((loser) => (
-          <div key={loser.normalizedName} className="text-sm leading-snug text-muted">
-            {loser.displayName}{' '}
-            <span className="tabular-nums">{loser.setCount} sets</span>
+        {/* No name is emphasised. The screen is asking whether these are the
+            same movement; leading with one in bold answers the question it is
+            posing, and the name with the most sets is not always the one worth
+            keeping. Which name survives is chosen in the merge sheet. */}
+        {[group.survivor, ...group.losers].map((machine) => (
+          <div key={machine.normalizedName} className="text-sm leading-snug text-ink">
+            {machine.displayName}
           </div>
         ))}
-        {group.unitDiffers && (
-          <div className="mt-0.5 text-caption text-muted">different units</div>
-        )}
+        {/* Counts sit on one subordinate line rather than beside each name:
+            at this width the count wrapped onto a line of its own and read as
+            another name. Caption size keeps it from being mistaken for one,
+            and the order matches the names above. */}
+        <div className="mt-0.5 text-caption text-muted tabular-nums">
+          {[group.survivor, ...group.losers].map((m) => m.setCount).join(' · ')} sets
+          {group.unitDiffers && ' · different units'}
+        </div>
       </div>
-      <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-pill border border-line px-3.5 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
+        >
+          Ignore
+        </button>
         <button
           type="button"
           onClick={onMerge}
           className="rounded-pill bg-ink px-3.5 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
         >
           Merge
-        </button>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="rounded-pill border border-line px-3.5 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
-        >
-          {group.losers.length === 1 ? 'Keep both' : 'Keep all'}
         </button>
       </div>
     </li>
