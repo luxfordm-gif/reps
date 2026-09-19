@@ -104,7 +104,7 @@ const CORPUS = [
     source: 'plan-6-drop-set-intensifier.pdf',
     days: ['Day 1 - Chest & Triceps', 'Day 2 - Back & Biceps', 'Day 3 - Legs'],
     exercises: 17,
-    floor: 0,
+    floor: 1,
   },
   {
     name: 'plan-7 station supersets (paired A1/A2 rows)',
@@ -120,7 +120,7 @@ const CORPUS = [
     source: 'plan-8-giant-sets.pdf',
     days: ['Day 1 - Upper Body', 'Day 2 - Lower Body'],
     exercises: 26,
-    floor: 0,
+    floor: 1,
   },
   {
     name: 'plan-9 two week rotation (Week A / Week B)',
@@ -143,7 +143,7 @@ const CORPUS = [
     source: 'plan-10-basic-with-typos.pdf',
     days: ['Day 1 - Upper Body', 'Day 2 - Lower Body', 'Day 3 - Full Body'],
     exercises: 18,
-    floor: 0,
+    floor: 1,
   },
   {
     name: 'plan-11 banded body part (body part is the section)',
@@ -159,16 +159,16 @@ const CORPUS = [
     source: 'plan-12-vertical-labels.pdf',
     days: ['Session A - Upper Body', 'Session B - Lower Body'],
     exercises: 25,
-    floor: 0,
+    floor: 1,
   },
   {
     name: 'plan-13 per-set log grid (a column per set)',
     kind: 'pdf',
     source: 'plan-13-per-set-log-grid.pdf',
-    days: ['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'],
-    exercises: 26,
-    floor: 0,
-    note: 'Ground truth provisional — extraction loses most of the page.',
+    days: ['Push - Chest & Triceps', 'Pull - Back & Biceps', 'Legs', 'Shoulders & Core'],
+    exercises: 20,
+    floor: 0.33,
+    note: 'A filled-in log, not a prescription: each column is one set written as load x reps.',
   },
 ];
 

@@ -794,11 +794,19 @@ function planFromLayout(layout: LayoutResult): ParsedPlan {
  *  numbering scheme, not a superset, so it's left alone. */
 function applyGroupCodes(
   day: ParsedTrainingDay,
-  rows: readonly { groupCode: string | null }[],
+  rows: readonly { groupCode: string | null; groupId?: number | null }[],
   startGroup: number
 ): number {
   const byLetter = new Map<string, number[]>();
   rows.forEach((r, i) => {
+    // A group the plan headed ("GIANT SET 1") is as explicit as a lettered one.
+    if (r.groupId != null) {
+      const key = `#${r.groupId}`;
+      const list = byLetter.get(key) ?? [];
+      list.push(i);
+      byLetter.set(key, list);
+      return;
+    }
     if (!r.groupCode) return;
     const letter = r.groupCode.charAt(0).toUpperCase();
     // A bare letter with no number ("C") is a position, not a pairing.

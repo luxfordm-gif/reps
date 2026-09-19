@@ -38,6 +38,9 @@ export interface RawRow {
   /** Superset code from a lettered plan ("A1", "B2") — rows sharing a letter
    *  are performed together. Null when the plan doesn't letter its rows. */
   groupCode: string | null;
+  /** Index of the superset or giant set this row was listed under, for plans
+   *  that head the group instead of lettering each row. */
+  groupId: number | null;
 }
 
 export interface RawDay {
@@ -79,6 +82,7 @@ const COLUMN_WORDS: Record<string, ColumnKind> = {
   TOTAL: 'sets',
   SET: 'sets',
   SETS: 'sets',
+  WORK: 'sets',
   WORKING: 'sets',
   REP: 'reps',
   REPS: 'reps',
@@ -98,6 +102,11 @@ const COLUMN_WORDS: Record<string, ColumnKind> = {
   COACHING: 'notes',
   COMMENTS: 'notes',
   CUES: 'notes',
+  PROTOCOL: 'notes',
+  DROP: 'notes',
+  STATION: 'notes',
+  EQUIPMENT: 'notes',
+  ORDER: 'name',
 };
 
 /**
@@ -115,6 +124,10 @@ export function parseColumnTemplate(line: string): ColumnKind[] | null {
   for (const w of words) {
     const kind = COLUMN_WORDS[w.replace(/[^A-Z/]/g, '')];
     if (!kind) return null;
+    // Notes are always the last column — they're the only one that can run on.
+    // So once one starts, the rest of the heading is part of its title ("Drop
+    // Set Protocol", "Coaching Notes") rather than further columns.
+    if (kinds[kinds.length - 1] === 'notes') continue;
     if (kinds[kinds.length - 1] !== kind) kinds.push(kind);
   }
   if (!kinds.includes('name')) return null;
@@ -156,8 +169,10 @@ function consume(tokens: string[], i: number, kind: ColumnKind, isLast: boolean)
   // more often than not — most rows carry no coaching note at all.
   if (t == null) return kind === 'notes' ? { value: '', next: i } : null;
 
-  // Any column but the name can be left blank with a dash.
-  if (BLANK_RE.test(t) && kind !== 'notes') return { value: '', next: i + 1 };
+  // A dash means "nothing here" — but only for the trimmings. Sets and reps are
+  // what make a row an exercise at all, and letting a dash satisfy them turns a
+  // day heading like "DAY 2 - BACK & BICEPS" into a two-set movement called DAY.
+  if (BLANK_RE.test(t) && OPTIONAL_COLUMNS.has(kind)) return { value: '', next: i + 1 };
 
   switch (kind) {
     case 'sets':
@@ -248,7 +263,8 @@ export function matchTemplateRow(
     }
     // Every value column matched, and nothing was left dangling.
     if (!ok || i < tokens.length) continue;
-    if (cells.sets == null && cells.reps == null) continue;
+    // Both are required: a row with no rep count isn't something you can train.
+    if (!cells.sets || !cells.reps) continue;
 
     const nameTokens = tokens.slice(0, split);
     const { groupCode, name } = splitGroupCode(nameTokens);
@@ -258,9 +274,10 @@ export function matchTemplateRow(
     if (!name || !/^[A-Za-z]/.test(name) || !/[A-Za-z]{2}/.test(name)) continue;
     // The body-part column sits ahead of the name and isn't a value column, so
     // it's still stuck to the front of it — peel it off if the table declared one.
-    const { bodyPart, rest } = template.indexOf('bodyPart') < template.indexOf('name')
-      ? splitLeadingBodyPart(name, bodyParts)
-      : { bodyPart: null, rest: name };
+    const { bodyPart, rest } =
+      template.includes('bodyPart') && template.indexOf('bodyPart') < template.indexOf('name')
+        ? splitLeadingBodyPart(name, bodyParts)
+        : { bodyPart: null, rest: name };
     if (!rest) continue;
     return {
       name: rest,
@@ -270,6 +287,7 @@ export function matchTemplateRow(
       notes: joinNotes(cells),
       bodyPart,
       groupCode,
+      groupId: null,
     };
   }
   return null;
@@ -328,13 +346,32 @@ function joinNotes(cells: Partial<Record<ColumnKind, string>>): string {
 // is a cardio instruction, not a set scheme.
 const DURATION_UNIT = /^(min|mins|minute|minutes|hr|hour|hours|km|mile|miles)\b/i;
 
+// "3 sets of 10 reps", "3 sets x 10 reps", "3 sets × 12" — coaches write the
+// connector either way round and the difference means nothing.
 const PROSE_RE =
-  /^(.+?)\s*[-–—:]?\s*(\d{1,2})\s*(?:x\s*)?sets?\s+of\s+(\d{1,3}(?:\s*-\s*\d{1,3})?|AMRAP|max)\s*(reps?|seconds?|secs?|s)?\b\s*(.*)$/i;
+  /^(.+?)\s*[-–—:]?\s*(\d{1,2})\s*sets?\s*(?:of|x|×)\s*(\d{1,3}(?:\s*-\s*\d{1,3})?|AMRAP|max)\s*(reps?|seconds?|secs?|s)?\b\s*(.*)$/i;
 
 const COMPACT_RE =
   /^(.+?)\s*[-–—:]?\s*(\d{1,2})\s*x\s*(\d{1,3}(?:\s*-\s*\d{1,3})?|AMRAP|max)\s*(s|secs?|seconds?)?\b\s*(.*)$/i;
 
 const ROUNDS_RE = /^(.+?)[,:]?\s*(\d{1,2})\s*rounds?\b[,\s]*(\d{1,3})\s*(?:reps?\s*)?(?:each|per)?\b\s*(.*)$/i;
+
+// A bulleted movement inside a giant set: "- Incline Dumbbell Press - 10 reps -
+// 24kg pair", "- Wall Sit - 45 seconds - bodyweight". There's no set count on
+// the line at all; it comes from the "Rounds: 4" that closes the group.
+const BULLET_RE =
+  /^[-–—•*]\s*(.+?)\s*[-–—]\s*(\d{1,3}(?:\s*-\s*\d{1,3})?)\s*(reps?|seconds?|secs?|mins?)\b\s*((?:each|per)\s+\w+)?\s*(?:[-–—]\s*(.*))?$/i;
+
+/** "GIANT SET 1 - Chest dominant", "SUPERSET A (repeat 4 times)", "CIRCUIT 2". */
+const GROUP_HEADER_RE = /^(GIANT\s*SET|SUPER\s*SET|SUPERSET|TRI[-\s]?SET|CIRCUIT)\b/i;
+
+/** "Rounds: 4. Rest 2 minutes between rounds." — the set count for the group
+ *  that came just above it. */
+const ROUNDS_LINE_RE = /^rounds?\s*[:-]?\s*(\d{1,2})\b\s*\.?\s*(.*)$/i;
+
+export function isGroupHeader(line: string): boolean {
+  return GROUP_HEADER_RE.test(line.trim());
+}
 
 /** "Barbell Bench Press 4 8-10 90s" with no header to tell us the columns. */
 const BARE_RE =
@@ -355,6 +392,21 @@ function cleanName(raw: string): string {
  */
 export function matchFreeformRow(line: string, bodyParts: readonly string[] = []): RawRow | null {
   const trimmed = line.trim();
+
+  const bullet = trimmed.match(BULLET_RE);
+  if (bullet) {
+    const isTime = /^(seconds?|secs?|mins?)$/i.test(bullet[3] ?? '');
+    const qualifier = (bullet[4] ?? '').trim();
+    const reps = isTime ? `${bullet[2]}s` : bullet[2];
+    // Sets stay null: the group's "Rounds: N" line supplies them.
+    return row(
+      bullet[1],
+      '',
+      qualifier ? `${reps} ${qualifier}` : reps,
+      bullet[5] ?? '',
+      bodyParts
+    );
+  }
 
   const prose = trimmed.match(PROSE_RE);
   if (prose) {
@@ -396,9 +448,13 @@ function row(
   bodyParts: readonly string[] = []
 ): RawRow | null {
   const { groupCode, name: coded } = splitGroupCode(cleanName(name).split(/\s+/));
-  const { bodyPart, rest } = splitLeadingBodyPart(cleanName(coded), bodyParts);
-  const cleaned = cleanName(rest);
+  // The body part is left on the front here. Whether "CHEST FLAT BENCH PRESS"
+  // is a body-part column or "Back Extension" is simply the movement's name
+  // can't be told from one line — see peelBodyPartColumn, which decides it once
+  // for the whole sheet.
+  const cleaned = cleanName(coded);
   if (!cleaned || !/[A-Za-z]{2}/.test(cleaned)) return null;
+  void bodyParts;
   // Without a header we only find out a row had a tempo by looking at what came
   // after the reps; left alone it reads as the opening of the coach's note.
   const trailing = (notes ?? '').trim();
@@ -406,11 +462,12 @@ function row(
   return {
     name: cleaned,
     totalSets: toSets(sets),
-    repRange: reps.replace(/\s+/g, ''),
+    repRange: reps.trim().replace(/\s*-\s*/g, '-'),
     tempo: withTempo ? withTempo[1].replace(/-/g, ' ') : null,
     notes: withTempo ? (withTempo[2] ?? '').trim() : trailing,
-    bodyPart,
+    bodyPart: null,
     groupCode,
+    groupId: null,
   };
 }
 
@@ -442,6 +499,38 @@ export function cleanDayName(raw: string): string {
 
 const MAX_HEADER_WORDS = 6;
 
+// Section labels that name a muscle group rather than a training day. Broader
+// than the app's canonical body-part list, because this is about how coaches
+// caption a band of rows, not about what the app files an exercise under.
+const BODY_PART_LABELS = new Set([
+  'CHEST',
+  'BACK',
+  'LATS',
+  'UPPER BACK',
+  'LEGS',
+  'QUADS',
+  'HAMSTRINGS',
+  'HAMS',
+  'GLUTES',
+  'GLUTES/HAMS',
+  'CALVES',
+  'SHOULDERS',
+  'DELTS',
+  'REAR DELTS',
+  'TRAPS',
+  'ARMS',
+  'BICEPS',
+  'TRICEPS',
+  'FOREARMS',
+  'CORE',
+  'ABS',
+  'ABDOMINALS',
+]);
+
+function isBodyPartLabel(line: string): boolean {
+  return BODY_PART_LABELS.has(line.trim().toUpperCase().replace(/\s+/g, ' '));
+}
+
 /**
  * Rule out the tail of a wrapped coach note.
  *
@@ -470,7 +559,9 @@ function rowsFollow(classified: (RawRow | null)[], lines: string[], i: number): 
   let looked = 0;
   let j = i + 1;
   for (; j < lines.length && looked < 3; j++) {
-    if (isNoise(lines[j]) || parseColumnTemplate(lines[j])) continue;
+    // A column header or a group caption sits between a day title and its first
+    // row, so neither counts against the run of rows we're looking for.
+    if (isNoise(lines[j]) || parseColumnTemplate(lines[j]) || isGroupHeader(lines[j])) continue;
     looked += 1;
     if (classified[j]) seen += 1;
     else if (looked === 1) return false; // the very next content line isn't a row
@@ -494,9 +585,11 @@ export function recogniseLayout(
   options: { bodyParts?: readonly string[] } = {}
 ): LayoutResult {
   const bodyParts = options.bodyParts ?? [];
+  // The app's canonical list plus the looser captions coaches actually write.
+  const labels = [...new Set([...bodyParts, ...BODY_PART_LABELS])];
   const lines = rawText
     .split(/\r?\n/)
-    .map((l) => l.replace(/ /g, ' ').trim())
+    .map((l) => l.replace(/\u00A0/g, ' ').trim())
     .filter((l) => l.length > 0);
 
   // Pass 1 — classify, carrying the most recent column template forward.
@@ -515,10 +608,61 @@ export function recogniseLayout(
     if (!classified[i]) classified[i] = matchFreeformRow(lines[i], bodyParts);
   }
 
-  // Pass 2 — day headers are the short non-row lines that rows follow.
+  // Are the leading body parts a column, or part of the movements' names?
+  //
+  // "CHEST FLAT BENCH PRESS" is a table whose first column is the body part.
+  // "Back Extension" and "Chest Supported Row" are just what those machines are
+  // called. One line can't tell you which, but a sheet can: a body-part column
+  // is in front of nearly every row, whereas a movement that happens to start
+  // with a muscle name is the odd one out. So we decide it once, from the whole
+  // page, instead of guessing row by row and eating the front of a name.
+  const freeform = classified.filter((r): r is RawRow => r != null && r.bodyPart == null);
+  const leading = freeform.filter(
+    (r) => splitLeadingBodyPart(r.name, labels).bodyPart != null
+  );
+  const peelBodyPartColumn =
+    leading.length >= 2 && leading.length >= freeform.length * 0.6;
+  if (peelBodyPartColumn) {
+    for (const r of freeform) {
+      const { bodyPart, rest } = splitLeadingBodyPart(r.name, labels);
+      if (bodyPart && rest) {
+        r.bodyPart = bodyPart;
+        r.name = rest;
+      }
+    }
+  }
+
+  // Pass 2 — a header is a short non-row line that rows follow.
+  const isHeader = (i: number): boolean => {
+    if (templateAt[i] || isNoise(lines[i]) || classified[i]) return false;
+    // A giant set or superset caption groups rows inside a day; it isn't one.
+    if (isGroupHeader(lines[i]) || ROUNDS_LINE_RE.test(lines[i])) return false;
+    const words = lines[i].split(/\s+/).filter(Boolean);
+    return (
+      words.length <= MAX_HEADER_WORDS &&
+      !looksLikeSentenceFragment(lines[i]) &&
+      rowsFollow(classified, lines, i)
+    );
+  };
+
+  // A muscle group can caption either a day or a band of rows inside one, and
+  // the difference is only visible from the whole sheet: if the plan captions
+  // anything by session or weekday, then "CHEST" is a band within it. If muscle
+  // groups are the only captions there are, they're how the plan splits its days.
+  const headerIdxs: number[] = [];
+  for (let i = 0; i < lines.length; i++) if (isHeader(i)) headerIdxs.push(i);
+  const bandsAreBodyParts = headerIdxs.some((i) => !isBodyPartLabel(lines[i]));
+
+  // Pass 3 — assign rows to days.
   const days: RawDay[] = [];
   const unparsed: string[] = [];
   let current: RawDay | null = null;
+  let band: string | null = null;
+  // The giant set / superset currently being listed, and its rows — they only
+  // learn their set count when the group's "Rounds: N" line closes it.
+  let groupId: number | null = null;
+  let nextGroupId = 1;
+  let openGroup: RawRow[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -526,13 +670,30 @@ export function recogniseLayout(
 
     const rowHere = classified[i];
     if (!rowHere) {
-      const words = line.split(/\s+/).filter(Boolean);
-      if (
-        words.length <= MAX_HEADER_WORDS &&
-        !looksLikeSentenceFragment(line) &&
-        rowsFollow(classified, lines, i)
-      ) {
+      if (isGroupHeader(line) && current) {
+        groupId = nextGroupId++;
+        openGroup = [];
+        continue;
+      }
+      const rounds = line.match(ROUNDS_LINE_RE);
+      if (rounds && openGroup.length > 0) {
+        const sets = parseInt(rounds[1], 10);
+        for (const r of openGroup) if (r.totalSets == null) r.totalSets = sets;
+        const trailing = (rounds[2] ?? '').trim();
+        if (trailing && current) current.notes.push(trailing);
+        openGroup = [];
+        groupId = null;
+        continue;
+      }
+      if (isHeader(i)) {
+        if (bandsAreBodyParts && isBodyPartLabel(line) && current) {
+          band = line.trim();
+          continue;
+        }
         current = { name: cleanDayName(line), rows: [], notes: [] };
+        band = null;
+        groupId = null;
+        openGroup = [];
         days.push(current);
         continue;
       }
@@ -551,7 +712,15 @@ export function recogniseLayout(
       unparsed.push(line);
       continue;
     }
-    current.rows.push(rowHere);
+    // The band caption applies to the rows under it unless the row named its
+    // own body part.
+    const placed: RawRow = {
+      ...rowHere,
+      bodyPart: rowHere.bodyPart ?? band,
+      groupId: rowHere.groupId ?? groupId,
+    };
+    if (groupId != null) openGroup.push(placed);
+    current.rows.push(placed);
   }
 
   return { days, unparsed };

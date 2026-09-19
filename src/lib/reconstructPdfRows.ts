@@ -61,9 +61,13 @@ const FULL_WIDTH_CHARS = 60;
 
 /** "4 x 6", "3 x 45s", "3x12" — a set prescription rather than a movement. */
 const PRESCRIPTION_RE = /^\d{1,2}\s*x\s*\d/i;
+/** Anything of the form "… x <number>": a prescription, but also a logged set
+ *  like "60 x 12", "Plate 5 x 15" or "BW x 8". A training log writes these
+ *  across the row, one per set, which is the opposite of a day grid. */
+const CROSS_NUMBER_RE = /\bx\s*\d/i;
 
 function isNameLike(text: string): boolean {
-  return /[A-Za-z]{2}/.test(text) && !PRESCRIPTION_RE.test(text);
+  return /[A-Za-z]{2}/.test(text) && !CROSS_NUMBER_RE.test(text);
 }
 
 /** Split one visual line into cells, joining words that sit side by side. */
@@ -108,8 +112,15 @@ function columnCentres(xs: number[]): number[] {
  */
 function reconstructGrid(lines: Line[]): string[] | null {
   const byLine = lines.map(cellsOf);
+  // A day grid's rows are movements — several names side by side and no figures
+  // among them, because the set schemes live on their own line underneath. A
+  // per-set training log looks superficially similar but writes "60 x 12" in
+  // every column, so requiring the row to be free of those tells them apart.
   const gridRows = byLine.filter(
-    (cells) => cells.length >= 3 && cells.filter((c) => isNameLike(c.text)).length >= 3
+    (cells) =>
+      cells.length >= 3 &&
+      cells.filter((c) => isNameLike(c.text)).length >= 3 &&
+      !cells.some((c) => CROSS_NUMBER_RE.test(c.text))
   );
   if (gridRows.length < 3) return null;
 
@@ -172,6 +183,13 @@ function reconstructGrid(lines: Line[]): string[] | null {
       }
     }
   }
+  // Last line of defence. Reading a page as a grid it isn't can drop most of it
+  // on the floor, and a plan that silently arrives half-empty is worse than one
+  // that doesn't parse at all. If we've ended up with far less than the page
+  // had, we were wrong about the layout — hand back nothing and let the
+  // ordinary path read it.
+  const cellCount = byLine.reduce((n, cells) => n + cells.length, 0);
+  if (out.length * 2 < Math.min(lines.length, cellCount)) return null;
   return out;
 }
 
