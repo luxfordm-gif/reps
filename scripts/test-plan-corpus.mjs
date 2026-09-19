@@ -112,7 +112,7 @@ const CORPUS = [
     source: 'plan-7-station-supersets.pdf',
     days: ['Session A - Push', 'Session B - Pull'],
     exercises: 12,
-    floor: 0,
+    floor: 1,
   },
   {
     name: 'plan-8 giant sets (bulleted groups, rounds not sets)',
@@ -167,7 +167,7 @@ const CORPUS = [
     source: 'plan-13-per-set-log-grid.pdf',
     days: ['Push - Chest & Triceps', 'Pull - Back & Biceps', 'Legs', 'Shoulders & Core'],
     exercises: 20,
-    floor: 0.33,
+    floor: 0.8,
     note: 'A filled-in log, not a prescription: each column is one set written as load x reps.',
   },
 ];

@@ -122,12 +122,17 @@ export function parseColumnTemplate(line: string): ColumnKind[] | null {
   if (words.length < 2 || words.length > 12) return null;
   const kinds: ColumnKind[] = [];
   for (const w of words) {
-    const kind = COLUMN_WORDS[w.replace(/[^A-Z/]/g, '')];
+    const word = w.replace(/[^A-Z]/g, '');
+    if (!word) continue; // a separator between headings ("Station / Equipment")
+    const kind = COLUMN_WORDS[word];
     if (!kind) return null;
-    // Notes are always the last column — they're the only one that can run on.
-    // So once one starts, the rest of the heading is part of its title ("Drop
-    // Set Protocol", "Coaching Notes") rather than further columns.
-    if (kinds[kinds.length - 1] === 'notes') continue;
+    // A heading can run to several words ("Drop Set Protocol", "Coaching
+    // Notes"), and the later ones may collide with a column name we know. So
+    // once a free-text heading starts, a word only ends it by naming a column
+    // the table doesn't already have.
+    if (kinds[kinds.length - 1] === 'notes' && (kind === 'notes' || kinds.includes(kind))) {
+      continue;
+    }
     if (kinds[kinds.length - 1] !== kind) kinds.push(kind);
   }
   if (!kinds.includes('name')) return null;
@@ -241,56 +246,81 @@ export function matchTemplateRow(
   const valueKinds = template.filter((k) => k !== 'name' && k !== 'bodyPart');
   if (valueKinds.length === 0) return null;
 
-  for (let split = 1; split < tokens.length; split++) {
-    let i = split;
-    let ok = true;
-    const cells: Partial<Record<ColumnKind, string>> = {};
-    for (let c = 0; c < valueKinds.length; c++) {
-      const kind = valueKinds[c];
-      const got = consume(tokens, i, kind, c === valueKinds.length - 1);
-      if (!got) {
-        // Trainers leave the trimmings out on individual rows — no tempo on the
-        // warm-up, no RPE on the finisher — while always writing the sets and
-        // reps. So an extra column that doesn't match is treated as blank rather
-        // than failing the row, which is what used to drop it on the floor.
-        if (OPTIONAL_COLUMNS.has(kind)) continue;
-        ok = false;
-        break;
-      }
-      // A repeated kind (two notes columns) appends rather than overwrites.
-      cells[kind] = cells[kind] ? `${cells[kind]} ${got.value}`.trim() : got.value;
-      i = got.next;
-    }
-    // Every value column matched, and nothing was left dangling.
-    if (!ok || i < tokens.length) continue;
-    // Both are required: a row with no rep count isn't something you can train.
-    if (!cells.sets || !cells.reps) continue;
+  // The columns whose width we can't know in advance: the movement's name, and
+  // any free-text column that isn't the last one ("Station / Equipment" sits
+  // between the name and the figures). Everything else has a shape we can test a
+  // token against, so we search over where the stretchy ones start and end and
+  // let the testable columns decide which split was right.
+  const lastIdx = template.length - 1;
+  const isStretchy = (k: ColumnKind, idx: number): boolean =>
+    k === 'name' || (k === 'notes' && idx < lastIdx);
 
-    const nameTokens = tokens.slice(0, split);
-    const { groupCode, name } = splitGroupCode(nameTokens);
-    // A movement is named, not numbered. Without this a wrapped note that opens
-    // with figures ("1 X 8-10 REPS / 1 12-15 REPS BACK OFF") lines up against a
-    // loose template and becomes an exercise of its own.
-    if (!name || !/^[A-Za-z]/.test(name) || !/[A-Za-z]{2}/.test(name)) continue;
-    // The body-part column sits ahead of the name and isn't a value column, so
-    // it's still stuck to the front of it — peel it off if the table declared one.
-    const { bodyPart, rest } =
-      template.includes('bodyPart') && template.indexOf('bodyPart') < template.indexOf('name')
-        ? splitLeadingBodyPart(name, bodyParts)
-        : { bodyPart: null, rest: name };
-    if (!rest) continue;
-    return {
-      name: rest,
-      totalSets: toSets(cells.sets),
-      repRange: cells.reps ?? '',
-      tempo: cells.tempo ? cells.tempo : null,
-      notes: joinNotes(cells),
-      bodyPart,
-      groupCode,
-      groupId: null,
-    };
-  }
-  return null;
+  const cells: Partial<Record<ColumnKind, string>> = {};
+  const put = (kind: ColumnKind, value: string): void => {
+    cells[kind] = cells[kind] ? `${cells[kind]} ${value}`.trim() : value;
+  };
+
+  const attempt = (ti: number, ki: number): boolean => {
+    if (ki > lastIdx) return ti === tokens.length;
+    const kind = template[ki];
+
+    if (kind === 'bodyPart') {
+      // Declared but often merged down a block of rows, so it may be absent.
+      const head = splitLeadingBodyPart(tokens.slice(ti).join(' '), bodyParts);
+      if (head.bodyPart) {
+        const width = head.bodyPart.split(/\s+/).length;
+        const saved = cells.bodyPart;
+        cells.bodyPart = head.bodyPart;
+        if (attempt(ti + width, ki + 1)) return true;
+        cells.bodyPart = saved;
+      }
+      return attempt(ti, ki + 1);
+    }
+
+    if (isStretchy(kind, ki)) {
+      for (let width = 1; ti + width <= tokens.length; width++) {
+        const saved = cells[kind];
+        cells[kind] = tokens.slice(ti, ti + width).join(' ');
+        if (attempt(ti + width, ki + 1)) return true;
+        cells[kind] = saved;
+      }
+      return false;
+    }
+
+    const got = consume(tokens, ti, kind, ki === lastIdx);
+    if (got) {
+      const saved = cells[kind];
+      put(kind, got.value);
+      if (attempt(got.next, ki + 1)) return true;
+      cells[kind] = saved;
+    }
+    // Trainers leave the trimmings out on individual rows — no tempo on the
+    // warm-up, no RPE on the finisher — while always writing the sets and reps.
+    // So an extra column that doesn't match is treated as blank rather than
+    // failing the row, which is what used to drop it on the floor.
+    if (OPTIONAL_COLUMNS.has(kind)) return attempt(ti, ki + 1);
+    return false;
+  };
+
+  if (!attempt(0, 0)) return null;
+  // Both are required: a row with no rep count isn't something you can train.
+  if (!cells.sets || !cells.reps) return null;
+
+  const { groupCode, name } = splitGroupCode((cells.name ?? '').split(/\s+/).filter(Boolean));
+  // A movement is named, not numbered. Without this a wrapped note that opens
+  // with figures ("1 X 8-10 REPS / 1 12-15 REPS BACK OFF") lines up against a
+  // loose template and becomes an exercise of its own.
+  if (!name || !/^[A-Za-z]/.test(name) || !/[A-Za-z]{2}/.test(name)) return null;
+  return {
+    name,
+    totalSets: toSets(cells.sets),
+    repRange: cells.reps ?? '',
+    tempo: cells.tempo ? cells.tempo : null,
+    notes: joinNotes(cells),
+    bodyPart: cells.bodyPart ?? null,
+    groupCode,
+    groupId: null,
+  };
 }
 
 /**
@@ -543,7 +573,15 @@ function isBodyPartLabel(line: string): boolean {
 function looksLikeSentenceFragment(line: string): boolean {
   const t = line.trim();
   if (/[.,;:]$/.test(t)) return true;
-  return /^[a-z]/.test(t);
+  if (/^[a-z]/.test(t)) return true;
+  // A title is capitalised — "SESSION A - PUSH", "Day 1", "Monday - Chest". A
+  // line of prose that happens to be short isn't ("Rest after the pair: 60
+  // seconds", "Dip/chin assist by the changing"), and those sit above rows just
+  // as convincingly as a real heading does.
+  const words = t.split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
+  if (words.length === 0) return true;
+  const capitalised = words.filter((w) => /^[A-Z]/.test(w)).length;
+  return capitalised * 2 < words.length;
 }
 
 /**
