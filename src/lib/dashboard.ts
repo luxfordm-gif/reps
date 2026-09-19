@@ -26,6 +26,11 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+/** Local yyyy-mm-dd, for anything that counts by calendar day. */
+function dayISO(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Monday (yyyy-mm-dd) of the week containing `d`. Weeks start Monday here. */
 export function weekStartISO(d: Date): string {
   const dow = (d.getDay() + 6) % 7;
@@ -645,6 +650,32 @@ export function weekVsAveragePct(
   return Math.round(((current - mean) / mean) * 1000) / 10;
 }
 
+/**
+ * How many separate days each movement has been trained on.
+ *
+ * Days rather than sets, because "how often do I do this" and "how much do I
+ * do of it" are different questions and the records board is asking the
+ * first. Five sets in one session is one outing, not five.
+ *
+ * Used for two things there: ordering a body part's movements by how much of
+ * your training they actually account for, and holding back the ones with a
+ * single session behind them — a machine tried once in June says nothing
+ * about your training and sits in the list as if it did.
+ */
+export function countSessionsByExercise(sets: StrengthSet[]): Map<string, number> {
+  const days = new Map<string, Set<string>>();
+  for (const s of sets) {
+    const day = dayISO(new Date(s.completedAt));
+    let seen = days.get(s.normalizedName);
+    if (!seen) {
+      seen = new Set();
+      days.set(s.normalizedName, seen);
+    }
+    seen.add(day);
+  }
+  return new Map([...days].map(([name, seen]) => [name, seen.size]));
+}
+
 // --- One period against another ----------------------------------------------------------
 
 export interface PeriodTotals {
@@ -699,10 +730,6 @@ interface Period {
   bests: Map<string, Best>;
   sets: number;
   exercises: Set<string>;
-}
-
-function dayISO(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /** Everything a comparison needs to know about one span of time. */

@@ -51,6 +51,7 @@ import {
   computeWorkoutsPerWeek,
   compareWeeks,
   compareWindow,
+  countSessionsByExercise,
   summarizeBodyWeight,
   type WeekStreak,
   type WeeklyVolumePoint,
@@ -211,6 +212,9 @@ export function Performance() {
       // Every lift that has ever been logged has a record, so this is what
       // decides whether a name anywhere on the tab is worth making tappable.
       recordNames: new Set(records.map((r) => r.normalizedName)),
+      // How often each movement has actually been trained, for the library's
+      // ordering and for holding back the ones done once.
+      sessionsByExercise: countSessionsByExercise(perf.sets),
     };
   }, [data]);
 
@@ -273,6 +277,7 @@ export function Performance() {
             <RecordsBoard
               records={data.records}
               improvement={improvement}
+              sessions={derived?.sessionsByExercise}
               onSelect={(n) => openRecord(n, 'records')}
             />
           </div>

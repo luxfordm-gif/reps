@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { groupByBodyPart, recordAchievedAt, type LiftRecord } from '../lib/records';
 import { fromKgFor } from '../lib/units';
 
@@ -42,13 +43,44 @@ interface Props {
    * the map sort last — no reading is not a reading of zero.
    */
   improvement?: Map<string, number>;
+  /**
+   * How many separate days each movement has been trained on. Orders a body
+   * part's list by how much of your training it accounts for, and holds back
+   * the movements with a single session behind them. Omit it and nothing is
+   * hidden or reordered.
+   */
+  sessions?: Map<string, number>;
 }
 
-export function RecordsBoard({ records, onSelect, improvement }: Props) {
+export function RecordsBoard({ records, onSelect, improvement, sessions }: Props) {
   const [sort, setSort] = useState<SortMode>('bodyPart');
   const [bodyPart, setBodyPart] = useState<string>(ALL);
   const [query, setQuery] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Body parts the reader has opened. Everything starts shut: a hundred
+  // records over ten body parts is a page you scroll past rather than read,
+  // and as an index of ten headings it fits on one screen.
+  const [openParts, setOpenParts] = useState<Set<string>>(() => new Set());
+  const [showSingles, setShowSingles] = useState(false);
+
+  const searching = query.trim().length > 0;
+
+  /** Movements with one session behind them, which are held back by default. */
+  const singles = useMemo(() => {
+    if (!sessions) return new Set<string>();
+    return new Set(
+      records.filter((r) => sessions.get(r.normalizedName) === 1).map((r) => r.normalizedName),
+    );
+  }, [records, sessions]);
+
+  function toggle(part: string) {
+    setOpenParts((prev) => {
+      const next = new Set(prev);
+      if (next.has(part)) next.delete(part);
+      else next.add(part);
+      return next;
+    });
+  }
 
   /** Every body part present, in the order the sections would appear. */
   const bodyParts = useMemo(
@@ -60,9 +92,12 @@ export function RecordsBoard({ records, onSelect, improvement }: Props) {
     const q = query.trim().toLowerCase();
     return records.filter((r) => {
       if (bodyPart !== ALL && (r.bodyPart?.trim() || 'Other') !== bodyPart) return false;
+      // A search is a question about one movement, so it looks everywhere —
+      // including at the one-off you're trying to remember the name of.
+      if (!q && !showSingles && singles.has(r.normalizedName)) return false;
       return !q || r.displayName.toLowerCase().includes(q);
     });
-  }, [records, query, bodyPart]);
+  }, [records, query, bodyPart, showSingles, singles]);
 
   const filtersOn = sort !== 'bodyPart' || bodyPart !== ALL;
 
@@ -73,7 +108,22 @@ export function RecordsBoard({ records, onSelect, improvement }: Props) {
   }, []);
 
   const sections = useMemo(() => {
-    if (sort === 'bodyPart') return groupByBodyPart(filtered);
+    if (sort === 'bodyPart') {
+      // Within a body part, most-trained first. Heaviest-first put a calf
+      // raise above a row because the plates say so; what you want at the top
+      // of Back is the movement Back actually consists of. Ties break on the
+      // heaviest lift, then the name, so the order is stable.
+      const often = (r: LiftRecord) => sessions?.get(r.normalizedName) ?? 0;
+      return groupByBodyPart(filtered).map((g) => ({
+        ...g,
+        records: [...g.records].sort(
+          (a, b) =>
+            often(b) - often(a) ||
+            (b.heaviest?.weightKg ?? -1) - (a.heaviest?.weightKg ?? -1) ||
+            a.displayName.localeCompare(b.displayName),
+        ),
+      }));
+    }
     if (sort === 'latest') {
       // lastLoggedAt, not recordAchievedAt: "what did I train most recently"
       // is a different and more useful question than "which record did I set
@@ -92,7 +142,7 @@ export function RecordsBoard({ records, onSelect, improvement }: Props) {
       (a, b) => (b.heaviest?.weightKg ?? -1) - (a.heaviest?.weightKg ?? -1),
     );
     return [{ bodyPart: 'Heaviest first', records: rs }];
-  }, [filtered, sort, improvement]);
+  }, [filtered, sort, improvement, sessions]);
 
   const newCount = useMemo(
     () => records.filter((r) => recordAchievedAt(r) >= newCutoff).length,
@@ -160,42 +210,89 @@ export function RecordsBoard({ records, onSelect, improvement }: Props) {
       {filtered.length === 0 ? (
         <p className="mt-8 text-center text-sm text-muted">Nothing matches “{query.trim()}”.</p>
       ) : (
-        <div className="mt-5 space-y-6">
-          {sections.map((section) => (
-            <div key={section.bodyPart}>
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                {section.bodyPart}
+        <div className="mt-5 space-y-3">
+          {sections.map((section) => {
+            // Only the body-part view collapses. The other orders are one
+            // list under a heading that names the order, and a collapsed
+            // "Heaviest first" is a page with nothing on it.
+            const collapsible = sort === 'bodyPart';
+            const open = !collapsible || searching || openParts.has(section.bodyPart);
+            return (
+              <div key={section.bodyPart}>
+                {collapsible ? (
+                  <button
+                    type="button"
+                    onClick={() => toggle(section.bodyPart)}
+                    aria-expanded={open}
+                    className="flex w-full items-center gap-2 rounded-panel px-1 py-2.5 text-left active:bg-surface"
+                  >
+                    <Chevron open={open} />
+                    <span className="flex-1 truncate text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                      {section.bodyPart}
+                    </span>
+                    <span className="text-xs font-semibold text-muted tabular-nums">
+                      {section.records.length}
+                    </span>
+                  </button>
+                ) : (
+                  <div className="px-1 py-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                    {section.bodyPart}
+                  </div>
+                )}
+                {open && (
+                  <ul className="mt-1 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
+                    {section.records.map((r) => (
+                      <li key={r.normalizedName}>
+                        <button
+                          type="button"
+                          onClick={() => onSelect(r.normalizedName)}
+                          className="w-full text-left active:bg-surface"
+                        >
+                          <RecordRow record={r} isNew={recordAchievedAt(r) >= newCutoff} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-              <ul className="mt-2 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
-                {section.records.map((r) => {
-                  return (
-                    <li key={r.normalizedName}>
-                      <button
-                        type="button"
-                        onClick={() => onSelect(r.normalizedName)}
-                        className="w-full text-left active:bg-surface"
-                      >
-                        <RecordRow record={r} isNew={recordAchievedAt(r) >= newCutoff} />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {sheetOpen && (
-        <FilterSheet
-          sort={sort}
-          onSort={setSort}
-          bodyPart={bodyPart}
-          bodyParts={bodyParts}
-          onBodyPart={setBodyPart}
-          onClose={() => setSheetOpen(false)}
-        />
+      {/* Held-back movements are said out loud and can be let back in. A
+          record that silently isn't there is worse than a short list. */}
+      {!searching && singles.size > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowSingles((v) => !v)}
+          className="mt-5 w-full text-center text-sm text-muted active:text-ink"
+        >
+          {showSingles
+            ? 'Hide the ones trained once'
+            : `${singles.size} trained once · show`}
+        </button>
       )}
+
+      {/* Portalled to the body. The sheet is fixed and z-50, which ought to
+          clear the tab bar's z-40 — but the screen sits inside App's
+          `.tab-fade` wrapper, and an element with a filling opacity animation
+          keeps a stacking context, which traps the z-50 inside it. The bar,
+          a sibling of that wrapper, then paints over the sheet. Escaping to
+          the body sidesteps it, and keeps sidestepping it if anything above
+          this ever gains a transform. */}
+      {sheetOpen &&
+        createPortal(
+          <FilterSheet
+            sort={sort}
+            onSort={setSort}
+            bodyPart={bodyPart}
+            bodyParts={bodyParts}
+            onBodyPart={setBodyPart}
+            onClose={() => setSheetOpen(false)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
@@ -304,6 +401,29 @@ function FilterChip({ children, onClear }: { children: ReactNode; onClear: () =>
         <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     </button>
+  );
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+      className={`shrink-0 text-muted transition-transform duration-pop ease-snap ${
+        open ? 'rotate-90' : ''
+      }`}
+    >
+      <path
+        d="M5 3l4 4-4 4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

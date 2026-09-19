@@ -5,6 +5,7 @@ import {
   compareWindow,
   computeWeeklyVolume,
   weekVsAveragePct,
+  countSessionsByExercise,
 } from '../src/lib/dashboard.ts';
 
 let failures = 0;
@@ -157,6 +158,27 @@ console.log('\n=== this week against the weeks behind it ===');
   const v = computeWeeklyVolume([set('bench', 100, 10, 1)], 12, NOW);
   eq('an empty history yields null', weekVsAveragePct(v, 'kg'), null);
   eq('and a single week has nothing to compare', weekVsAveragePct(v.slice(-1), 'kg'), null);
+}
+
+console.log('\n=== how often a movement has been trained ===');
+{
+  // Five sets across two days is two outings, not five.
+  const sets = [
+    set('bench', 100, 5, 1), set('bench', 100, 5, 1), set('bench', 100, 5, 1),
+    set('bench', 95, 5, 8), set('bench', 95, 5, 8),
+    set('curl', 20, 10, 3),
+  ];
+  const counts = countSessionsByExercise(sets);
+  eq('days, not sets', counts.get('bench'), 2);
+  eq('a movement done once counts once', counts.get('curl'), 1);
+  eq('nothing logged is absent from the map', counts.get('squat'), undefined);
+  eq('no sets at all is an empty map', countSessionsByExercise([]).size, 0);
+}
+{
+  // Two sessions on the same calendar day are still one day.
+  const morning = set('bench', 100, 5, 2);
+  const evening = { ...set('bench', 100, 5, 2), completedAt: new Date(new Date(morning.completedAt).setHours(21)).toISOString() };
+  eq('twice in a day is one day', countSessionsByExercise([morning, evening]).get('bench'), 1);
 }
 
 console.log(failures === 0 ? '\nAll passed.' : `\n${failures} failed.`);
