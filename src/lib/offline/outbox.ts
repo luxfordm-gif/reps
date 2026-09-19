@@ -378,6 +378,35 @@ export function enqueue(userId: string, op: OutboxOp): void {
 }
 
 /** Ids of rows still sitting in the queue — used to badge unsynced sets. */
+/**
+ * Re-point queued sets from one exercise identity onto another.
+ *
+ * A merge rewrites history on the server, but a set still sitting in this
+ * queue carries the name it was logged under and would recreate the machine
+ * the moment it flushed — the merge would come undone by a phone that had
+ * been offline in the gym. Returns how many entries were rewritten.
+ */
+export function renameQueuedExercise(
+  userId: string,
+  from: string,
+  to: string,
+  displayName: string,
+): number {
+  if (from === to) return 0;
+  const entries = load();
+  let changed = 0;
+  for (const entry of entries) {
+    if (entry.userId !== userId) continue;
+    if (entry.op.kind !== 'log_set') continue;
+    if (entry.op.row.exercise_normalized_name !== from) continue;
+    entry.op.row.exercise_normalized_name = to;
+    entry.op.row.exercise_display_name = displayName;
+    changed += 1;
+  }
+  if (changed > 0) save(entries);
+  return changed;
+}
+
 export function pendingSetIds(): Set<string> {
   const ids = new Set<string>();
   for (const e of load()) {

@@ -7,6 +7,8 @@ import {
   type MachineUnit,
 } from './units';
 import { clearCachedExerciseUnit } from './exercisePrefsApi';
+import { dropLastSetsCache } from './sessionsApi';
+import { renameQueuedExercise } from './offline/outbox';
 
 export interface MachineRow {
   normalizedName: string;
@@ -294,6 +296,69 @@ export async function deleteMachine(normalizedName: string): Promise<void> {
   clearCachedExerciseUnit(normalizedName);
 }
 
+/** Everything a merge is about to do, for the confirm step to show. */
+export interface MergePreview {
+  survivorNormalized: string;
+  survivorDisplay: string;
+  /** Losers whose unit differs from the survivor's — the ones worth asking about. */
+  unitMismatches: { normalizedName: string; unit: MachineUnit }[];
+  survivorUnit: MachineUnit;
+}
+
+/**
+ * What merging these machines would mean, before doing it.
+ *
+ * Only the unit needs a decision. Sets and plan references move whatever
+ * happens, and the modal already counts those; a unit is the one thing where
+ * moving a row silently changes what it says. A machine logged in pin
+ * positions merged into one logged in kilograms has every number reinterpreted
+ * as a weight, which is the same question changeMachineUnitInPlace asks.
+ */
+export async function previewMerge(
+  survivorNormalized: string,
+  loserNormalizeds: string[],
+): Promise<MergePreview> {
+  const userId = await getUserId();
+  const names = [survivorNormalized, ...loserNormalizeds];
+  const { data, error } = await supabase
+    .from('exercise_unit_prefs')
+    .select('normalized_name, weight_unit')
+    .eq('user_id', userId)
+    .in('normalized_name', names);
+  if (error) throw error;
+  const global = getLiftWeightUnit();
+  const unitFor = new Map(
+    ((data ?? []) as { normalized_name: string; weight_unit: string | null }[]).map((r) => [
+      r.normalized_name,
+      pickUnit(r.weight_unit, global),
+    ]),
+  );
+  const survivorUnit = unitFor.get(survivorNormalized) ?? global;
+  return {
+    survivorNormalized,
+    survivorDisplay: await resolveDisplayName(userId, survivorNormalized),
+    survivorUnit,
+    unitMismatches: loserNormalizeds
+      .filter((n) => n !== survivorNormalized)
+      .map((n) => ({ normalizedName: n, unit: unitFor.get(n) ?? global }))
+      .filter((m) => m.unit !== survivorUnit),
+  };
+}
+
+/**
+ * How a loser's numbers should read once they belong to the survivor.
+ *
+ * The same choice changeMachineUnitInPlace offers, for the same reason. The
+ * stored column is kilograms, but it only means kilograms on a machine whose
+ * unit says so.
+ *
+ *   'convert'  — the stored value was a real weight, so leave it alone and
+ *                let it be redisplayed in the survivor's unit.
+ *   'preserve' — the number on the screen is what mattered, so rewrite the
+ *                stored value to keep it reading the same.
+ */
+export type MergeUnitMode = 'convert' | 'preserve';
+
 // Move all logged_sets + plan_exercises for each loser to the survivor's
 // normalized_name + display name; drop loser prefs rows.
 //
@@ -302,7 +367,8 @@ export async function deleteMachine(normalizedName: string): Promise<void> {
 // renaming it (otherwise DayView would show duplicates).
 export async function mergeMachines(
   survivorNormalized: string,
-  loserNormalizeds: string[]
+  loserNormalizeds: string[],
+  unitMode: MergeUnitMode = 'convert',
 ): Promise<void> {
   if (loserNormalizeds.length === 0) return;
   const userId = await getUserId();
@@ -310,22 +376,53 @@ export async function mergeMachines(
   // Resolve the survivor's display name (override > plan name > normalized).
   const survivorDisplay = await resolveDisplayName(userId, survivorNormalized);
 
+  // Units, for the rewrite decision and so the survivor can inherit one.
+  const { data: prefRows } = await supabase
+    .from('exercise_unit_prefs')
+    .select('normalized_name, weight_unit, body_part_override, load_profile, load_positions')
+    .eq('user_id', userId)
+    .in('normalized_name', [survivorNormalized, ...loserNormalizeds]);
+  type PrefSlim = {
+    normalized_name: string;
+    weight_unit: string | null;
+    body_part_override: string | null;
+    load_profile: string | null;
+    load_positions: number | null;
+  };
+  const prefs = new Map(
+    ((prefRows ?? []) as PrefSlim[]).map((r) => [r.normalized_name, r]),
+  );
+  const globalUnit = getLiftWeightUnit();
+  const survivorPref = prefs.get(survivorNormalized);
+  const survivorUnit = pickUnit(survivorPref?.weight_unit, globalUnit);
+
   // Pre-fetch survivor's plan_exercises so we know which training_day_ids
   // already host the survivor (for dedupe).
   const { data: survivorPlanRows, error: survPeErr } = await supabase
     .from('plan_exercises')
-    .select('training_day_id, training_days!inner(plans!inner(user_id))')
+    .select('id, training_day_id, training_days!inner(plans!inner(user_id))')
     .eq('normalized_name', survivorNormalized)
     .eq('training_days.plans.user_id', userId);
   if (survPeErr) throw survPeErr;
-  const survivorTrainingDays = new Set(
-    ((survivorPlanRows ?? []) as unknown as { training_day_id: string }[]).map(
-      (r) => r.training_day_id
-    )
+  // Which slot the survivor occupies on each training day — the id as well as
+  // the day, because a loser slot being dropped has to hand its alternatives
+  // to the slot that replaces it.
+  const survivorSlotByDay = new Map(
+    ((survivorPlanRows ?? []) as unknown as { id: string; training_day_id: string }[]).map(
+      (r) => [r.training_day_id, r.id] as const,
+    ),
   );
 
   for (const loser of loserNormalizeds) {
     if (loser === survivorNormalized) continue;
+    const loserPref = prefs.get(loser);
+    const loserUnit = pickUnit(loserPref?.weight_unit, globalUnit);
+
+    // The loser's stored numbers only meant what they said under the loser's
+    // unit. Rewrite them first, while they can still be found by that name.
+    if (unitMode === 'preserve' && loserUnit !== survivorUnit) {
+      await rewriteStoredWeights(userId, loser, loserUnit, survivorUnit);
+    }
 
     // Re-point logged_sets.
     const { error: lsErr } = await supabase
@@ -349,17 +446,26 @@ export async function mergeMachines(
       id: string;
       training_day_id: string;
     }[];
-    const toDelete: string[] = [];
+    const toDelete: { id: string; training_day_id: string }[] = [];
     const toRename: string[] = [];
     for (const r of rows) {
-      if (survivorTrainingDays.has(r.training_day_id)) toDelete.push(r.id);
+      if (survivorSlotByDay.has(r.training_day_id)) toDelete.push(r);
       else {
         toRename.push(r.id);
-        survivorTrainingDays.add(r.training_day_id);
+        // This row is about to become the survivor's slot on that day.
+        survivorSlotByDay.set(r.training_day_id, r.id);
       }
     }
     if (toDelete.length > 0) {
-      const { error } = await supabase.from('plan_exercises').delete().in('id', toDelete);
+      // Alternatives hang off plan_exercises with on-delete cascade, so a slot
+      // about to be deleted has to hand its alternatives over first or they go
+      // with it silently — and an alternative list is something the user built
+      // by hand. They move to the survivor's slot on the same day.
+      await rehomeAlternatives(userId, toDelete, survivorSlotByDay, survivorNormalized);
+      const { error } = await supabase
+        .from('plan_exercises')
+        .delete()
+        .in('id', toDelete.map((r) => r.id));
       if (error) throw error;
     }
     if (toRename.length > 0) {
@@ -370,6 +476,50 @@ export async function mergeMachines(
       if (error) throw error;
     }
 
+    // An alternative pill still pointing at the loser would log new sets under
+    // the old name and quietly undo the merge, so they move too.
+    const { error: altErr } = await supabase
+      .from('plan_exercise_alternatives')
+      .update({ name: survivorDisplay, normalized_name: survivorNormalized })
+      .eq('user_id', userId)
+      .eq('normalized_name', loser);
+    if (altErr) throw altErr;
+
+    // And so would a set logged in the gym with no signal.
+    renameQueuedExercise(userId, loser, survivorNormalized, survivorDisplay);
+
+    // The survivor takes anything it hasn't got of its own before the loser's
+    // row goes. Deleting it outright threw away the unit, the body part and
+    // the whole weight profile — and when the survivor had no row at all,
+    // upsertPref then invented a unit from the global default.
+    const inherited: Record<string, unknown> = {};
+    if (loserPref) {
+      if (!survivorPref?.weight_unit && loserPref.weight_unit) {
+        inherited.weight_unit = loserPref.weight_unit;
+      }
+      if (!survivorPref?.body_part_override && loserPref.body_part_override) {
+        inherited.body_part_override = loserPref.body_part_override;
+      }
+      if (!survivorPref?.load_profile && loserPref.load_profile) {
+        inherited.load_profile = loserPref.load_profile;
+        inherited.load_positions = loserPref.load_positions;
+      }
+    }
+    if (Object.keys(inherited).length > 0) {
+      const { error } = await supabase
+        .from('exercise_unit_prefs')
+        .update(inherited)
+        .eq('user_id', userId)
+        .eq('normalized_name', survivorNormalized);
+      // A survivor with no row yet cannot be updated; upsertPref below makes
+      // one, and the unit it picks is the survivor's own either way.
+      if (error && Object.keys(inherited).length > 0) {
+        await upsertPref(userId, survivorNormalized, {
+          weight_unit: pickUnit(inherited.weight_unit as string, survivorUnit),
+        });
+      }
+    }
+
     // Drop the loser's prefs row.
     await supabase
       .from('exercise_unit_prefs')
@@ -378,12 +528,144 @@ export async function mergeMachines(
       .eq('normalized_name', loser);
 
     clearCachedExerciseUnit(loser);
+    // The loser's warmed "last time" weights describe history that has moved.
+    dropLastSetsCache(userId, loser);
   }
 
   // Make sure the survivor's prefs row reflects the survivor display name so
   // future renames stay consistent.
   await upsertPref(userId, survivorNormalized, { display_name: survivorDisplay });
   clearCachedExerciseUnit(survivorNormalized);
+  // The survivor's history just grew, so its warmed copy is stale — and the
+  // warm path throttles for ten minutes and treats a stale entry as good, so
+  // without this the logger pre-fills from before the merge.
+  dropLastSetsCache(userId, survivorNormalized);
+}
+
+/**
+ * Alternatives whose parent slot is about to be deleted.
+ *
+ * They cascade with it (0010_exercise_alternatives.sql), which would throw
+ * away a swap list the user built by hand without saying so. Each one moves
+ * to the survivor's slot on the same training day.
+ *
+ * Two are dropped rather than moved: one that names the survivor itself,
+ * which is what that slot already is, and one whose movement is already an
+ * alternative there.
+ */
+async function rehomeAlternatives(
+  userId: string,
+  doomed: { id: string; training_day_id: string }[],
+  survivorSlotByDay: Map<string, string>,
+  survivorNormalized: string,
+): Promise<void> {
+  const doomedIds = doomed.map((r) => r.id);
+  const { data, error } = await supabase
+    .from('plan_exercise_alternatives')
+    .select('id, plan_exercise_id, normalized_name')
+    .eq('user_id', userId)
+    .in('plan_exercise_id', doomedIds);
+  if (error) throw error;
+  const alternatives = (data ?? []) as {
+    id: string;
+    plan_exercise_id: string;
+    normalized_name: string;
+  }[];
+  if (alternatives.length === 0) return;
+
+  const dayOf = new Map(doomed.map((r) => [r.id, r.training_day_id] as const));
+  const destinations = [...new Set(doomed.map((r) => survivorSlotByDay.get(r.training_day_id)))]
+    .filter((id): id is string => !!id);
+
+  // What the destination slots already offer, so a move can't duplicate a pill.
+  const existing = new Map<string, Set<string>>();
+  if (destinations.length > 0) {
+    const { data: theirs, error: theirsErr } = await supabase
+      .from('plan_exercise_alternatives')
+      .select('plan_exercise_id, normalized_name')
+      .eq('user_id', userId)
+      .in('plan_exercise_id', destinations);
+    if (theirsErr) throw theirsErr;
+    for (const r of (theirs ?? []) as { plan_exercise_id: string; normalized_name: string }[]) {
+      let set = existing.get(r.plan_exercise_id);
+      if (!set) {
+        set = new Set();
+        existing.set(r.plan_exercise_id, set);
+      }
+      set.add(r.normalized_name);
+    }
+  }
+
+  const drop: string[] = [];
+  const moves = new Map<string, string[]>(); // destination slot → alternative ids
+  for (const alt of alternatives) {
+    const day = dayOf.get(alt.plan_exercise_id);
+    const destination = day ? survivorSlotByDay.get(day) : undefined;
+    const already = destination ? existing.get(destination) : undefined;
+    if (!destination || alt.normalized_name === survivorNormalized || already?.has(alt.normalized_name)) {
+      drop.push(alt.id);
+      continue;
+    }
+    const list = moves.get(destination);
+    if (list) list.push(alt.id);
+    else moves.set(destination, [alt.id]);
+    already?.add(alt.normalized_name);
+    if (!already) existing.set(destination, new Set([alt.normalized_name]));
+  }
+
+  for (const [destination, ids] of moves) {
+    const { error: mvErr } = await supabase
+      .from('plan_exercise_alternatives')
+      .update({ plan_exercise_id: destination })
+      .in('id', ids);
+    if (mvErr) throw mvErr;
+  }
+  if (drop.length > 0) {
+    const { error: delErr } = await supabase
+      .from('plan_exercise_alternatives')
+      .delete()
+      .in('id', drop);
+    if (delErr) throw delErr;
+  }
+}
+
+/**
+ * Rewrite one exercise's stored weights so they read the same under a new unit.
+ *
+ * The same arithmetic as changeMachineUnitInPlace's 'preserve', and the same
+ * shape of loop — one row at a time, because there is nothing to batch with.
+ * position_weights travels with it, which the unit-change path forgets: it is
+ * a per-peg breakdown in the same units whose sum is meant to equal `weight`.
+ */
+async function rewriteStoredWeights(
+  userId: string,
+  normalizedName: string,
+  oldUnit: MachineUnit,
+  newUnit: MachineUnit,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('logged_sets')
+    .select('id, weight, position_weights')
+    .eq('user_id', userId)
+    .eq('exercise_normalized_name', normalizedName)
+    .not('weight', 'is', null);
+  if (error) throw error;
+  const restate = (kg: number) => toKgFor(fromKgFor(kg, oldUnit), newUnit);
+  for (const row of (data ?? []) as {
+    id: string;
+    weight: number | null;
+    position_weights: (number | null)[] | null;
+  }[]) {
+    if (row.weight == null) continue;
+    const patch: Record<string, unknown> = { weight: restate(row.weight) };
+    if (Array.isArray(row.position_weights)) {
+      patch.position_weights = row.position_weights.map((w) =>
+        typeof w === 'number' ? restate(w) : w,
+      );
+    }
+    const { error: updErr } = await supabase.from('logged_sets').update(patch).eq('id', row.id);
+    if (updErr) throw updErr;
+  }
 }
 
 export async function setMachineBodyPart(
