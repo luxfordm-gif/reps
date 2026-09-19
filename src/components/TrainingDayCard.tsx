@@ -6,6 +6,11 @@ interface Props {
   bodyParts: React.ReactNode;
   // Omitted by the active-workout card, which has a timer to show instead.
   exerciseCount?: number | null;
+  // Which exercise of the day you're on, 1-based. Given, the count reads
+  // "2-8" with the 2 bright and the total dimmed, so the card says where you
+  // are in the day rather than only how long the day is. The active-workout
+  // card is the one that knows this; everywhere else it's left off.
+  exercisePosition?: number | null;
   accent: string;
   // Small pill after the title — "Week 2" on a rotating day, "Home" on the abs
   // reference card.
@@ -22,6 +27,7 @@ export function TrainingDayCard({
   name,
   bodyParts,
   exerciseCount,
+  exercisePosition,
   accent,
   tag,
   isNext,
@@ -97,7 +103,16 @@ export function TrainingDayCard({
         }`}
       >
         {exerciseCount != null && (
-          <span className="font-medium">{exerciseCount}</span>
+          <span className="font-medium">
+            {exercisePosition != null ? (
+              <>
+                <span className={isNext ? 'text-white' : 'text-ink'}>{exercisePosition}</span>
+                {`-${exerciseCount}`}
+              </>
+            ) : (
+              exerciseCount
+            )}
+          </span>
         )}
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path

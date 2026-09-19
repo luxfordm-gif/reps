@@ -264,7 +264,7 @@ function Root() {
   // the bar's own height so the last card on a screen can't end up behind it.
   useEffect(() => {
     const root = document.documentElement;
-    if (barVisible) root.style.setProperty('--active-bar-h', '64px');
+    if (barVisible) root.style.setProperty('--active-bar-h', '72px');
     else root.style.removeProperty('--active-bar-h');
     return () => {
       root.style.removeProperty('--active-bar-h');

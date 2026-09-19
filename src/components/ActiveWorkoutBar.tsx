@@ -41,6 +41,12 @@ interface Props {
  * left edge. The running clock already says the session is live, which is
  * what the dot was for.
  *
+ * It is `ink-soft` rather than the nav's `ink`, and taller than the nav's row.
+ * Two identical black pills stacked at the bottom of a white app read as one
+ * squashed object with a seam through it; a shade of separation and a little
+ * more height let the eye take them as two things — the one you're in, and the
+ * one you navigate with.
+ *
  * It does not carry a bare bin. A workout is up to an hour of logging, and an
  * "undo this" button placed a thumb's width from the control you're actually
  * aiming for is how that hour gets thrown away. End opens the dialog the
@@ -52,7 +58,7 @@ export function ActiveWorkoutBar({ info, onEnd }: Props) {
   const image = imageForDay(context.trainingDayName);
 
   return (
-    <div className="mx-auto mb-2 flex h-14 max-w-md items-center gap-1 rounded-pill bg-ink p-2 shadow-lift">
+    <div className="mx-auto mb-2 flex h-16 max-w-md items-center gap-1 rounded-pill bg-ink-soft p-2.5 shadow-lift">
       <button
         onClick={() => {
           haptics.tap();
@@ -65,10 +71,10 @@ export function ActiveWorkoutBar({ info, onEnd }: Props) {
             src={image}
             alt=""
             aria-hidden
-            className="h-10 w-10 shrink-0 rounded-full object-cover"
+            className="h-11 w-11 shrink-0 rounded-full object-cover"
           />
         ) : (
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-base font-bold text-white">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-base font-bold text-white">
             {context.trainingDayName[0]}
           </span>
         )}
@@ -77,7 +83,7 @@ export function ActiveWorkoutBar({ info, onEnd }: Props) {
             <span className="truncate">{context.trainingDayName}</span>
             <span className="shrink-0 font-mono tabular-nums text-white/70">{label}</span>
           </span>
-          <span className="mt-0.5 block truncate text-caption text-white/55">
+          <span className="mt-1 block truncate text-caption text-white/55">
             {exerciseName ?? 'Tap to pick up where you left off'}
           </span>
         </span>
@@ -87,7 +93,7 @@ export function ActiveWorkoutBar({ info, onEnd }: Props) {
           haptics.tap();
           onEnd();
         }}
-        className="pressable h-10 shrink-0 rounded-pill bg-white/15 px-4 text-xs font-semibold text-white active:bg-white/25"
+        className="pressable h-11 shrink-0 rounded-pill bg-white/15 px-4 text-xs font-semibold text-white active:bg-white/25"
       >
         End
       </button>

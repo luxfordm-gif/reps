@@ -481,7 +481,14 @@ export function Home({
     <div className="pb-nav min-h-screen bg-paper">
       <div
         className="mx-auto max-w-md px-5"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
+        style={{
+          // 40px is the room a 34px display title needs under the status bar.
+          // When the in-progress card leads instead, that much air reads as the
+          // screen having forgotten to start — it's a filled object with a
+          // badge overhanging it, not a line of text. 24px puts the badge where
+          // the title's first line would have sat.
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${active ? 24 : 40}px)`,
+        }}
       >
         {showOnboardingBanner && (
           <OnboardingBanner onResume={() => onResumeOnboarding?.()} onDismiss={dismissBanner} />
@@ -492,6 +499,7 @@ export function Home({
             <ActiveWorkoutBanner
               context={active}
               exerciseCount={activeDay?.plan_exercises?.length ?? null}
+              exercisePosition={activeDay ? activeIdx + 1 : null}
               onResume={() => {
                 if (!activeDay || !onResumeWorkout) return;
                 onResumeWorkout({
@@ -671,10 +679,12 @@ function OnboardingBanner({
 function ActiveWorkoutBanner({
   context,
   exerciseCount,
+  exercisePosition,
   onResume,
 }: {
   context: ActiveSessionContext;
   exerciseCount: number | null;
+  exercisePosition: number | null;
   onResume: () => void;
 }) {
   const displayLabel = useElapsedLabel(context.startedAt);
@@ -682,12 +692,15 @@ function ActiveWorkoutBanner({
   // The same card as the rest of Home, in its dark variant — so a workout in
   // progress reads as the day it belongs to, photo and all, with the elapsed
   // time where the body parts normally sit.
+  // No top margin: the card is the first thing on the page, and the screen's
+  // own padding has already been set for it.
   return (
-    <div className="mt-4">
+    <div>
       <TrainingDayCard
         name={context.trainingDayName}
         bodyParts={<span className="font-mono tabular-nums">{displayLabel}</span>}
         exerciseCount={exerciseCount}
+        exercisePosition={exercisePosition}
         accent={accentFor(context.trainingDayName)}
         isNext
         badgeLabel="Workout in progress"
