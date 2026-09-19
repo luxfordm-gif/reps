@@ -18,6 +18,8 @@ export interface StrengthSet {
   weight: number | null;
   reps: number | null;
   completedAt: string;
+  /** Optional: only the movers carry it through, and only when the set has one. */
+  bodyPart?: string | null;
 }
 
 function pad(n: number): string {
@@ -597,21 +599,23 @@ export function computeWeeklyIntensity(
   });
 }
 
-// --- This week against another one -------------------------------------------------------
+// --- One period against another ----------------------------------------------------------
 
-export interface WeekTotals {
-  /** Monday (yyyy-mm-dd) of the week. */
-  weekStart: string;
+export interface PeriodTotals {
+  /** Local yyyy-mm-dd the period starts on. */
+  from: string;
   workouts: number;
   sets: number;
   exercises: number;
 }
 
-/** One lift, this week against the week being compared with. */
+/** One lift, this period against the one being compared with. */
 export interface ExerciseMove {
   normalizedName: string;
   displayName: string;
-  /** Heaviest set of the week, and the reps hit on it. */
+  /** Carried through so a list of movers can be filtered by body part. */
+  bodyPart: string | null;
+  /** Heaviest set of the period, and the reps hit on it. */
   currentKg: number;
   currentReps: number;
   previousKg: number;
@@ -621,10 +625,10 @@ export interface ExerciseMove {
   deltaKg: number;
 }
 
-export interface WeekComparison {
-  current: WeekTotals;
-  previous: WeekTotals;
-  /** Lifts trained in both weeks, biggest gain first. */
+export interface MoverComparison {
+  current: PeriodTotals;
+  previous: PeriodTotals;
+  /** Lifts trained in both periods, biggest gain first. */
   movers: ExerciseMove[];
   heavier: number;
   lighter: number;
@@ -634,96 +638,93 @@ export interface WeekComparison {
 /** Below this a lift is "held" rather than moved — logging noise, not progress. */
 const MOVE_EPSILON_PCT = 1;
 
-/**
- * This week beside an earlier one, lift by lift.
- *
- * The tab's other numbers are seasons and averages; this is the question
- * actually being asked on a Thursday — am I ahead of where I was the last time
- * round this plan? So it compares two named weeks rather than rolling windows,
- * and `weeksBack` is how far to reach: 1 for last week, 2 for the week before
- * that, which is the one to use when the plan runs on a fortnight's rotation.
- *
- * A lift only appears if it was trained in both weeks. Ranking is by estimated
- * 1RM rather than by weight, so five more kilos for three fewer reps doesn't
- * read as a clean gain, but the rows still show the sets themselves — the
- * number you'd recognise from the logger.
- */
-export function compareWeeks(
-  sets: StrengthSet[],
-  sessions: { completed_at: string }[],
-  weeksBack: number,
-  now: Date = new Date(),
-): WeekComparison {
-  const currentWeek = weekStartISO(now);
-  const previousWeek = weekStartISO(addWeeks(now, -Math.max(1, weeksBack)));
+interface Best {
+  display: string;
+  bodyPart: string | null;
+  e1rm: number;
+  topKg: number;
+  topReps: number;
+}
 
-  interface Best {
-    display: string;
-    e1rm: number;
-    topKg: number;
-    topReps: number;
-  }
-  const bests = new Map<string, Map<string, Best>>([
-    [currentWeek, new Map()],
-    [previousWeek, new Map()],
-  ]);
-  const setCounts = new Map<string, number>([
-    [currentWeek, 0],
-    [previousWeek, 0],
-  ]);
-  const seen = new Map<string, Set<string>>([
-    [currentWeek, new Set()],
-    [previousWeek, new Set()],
-  ]);
+interface Period {
+  from: Date;
+  /** Exclusive. */
+  to: Date;
+  bests: Map<string, Best>;
+  sets: number;
+  exercises: Set<string>;
+}
 
+function dayISO(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Everything a comparison needs to know about one span of time. */
+function summarize(sets: StrengthSet[], from: Date, to: Date): Period {
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+  const period: Period = { from, to, bests: new Map(), sets: 0, exercises: new Set() };
   for (const s of sets) {
-    const wk = weekStartISO(new Date(s.completedAt));
-    const week = bests.get(wk);
-    if (!week) continue;
-    setCounts.set(wk, (setCounts.get(wk) ?? 0) + 1);
-    seen.get(wk)?.add(s.normalizedName);
+    const t = new Date(s.completedAt).getTime();
+    if (t < fromMs || t >= toMs) continue;
+    period.sets += 1;
+    period.exercises.add(s.normalizedName);
     if (s.weight == null || s.reps == null) continue;
     const e = estimate1RM(s.weight, s.reps);
-    const prev = week.get(s.normalizedName);
+    const prev = period.bests.get(s.normalizedName);
     if (!prev || e > prev.e1rm) {
-      week.set(s.normalizedName, {
+      period.bests.set(s.normalizedName, {
         display: s.displayName,
+        bodyPart: s.bodyPart ?? prev?.bodyPart ?? null,
         e1rm: e,
         topKg: s.weight,
         topReps: s.reps,
       });
     }
   }
+  return period;
+}
 
-  const workouts = new Map<string, number>([
-    [currentWeek, 0],
-    [previousWeek, 0],
-  ]);
-  for (const s of sessions) {
-    const wk = weekStartISO(new Date(s.completed_at));
-    if (workouts.has(wk)) workouts.set(wk, (workouts.get(wk) ?? 0) + 1);
-  }
-
-  const totals = (weekStart: string): WeekTotals => ({
-    weekStart,
-    workouts: workouts.get(weekStart) ?? 0,
-    sets: setCounts.get(weekStart) ?? 0,
-    exercises: seen.get(weekStart)?.size ?? 0,
+/**
+ * Two spans of time, lift by lift.
+ *
+ * A lift only appears if it was trained in both. Ranking is by estimated 1RM
+ * rather than by weight, so five more kilos for three fewer reps doesn't read
+ * as a clean gain, but the rows still carry the sets themselves — the numbers
+ * you'd recognise from the logger.
+ */
+function compare(
+  sessions: { completed_at: string }[],
+  current: Period,
+  previous: Period,
+): MoverComparison {
+  const workouts = (p: Period) => {
+    const fromMs = p.from.getTime();
+    const toMs = p.to.getTime();
+    return sessions.filter((s) => {
+      const t = new Date(s.completed_at).getTime();
+      return t >= fromMs && t < toMs;
+    }).length;
+  };
+  const totals = (p: Period): PeriodTotals => ({
+    from: dayISO(p.from),
+    workouts: workouts(p),
+    sets: p.sets,
+    exercises: p.exercises.size,
   });
 
   const movers: ExerciseMove[] = [];
   let heavier = 0;
   let lighter = 0;
   let held = 0;
-  const currentBests = bests.get(currentWeek)!;
-  const previousBests = bests.get(previousWeek)!;
-  for (const [name, cur] of currentBests) {
-    const prev = previousBests.get(name);
+  for (const [name, cur] of current.bests) {
+    const prev = previous.bests.get(name);
     if (!prev || prev.e1rm <= 0) continue;
     const deltaPct = Math.round(((cur.e1rm - prev.e1rm) / prev.e1rm) * 1000) / 10;
     movers.push({
       normalizedName: name,
       displayName: cur.display,
+      bodyPart: cur.bodyPart ?? prev.bodyPart,
       currentKg: cur.topKg,
       currentReps: cur.topReps,
       previousKg: prev.topKg,
@@ -737,12 +738,51 @@ export function compareWeeks(
   }
   movers.sort((a, b) => b.deltaPct - a.deltaPct || a.displayName.localeCompare(b.displayName));
 
-  return {
-    current: totals(currentWeek),
-    previous: totals(previousWeek),
-    movers,
-    heavier,
-    lighter,
-    held,
+  return { current: totals(current), previous: totals(previous), movers, heavier, lighter, held };
+}
+
+/**
+ * This week beside an earlier one.
+ *
+ * Named calendar weeks rather than rolling windows, because this answers the
+ * question actually asked on a Thursday — am I ahead of where I was the last
+ * time round this plan? `weeksBack` is how far to reach: 1 for last week, 2
+ * for the week before that, which is the one to use when the plan runs on a
+ * fortnight's rotation.
+ */
+export function compareWeeks(
+  sets: StrengthSet[],
+  sessions: { completed_at: string }[],
+  weeksBack: number,
+  now: Date = new Date(),
+): MoverComparison {
+  const weekOf = (d: Date): Period => {
+    const [y, m, day] = weekStartISO(d).split('-').map(Number);
+    const from = new Date(y, m - 1, day);
+    return summarize(sets, from, addWeeks(from, 1));
   };
+  return compare(sessions, weekOf(now), weekOf(addWeeks(now, -Math.max(1, weeksBack))));
+}
+
+/**
+ * The last `days` days against the `days` before them.
+ *
+ * The rolling counterpart to compareWeeks, for the longer view — "what has
+ * been moving lately", where a calendar week is too short a sample and which
+ * week it was stops mattering. Deliberately not anchored to Monday: over eight
+ * weeks the boundary is noise, and anchoring it would throw away the days
+ * between the last Monday and today.
+ */
+export function compareWindow(
+  sets: StrengthSet[],
+  sessions: { completed_at: string }[],
+  days: number,
+  now: Date = new Date(),
+): MoverComparison {
+  const span = Math.max(1, days) * DAY_MS;
+  // Exclusive upper bound, so a set logged this minute still counts.
+  const end = new Date(now.getTime() + 1);
+  const mid = new Date(end.getTime() - span);
+  const start = new Date(end.getTime() - span * 2);
+  return compare(sessions, summarize(sets, mid, end), summarize(sets, start, mid));
 }

@@ -1,6 +1,6 @@
 // Tests the week-against-week comparison and the weekly intensity series.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-week-compare.mjs
-import { compareWeeks, computeWeeklyIntensity } from '../src/lib/dashboard.ts';
+import { compareWeeks, compareWindow, computeWeeklyIntensity } from '../src/lib/dashboard.ts';
 
 let failures = 0;
 function eq(label, got, want) {
@@ -116,6 +116,45 @@ console.log('\n=== a week that cannot support the figure says so ===');
 {
   const series = computeWeeklyIntensity([], 12, NOW);
   eq('no sets at all is still twelve weeks of nulls', series.filter((p) => p.pct == null).length, 12);
+}
+
+console.log('\n=== the rolling window, for the longer view ===');
+{
+  // 56 days each side. Bench climbs across the boundary, curl only ever
+  // appears in the recent half.
+  const sets = [
+    set('bench', 70, 5, 3),
+    set('bench', 60, 5, 70),
+    set('curl', 20, 10, 5),
+  ];
+  const c = compareWindow(sets, [session(3), session(70)], 56);
+  eq('only the lift in both halves moves', c.movers.map((m) => m.normalizedName), ['bench']);
+  eq('and it reads as a gain', c.movers[0].deltaPct, 16.7);
+  eq('the recent half is the current one', [c.current.sets, c.previous.sets], [2, 1]);
+  eq('workouts split across the halves too', [c.current.workouts, c.previous.workouts], [1, 1]);
+}
+{
+  // Today's set must land in the current half, not fall off the end.
+  const c = compareWindow([set('bench', 70, 5, 0), set('bench', 60, 5, 40)], [], 30);
+  eq('a set logged right now counts', c.movers.length, 1);
+}
+{
+  // A window reaching back before anything was logged has no earlier half.
+  const c = compareWindow([set('bench', 70, 5, 1)], [], 30);
+  eq('nothing to compare against yields no movers', c.movers, []);
+  eq('but the recent half still totals', c.current.sets, 1);
+}
+
+console.log('\n=== a mover carries its body part through ===');
+{
+  const withPart = (bodyPart, daysAgo, weight) => ({
+    ...set('bench', weight, 5, daysAgo),
+    bodyPart,
+  });
+  const c = compareWeeks([withPart('Chest', 1, 70), withPart('Chest', 8, 60)], [], 1);
+  eq('so the list can be filtered by it', c.movers[0].bodyPart, 'Chest');
+  const none = compareWeeks([set('bench', 70, 5, 1), set('bench', 60, 5, 8)], [], 1);
+  eq('and is null when the sets have none', none.movers[0].bodyPart, null);
 }
 
 console.log(failures === 0 ? '\nAll passed.' : `\n${failures} failed.`);

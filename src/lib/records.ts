@@ -81,6 +81,7 @@ export function computeRecords(sets: RawSet[]): LiftRecord[] {
     let lastLoggedAt = '';
     let displayName = '';
     let bodyPart: string | null = null;
+    let bodyPartAt = '';
 
     for (const s of group) {
       if (s.completedAt > lastLoggedAt) {
@@ -89,7 +90,17 @@ export function computeRecords(sets: RawSet[]): LiftRecord[] {
         if (s.displayName) displayName = s.displayName;
       }
       if (!displayName && s.displayName) displayName = s.displayName;
-      if (s.bodyPart) bodyPart = s.bodyPart;
+      // The most recent body part wins, for the same reason the name does —
+      // and dated rather than last-write, because the caller's ordering isn't
+      // ours to assume. It used to be a bare `if (s.bodyPart)`, which took
+      // whichever set happened to come last; recordsApi hands sets over
+      // newest-first, so that quietly resolved to the *oldest* body part a
+      // movement ever had, and re-uploading a plan that recategorised a
+      // machine never moved it.
+      if (s.bodyPart && s.completedAt > bodyPartAt) {
+        bodyPart = s.bodyPart;
+        bodyPartAt = s.completedAt;
+      }
 
       const as = (): RecordSet => ({
         weightKg: s.weightKg,

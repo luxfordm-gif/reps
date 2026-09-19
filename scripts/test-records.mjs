@@ -160,5 +160,32 @@ console.log('\n=== naming and grouping ===');
   );
 }
 
+console.log('\n=== a movement keeps the body part it was last trained under ===');
+{
+  // recordsApi hands sets over newest-first, so this is the order computeRecords
+  // actually sees. A bare last-write-wins took the oldest value.
+  const records = computeRecords([
+    set({ bodyPart: 'Shoulders', weightKg: 40, reps: 8, completedAt: '2026-03-01T10:00:00.000Z' }),
+    set({ bodyPart: 'Chest', weightKg: 40, reps: 8, completedAt: '2026-01-01T10:00:00.000Z' }),
+  ]);
+  check('the most recent body part wins', records[0].bodyPart, 'Shoulders');
+}
+{
+  // Same two sets, oldest-first: the answer must not depend on the caller.
+  const records = computeRecords([
+    set({ bodyPart: 'Chest', weightKg: 40, reps: 8, completedAt: '2026-01-01T10:00:00.000Z' }),
+    set({ bodyPart: 'Shoulders', weightKg: 40, reps: 8, completedAt: '2026-03-01T10:00:00.000Z' }),
+  ]);
+  check('whichever order the sets arrive in', records[0].bodyPart, 'Shoulders');
+}
+{
+  // A set logged without a body part mustn't erase the one we know.
+  const records = computeRecords([
+    set({ bodyPart: null, weightKg: 40, reps: 8, completedAt: '2026-04-01T10:00:00.000Z' }),
+    set({ bodyPart: 'Chest', weightKg: 40, reps: 8, completedAt: '2026-01-01T10:00:00.000Z' }),
+  ]);
+  check('a later set with none leaves it standing', records[0].bodyPart, 'Chest');
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

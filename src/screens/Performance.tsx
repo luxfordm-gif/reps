@@ -11,7 +11,7 @@ import {
   Legend,
 } from 'recharts';
 import { PageHeader } from '../components/PageHeader';
-import { Tile, MiniTile, ChevronRight, BoltIcon, WaterIcon, StepsIcon } from '../components/Tile';
+import { MiniTile, ChevronRight, BoltIcon, WaterIcon, StepsIcon } from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
@@ -22,7 +22,7 @@ import {
   type SessionSet,
 } from '../lib/performanceApi';
 import { loadRecords, type LiftRecord } from '../lib/recordsApi';
-import { headlineRecords, recordAchievedAt } from '../lib/records';
+import { recordAchievedAt } from '../lib/records';
 import { listWaterSince, type WaterDay } from '../lib/waterApi';
 import { listSteps, formatSteps, type StepRow } from '../lib/stepsApi';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
@@ -35,22 +35,19 @@ import {
 } from '../lib/sessionsApi';
 import {
   bodyWeightRange,
-  computeConsistency,
   weekDailyAverage,
   weekStartISO,
   computeWeekStreak,
   computeWeeklyLoad,
-  type WeekStreak,
-  type WeeklyLoadPoint,
-  computeMostImproved,
-  computeOverallStrength,
   computeWeeklyIntensity,
   computeWorkoutsPerWeek,
   compareWeeks,
-  newRecordCount,
+  compareWindow,
   summarizeBodyWeight,
+  type WeekStreak,
+  type WeeklyLoadPoint,
   type WeeklyIntensityPoint,
-  type WeekComparison,
+  type MoverComparison,
   type ExerciseMove,
 } from '../lib/dashboard';
 import {
@@ -65,22 +62,43 @@ import {
 
 // The Performance tab.
 //
-// A dashboard first: where you are on the plan, how this week compares with
-// the last one lift by lift, body weight, how hard and how much you've
-// trained, and whether you're getting stronger. Every figure comes from
-// lib/dashboard.ts, which says "not enough data" rather than invent a number.
+// The job, which everything here is answerable to: in about five seconds,
+// show whether the last week went better than the one before it — and be the
+// way into any single exercise's history.
 //
-// Two rules hold the page together. The first is about weight: the big
-// numbers get a card with the chart that explains them, and the supporting
-// ones get a mini tile a third of the height — water and steps are worth
-// knowing and are not worth a 156px tile each. The second is about depth: any
-// lift named anywhere on this tab opens its own history, in one tap, from
-// wherever you tapped it. Nothing routes through an index on the way.
+// The screen had no stated job for a long time, so it accumulated. At its
+// widest it carried three separate lists of lifts (this week against last,
+// most improved, all-time records), four charts, two hero cards and a
+// paragraph under most figures. Three lists of lifts is one list: what's
+// moving. The record book is a real thing to want and a bad thing to land
+// on, so it lives one tap away behind "See all".
+//
+// Three rules hold the rest together:
+//
+//   Weight. A big number gets a card and the chart that explains it. A
+//   supporting number gets a mini tile a third of the height.
+//
+//   Copy. A label names a number, it does not explain it — two words where
+//   two will do, and never a sentence. A figure that needs a paragraph to be
+//   trusted is the wrong figure. Charts carry no legend; tooltips can be as
+//   wordy as they like, because they're asked for.
+//
+//   Depth. Any lift named anywhere opens its own history in one tap, from
+//   wherever it was tapped. Nothing routes through an index on the way.
+//
+// Every figure comes from lib/dashboard.ts, which says "not enough data"
+// rather than invent a number.
 
 type View = 'dashboard' | 'records' | 'record';
 type BwRange = 84 | 182 | 365;
-/** How far back the week-on-week card reaches: last week, or the one before. */
-type VsWeeks = 1 | 2;
+/**
+ * What the movers list is comparing against.
+ *
+ * Two named weeks, or a rolling eight — the plan runs on a fortnight's
+ * rotation, so last week can be the wrong week to ask about, and over two
+ * months which week it was stops mattering.
+ */
+type MoverPeriod = 'week' | 'fortnight' | 'season';
 
 interface Loaded {
   perf: PerformanceData;
@@ -126,7 +144,7 @@ export function Performance() {
   // index, which is the screen you were trying not to visit.
   const [recordFrom, setRecordFrom] = useState<Exclude<View, 'record'>>('dashboard');
   const [bwRange, setBwRange] = useState<BwRange>(84);
-  const [vsWeeks, setVsWeeks] = useState<VsWeeks>(1);
+  const [period, setPeriod] = useState<MoverPeriod>('week');
   const bwUnit = getBodyWeightUnit();
   const liftUnit = getLiftWeightUnit();
 
@@ -161,38 +179,51 @@ export function Performance() {
       (plan?.training_days ?? []).filter((d) => d.reference_only).map((d) => d.name),
     );
     const gymSessions = sessions.filter((s) => !referenceNames.has(s.day_name));
-    const mostImproved = computeMostImproved(perf.sets);
     return {
       weeklyTarget,
-      consistency: computeConsistency(gymSessions, activatedAt, weeklyTarget),
       streak: computeWeekStreak(gymSessions, weeklyTarget),
       water: weekDailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
       steps: weekDailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
       load: computeWeeklyLoad(perf.sets),
       intensity: computeWeeklyIntensity(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
-      strength: computeOverallStrength(perf.sets, activatedAt),
-      mostImproved,
-      mostImprovedSeries: mostImproved
-        ? buildWeeklySeries(perf.sets, 'est1rm', { normalizedName: mostImproved.normalizedName })
-        : [],
       bodyWeight: summarizeBodyWeight(perf.bodyWeights, activatedAt),
-      newPrs: newRecordCount(records),
-      topRecords: headlineRecords(records),
       // Every lift that has ever been logged has a record, so this is what
       // decides whether a name anywhere on the tab is worth making tappable.
       recordNames: new Set(records.map((r) => r.normalizedName)),
     };
   }, [data]);
 
-  // Its own memo rather than part of `derived`: the pills above it change
-  // which week is compared, and nothing else on the tab should recompute for
-  // that. Sessions are counted before the reference day is filtered out — this
-  // card is "what did I do", not "did I hit the plan".
-  const comparison = useMemo(
-    () => (data ? compareWeeks(data.perf.sets, data.sessions, vsWeeks) : null),
-    [data, vsWeeks],
+  // Its own memo rather than part of `derived`: the pills above it change what
+  // is being compared, and nothing else on the tab should recompute for that.
+  // Sessions are counted before the reference day is filtered out — this is
+  // "what did I do", not "did I hit the plan".
+  const movers = useMemo(() => {
+    if (!data) return null;
+    const { sets } = data.perf;
+    if (period === 'season') return compareWindow(sets, data.sessions, 56);
+    return compareWeeks(sets, data.sessions, period === 'fortnight' ? 2 : 1);
+  }, [data, period]);
+
+  // What the library's "Top increased" order sorts on. Built from the movers
+  // the tab has already computed rather than by the board walking every set
+  // again — and it follows the period pills, so the library agrees with the
+  // list you came from.
+  const improvement = useMemo(
+    () => new Map((movers?.movers ?? []).map((m) => [m.normalizedName, m.deltaPct])),
+    [movers],
   );
+
+  // The lift at the top of the list gets the hero card, and a hero card gets a
+  // graph. Scoped to that one lift, so it's the shape of its own progress
+  // rather than the tab's.
+  const leadSeries = useMemo(() => {
+    const lead = movers?.movers[0];
+    if (!data || !lead) return [];
+    return buildWeeklySeries(data.perf.sets, 'est1rm', {
+      normalizedName: lead.normalizedName,
+    }).map((p) => p.value);
+  }, [data, movers]);
 
   /** Open one lift's history. Ignored for a name with no record behind it. */
   function openRecord(normalizedName: string, from: Exclude<View, 'record'> = 'dashboard') {
@@ -220,6 +251,7 @@ export function Performance() {
           <div className="mt-4">
             <RecordsBoard
               records={data.records}
+              improvement={improvement}
               onSelect={(n) => openRecord(n, 'records')}
             />
           </div>
@@ -257,103 +289,20 @@ export function Performance() {
         ) : !hasAnyData || !data || !derived ? (
           <EmptyState />
         ) : (
-          <div className="mt-2 space-y-3">
+          <div className="mt-2">
             <Block>
               <PlanHero
                 plan={data.plan}
                 done={data.week.workoutsDone}
                 target={derived.weeklyTarget}
+                streak={derived.streak}
               />
-            </Block>
-
-            {derived.streak.longest > 0 && (
-              <Block>
-                <div className="grid grid-cols-2 gap-3">
-                  <StreakTile streak={derived.streak} target={derived.weeklyTarget} />
-                  <Tile
-                    icon={<CalendarIcon />}
-                    label="Consistency"
-                    value={derived.consistency.pct != null ? `${derived.consistency.pct}%` : '–'}
-                    hint={
-                      derived.consistency.pct != null
-                        ? `${derived.consistency.done} of ${derived.consistency.planned} this plan`
-                        : 'needs an active plan'
-                    }
-                  />
-                </div>
-              </Block>
-            )}
-
-            {comparison && (
-              <Block>
-                <WeekCompareCard
-                  comparison={comparison}
-                  weeksBack={vsWeeks}
-                  onWeeksBack={setVsWeeks}
-                  unit={liftUnit}
-                  canOpen={(n) => derived.recordNames.has(n)}
-                  onOpen={(n) => openRecord(n)}
-                />
-              </Block>
-            )}
-
-            {/* The supporting numbers, three across and a third the height of
-                a stat tile. Water and steps are averaged over the days they
-                were actually logged — see weekDailyAverage — so the hint names
-                that count rather than letting "a day" imply a full week. */}
-            <Block>
-              <div className="grid grid-cols-3 gap-2.5">
-                <MiniTile
-                  icon={<WaterIcon />}
-                  label="Water"
-                  value={
-                    derived.water.average != null
-                      ? String(Math.round(derived.water.average * 10) / 10)
-                      : '–'
-                  }
-                  hint={
-                    derived.water.average != null
-                      ? `over ${derived.water.daysLogged} ${derived.water.daysLogged === 1 ? 'day' : 'days'}`
-                      : 'none this week'
-                  }
-                />
-                <MiniTile
-                  icon={<StepsIcon />}
-                  label="Steps"
-                  value={
-                    derived.steps.average != null
-                      ? formatSteps(Math.round(derived.steps.average))
-                      : '–'
-                  }
-                  hint={
-                    derived.steps.average != null
-                      ? `over ${derived.steps.daysLogged} ${derived.steps.daysLogged === 1 ? 'day' : 'days'}`
-                      : 'none this week'
-                  }
-                />
-                <MiniTile
-                  icon={<BoltIcon />}
-                  label="Workouts"
-                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
-                  hint={derived.perWeek.average != null ? 'a week on plan' : 'none logged'}
-                />
-              </div>
             </Block>
 
             {data.perf.bodyWeights.length > 0 && (
               <Block>
-                <BodyWeightCard
-                  rows={bodyWeightRange(data.perf.bodyWeights, bwRange).slice().reverse()}
-                  bwUnit={bwUnit}
-                  latestKg={derived.bodyWeight?.latestKg ?? null}
-                  delta={
-                    derived.bodyWeight?.deltaKg != null
-                      ? `${derived.bodyWeight.deltaKg > 0 ? '↑' : derived.bodyWeight.deltaKg < 0 ? '↓' : '·'} ${formatBwDelta(
-                          Math.abs(derived.bodyWeight.deltaKg),
-                          bwUnit,
-                        )} ${derived.bodyWeight.since === 'plan' ? 'this plan' : 'overall'}`
-                      : null
-                  }
+                <SectionHeader
+                  title="Body weight"
                   controls={
                     <div className="flex rounded-pill bg-surface-strong p-0.5">
                       {([84, 182, 365] as BwRange[]).map((r) => (
@@ -370,41 +319,77 @@ export function Performance() {
                     </div>
                   }
                 />
+                <div className="mt-3">
+                  <BodyWeightCard
+                    rows={bodyWeightRange(data.perf.bodyWeights, bwRange).slice().reverse()}
+                    bwUnit={bwUnit}
+                    latestKg={derived.bodyWeight?.latestKg ?? null}
+                    delta={
+                      derived.bodyWeight?.deltaKg != null
+                        ? `${derived.bodyWeight.deltaKg > 0 ? '↑' : derived.bodyWeight.deltaKg < 0 ? '↓' : '·'} ${formatBwDelta(
+                            Math.abs(derived.bodyWeight.deltaKg),
+                            bwUnit,
+                          )}`
+                        : null
+                    }
+                  />
+                </div>
               </Block>
             )}
+
+            {/* How often, and the two habits. Averaged over the days actually
+                logged — see weekDailyAverage — so a well-tracked Tuesday and
+                Wednesday don't read as a failed week. */}
+            <Block>
+              <div className="grid grid-cols-3 gap-2.5">
+                <MiniTile
+                  icon={<BoltIcon />}
+                  label="Workouts"
+                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
+                  hint="a week"
+                />
+                <MiniTile
+                  icon={<WaterIcon />}
+                  label="Water"
+                  value={
+                    derived.water.average != null
+                      ? String(Math.round(derived.water.average * 10) / 10)
+                      : '–'
+                  }
+                  hint="a day"
+                />
+                <MiniTile
+                  icon={<StepsIcon />}
+                  label="Steps"
+                  value={
+                    derived.steps.average != null
+                      ? formatSteps(Math.round(derived.steps.average))
+                      : '–'
+                  }
+                  hint="a day"
+                />
+              </div>
+            </Block>
 
             {derived.load.some((p) => p.sets > 0) && (
               <Block>
-                <TrainingLoadCard
-                  load={derived.load}
-                  intensity={derived.intensity}
-                  perWeek={derived.perWeek.average}
-                />
+                <TrainingLoadCard load={derived.load} intensity={derived.intensity} />
               </Block>
             )}
 
-            <Block>
-              <StrengthCard strength={derived.strength} />
-            </Block>
-
-            {derived.mostImproved && (
+            {movers && (
               <Block>
-                <MostImprovedCard
-                  mi={derived.mostImproved}
-                  series={derived.mostImprovedSeries.map((p) => p.value)}
+                <MoversCard
+                  comparison={movers}
+                  leadSeries={leadSeries}
+                  period={period}
+                  onPeriod={setPeriod}
                   unit={liftUnit}
+                  canOpen={(n) => derived.recordNames.has(n)}
+                  onOpen={(n) => openRecord(n)}
+                  onSeeAll={() => setView('records')}
                 />
               </Block>
-            )}
-
-            {derived.topRecords.length > 0 && (
-              <TopRecords
-                records={derived.topRecords}
-                newThisMonth={derived.newPrs}
-                unit={liftUnit}
-                onViewAll={() => setView('records')}
-                onSelect={(n) => openRecord(n)}
-              />
             )}
           </div>
         )}
@@ -415,7 +400,17 @@ export function Performance() {
 
 // --- Tiles ---------------------------------------------------------------------------
 
-function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number; target: number }) {
+function PlanHero({
+  plan,
+  done,
+  target,
+  streak,
+}: {
+  plan: FullPlan | null;
+  done: number;
+  target: number;
+  streak: WeekStreak;
+}) {
   if (!plan) {
     return (
       <div className="rounded-card bg-ink p-5 text-white shadow-card">
@@ -423,14 +418,16 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
           Current plan
         </div>
         <div className="mt-1 text-xl font-bold tracking-tight">No active plan</div>
-        <div className="mt-0.5 text-sm text-white/70">
-          Upload one from your profile to start tracking.
-        </div>
+        <div className="mt-0.5 text-sm text-white/70">Upload one from your profile.</div>
       </div>
     );
   }
   const week = weeksOnPlan(plan.activated_at);
   const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
+  // The run, when there is one — otherwise the best there has been. A tile of
+  // its own sat a 44px chip next to a short word and left half a row empty;
+  // one line under the plan name says the same thing.
+  const weeks = streak.current > 0 ? streak.current : streak.longest;
   return (
     <div className="rounded-card bg-ink p-5 text-white shadow-card">
       <div className="flex items-start justify-between gap-4">
@@ -439,18 +436,24 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
             Current plan
           </div>
           <div className="mt-1 text-display font-bold leading-none tracking-tight">Week {week}</div>
-          <div className="mt-2 text-sm text-white/70">
-            {week === 1 ? 'First week on plan' : `${week} weeks on plan`}
-          </div>
-          <div className="truncate text-sm text-white/70">{plan.name}</div>
+          <div className="mt-2 truncate text-sm text-white/70">{plan.name}</div>
+          {weeks > 0 && (
+            <div className="mt-1.5 flex items-center gap-1 text-sm font-semibold tabular-nums">
+              <span className="text-white/70">
+                <FlameIcon />
+              </span>
+              {weeks} {weeks === 1 ? 'week' : 'weeks'}
+              {streak.current === 0 && <span className="font-normal text-white/60">best</span>}
+            </div>
+          )}
         </div>
         {target > 0 && (
-          <div className="w-32 shrink-0 pt-1 text-right">
+          <div className="w-28 shrink-0 pt-1 text-right">
             <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
               This week
             </div>
-            <div className="mt-1 text-sm font-semibold tabular-nums">
-              {done} of {target} workouts
+            <div className="mt-1 text-xl font-bold tabular-nums">
+              {done} / {target}
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-pill bg-white/20">
               <div className="h-full rounded-pill bg-white" style={{ width: `${pct}%` }} />
@@ -462,70 +465,56 @@ function PlanHero({ plan, done, target }: { plan: FullPlan | null; done: number;
   );
 }
 
-/** A small line with a soft fill under it. Values only; no axes. */
 /**
- * Weeks in a row hitting the plan's target.
+ * A section's name, on the page rather than inside the card.
  *
- * A tile rather than a card of its own. It carries exactly what the tiles
- * beside it carry — a chip, a label, one number, a line under it — and given
- * a full-width card to fill it just sat a 44px chip next to a short word and
- * left half the row empty.
- *
- * Paired with consistency because they answer the same question from two
- * sides: the ratio that forgives, and the run that doesn't.
+ * Used where a section has controls that act on the whole of it — the body
+ * weight range, the movers period. Putting the heading and its pills above
+ * the card says the controls govern everything below them, and gives the
+ * screen a spine you can scan without reading a single number.
  */
-function StreakTile({ streak, target }: { streak: WeekStreak; target: number }) {
-  const { current, longest, thisWeekCounts } = streak;
-  const live = current > 0;
-  const weeks = live ? current : longest;
+function SectionHeader({
+  title,
+  controls,
+  children,
+}: {
+  title: string;
+  controls?: React.ReactNode;
+  /** An optional short line under the title. Never a sentence. */
+  children?: React.ReactNode;
+}) {
   return (
-    <Tile
-      icon={<FlameIcon />}
-      label={live ? 'Streak' : 'Best streak'}
-      value={
-        <>
-          {weeks}
-          <span className="ml-1 text-base font-semibold text-muted">
-            {weeks === 1 ? 'week' : 'weeks'}
-          </span>
-        </>
-      }
-      hint={
-        live
-          ? thisWeekCounts
-            ? 'this week counted'
-            : `finish this week for ${current + 1}`
-          : `${target} a week starts one`
-      }
-    />
+    <div className="flex items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="text-2xl font-bold tracking-tight text-ink">{title}</h2>
+        {children && <div className="mt-0.5 text-sm text-muted tabular-nums">{children}</div>}
+      </div>
+      {controls && <div className="shrink-0 pb-1">{controls}</div>}
+    </div>
   );
 }
 
 /**
  * Twelve weeks of training: how much, and how heavy.
  *
- * The rest of the tab looks at a fortnight or at one lift. This is the only
- * place that answers "how has it been going lately", which is the question a
- * chart is for — and the empty weeks are drawn, because a month off is the
- * most informative thing a season of training has to say.
+ * The only place on the tab that answers "how has it been going lately",
+ * which is the question a chart is for — and the empty weeks are drawn,
+ * because a month off is the most informative thing a season of training has
+ * to say.
  *
  * Two series, because sets alone were being read as a verdict they can't
  * give: a week of heavy triples and a week of light high-rep work look
  * identical by set count, so a block that gets harder and shorter draws a line
  * going down. The bars are the volume of work; the line over them is how heavy
  * that work was against the window's own normal (computeWeeklyIntensity has
- * the arithmetic and the reason it's a percentage rather than a tonnage). Load
- * down and intensity up is a real and common shape, and now it's visible
- * rather than looking like a decline.
+ * the arithmetic and the reason it's a percentage rather than a tonnage).
  */
 function TrainingLoadCard({
   load,
   intensity,
-  perWeek,
 }: {
   load: WeeklyLoadPoint[];
   intensity: WeeklyIntensityPoint[];
-  perWeek: number | null;
 }) {
   const thisWeek = load[load.length - 1]?.sets ?? 0;
   const average = Math.round(load.reduce((sum, p) => sum + p.sets, 0) / load.length);
@@ -546,37 +535,36 @@ function TrainingLoadCard({
         <SectionLabel>Training load</SectionLabel>
         <div className="text-xs text-muted">Past 12 weeks</div>
       </div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
-          {thisWeek}
+      {/* Two figures, side by side, each with the one word that names it:
+          how much work, and how heavy it was. This used to be a headline and
+          two lines of explanation — "18 a week on average · 3.2 workouts a
+          week", then a sentence about what the percentage was measured
+          against. The numbers were never the problem. */}
+      <div className="mt-2 flex items-start gap-7">
+        <div>
+          <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
+            {thisWeek}
+          </div>
+          <div className="mt-1 text-xs text-muted tabular-nums">sets · avg {average}</div>
         </div>
-        <div className="text-sm font-semibold text-muted">
-          {thisWeek === 1 ? 'set this week' : 'sets this week'}
-        </div>
+        {latestIntensity?.pct != null && (
+          <div>
+            <div
+              className={`text-display font-bold leading-none tracking-tight tabular-nums ${
+                latestIntensity.pct > 1
+                  ? 'text-good'
+                  : latestIntensity.pct < -1
+                    ? 'text-danger'
+                    : 'text-ink'
+              }`}
+            >
+              {latestIntensity.pct > 0 ? '+' : latestIntensity.pct < 0 ? '−' : ''}
+              {fmtNum(Math.abs(latestIntensity.pct))}%
+            </div>
+            <div className="mt-1 text-xs text-muted">heavier</div>
+          </div>
+        )}
       </div>
-      <div className="mt-0.5 text-xs text-muted tabular-nums">
-        {average} a week on average{perWeek != null && ` · ${perWeek} workouts a week`}
-      </div>
-      {latestIntensity?.pct != null && (
-        <div className="mt-1 text-xs tabular-nums">
-          <span
-            className={`font-semibold ${
-              latestIntensity.pct > 1
-                ? 'text-good'
-                : latestIntensity.pct < -1
-                  ? 'text-danger'
-                  : 'text-muted'
-            }`}
-          >
-            {latestIntensity.pct > 0 ? '+' : latestIntensity.pct < 0 ? '−' : ''}
-            {fmtNum(Math.abs(latestIntensity.pct))}%
-          </span>{' '}
-          <span className="text-muted">
-            on the weight lifted, against these 12 weeks — over {latestIntensity.lifts}{' '}
-            {latestIntensity.lifts === 1 ? 'lift' : 'lifts'}
-          </span>
-        </div>
-      )}
       <div className="mt-3">
         <ResponsiveContainer width="100%" height={150}>
           <ComposedChart data={points} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
@@ -605,11 +593,23 @@ function TrainingLoadCard({
               allowDecimals={false}
               domain={[0, 'dataMax + 4']}
             />
-            {/* Hidden rather than absent: the line needs its own scale — a
-                percentage swing of six would be invisible against a set count
-                — but a second set of numbers down the right-hand edge of a
-                phone-width card buys nothing the headline hasn't said. */}
-            <YAxis yAxisId="intensity" hide domain={['dataMin - 4', 'dataMax + 4']} />
+            {/* Drawn away rather than hidden: the line needs its own scale — a
+                percentage swing of six would vanish against a set count — but
+                a second column of numbers down the right-hand edge of a
+                phone-width card buys nothing the headline hasn't said.
+                Deliberately not `hide`, which in this version of recharts
+                suppresses the *other* axis's ticks too and left the sets scale
+                blank. Zero width with nothing drawn gets the scale without the
+                furniture. */}
+            <YAxis
+              yAxisId="intensity"
+              orientation="right"
+              width={0}
+              tick={false}
+              tickLine={false}
+              axisLine={false}
+              domain={['dataMin - 4', 'dataMax + 4']}
+            />
             <Tooltip
               contentStyle={{ borderRadius: 12, border: '1px solid #E5E5EA', fontSize: 12 }}
               formatter={(v, name) =>
@@ -624,19 +624,6 @@ function TrainingLoadCard({
                 })}`
               }
             />
-            {/* Each series keyed as it's drawn — a bar with a line for a
-                swatch reads as two lines, one of which has gone missing. The
-                formatter is there because recharts colours a legend label to
-                match its series, which left "Sets" written in the bars' own
-                14% ink and all but invisible. */}
-            {hasIntensity && (
-              <Legend
-                verticalAlign="top"
-                height={24}
-                wrapperStyle={{ fontSize: 11 }}
-                formatter={(value) => <span style={{ color: '#8E8E93' }}>{value}</span>}
-              />
-            )}
             <Bar
               yAxisId="sets"
               name="Sets"
@@ -645,7 +632,6 @@ function TrainingLoadCard({
               // a number, and at #E5E5EA they read as the gridlines they
               // aren't.
               fill="rgba(10,10,10,0.14)"
-              legendType="rect"
               radius={[3, 3, 0, 0]}
               maxBarSize={14}
               isAnimationActive
@@ -656,7 +642,6 @@ function TrainingLoadCard({
               <Line
                 yAxisId="intensity"
                 name="Weight lifted"
-                legendType="plainline"
                 type="monotone"
                 dataKey="intensity"
                 stroke="#0A0A0A"
@@ -691,6 +676,7 @@ function FlameIcon() {
   );
 }
 
+/** A small line with a soft fill under it. Values only; no axes. */
 function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string; fill: string }) {
   if (values.length < 2) return null;
   const w = 100;
@@ -728,291 +714,193 @@ function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string;
   );
 }
 
+
+// --- What's moving ------------------------------------------------------------------
+
+const PERIODS: { key: MoverPeriod; pill: string; prose: string }[] = [
+  { key: 'week', pill: '1w', prose: 'last week' },
+  { key: 'fortnight', pill: '2w', prose: 'two weeks ago' },
+  { key: 'season', pill: '8w', prose: 'the eight before' },
+];
+
+/** Top six, hero included. Beyond that it stops being a glance. */
+const MOVERS_SHOWN = 6;
+
 /**
- * Overall strength, as a data card rather than a shape of its own.
+ * What's going up, and what isn't.
  *
- * Label, headline, graph — the same three parts as body weight and training
- * load, so "not enough data yet" is this card's empty state rather than a
- * fourth kind of component. The sentence sits where the number will, at the
- * size of prose rather than of a headline, because it is standing in for a
- * figure we haven't got rather than being one.
+ * This is the screen's answer to its own question, and it replaced three
+ * lists that were each a different view of it: this week against last week,
+ * the single most improved lift, and the all-time records board. They were
+ * three renderings of "which lifts, and what are they doing", stacked one
+ * above another, and the record book — which is a real thing to want — was
+ * the worst of the three to land on, because it's a reference work rather
+ * than a report. It moved behind "See all".
+ *
+ * The lift at the top keeps the black card the most-improved figure used to
+ * have. It earns it: one movement, named, with the number and the shape of
+ * how it got there.
+ *
+ * Ranked on estimated 1RM rather than on weight, so five more kilos for three
+ * fewer reps doesn't read as a clean gain — but the rows print the set as it
+ * was logged, because that's the number you'd recognise.
  */
-function StrengthCard({ strength }: { strength: ReturnType<typeof computeOverallStrength> }) {
-  const hint =
-    strength.reason === 'no_plan'
-      ? 'Needs an active plan'
-      : strength.reason === 'too_early'
-        ? 'Shows after four weeks on the plan'
-        : strength.reason === 'too_few_lifts'
-          ? 'Needs three lifts trained early and recently'
-          : 'Since starting this plan';
+function MoversCard({
+  comparison,
+  leadSeries,
+  period,
+  onPeriod,
+  unit,
+  canOpen,
+  onOpen,
+  onSeeAll,
+}: {
+  comparison: MoverComparison;
+  /** Weekly best est. 1RM for the lead lift, for the hero's graph. */
+  leadSeries: number[];
+  period: MoverPeriod;
+  onPeriod: (p: MoverPeriod) => void;
+  unit: MachineUnit;
+  canOpen: (normalizedName: string) => boolean;
+  onOpen: (normalizedName: string) => void;
+  onSeeAll: () => void;
+}) {
+  const { movers, heavier, lighter, previous } = comparison;
+  const [lead, ...rest] = movers;
+  const prose = PERIODS.find((p) => p.key === period)?.prose ?? 'last week';
+
   return (
-    <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <SectionLabel>Overall strength</SectionLabel>
-      {strength.pct != null ? (
-        <div className="mt-1 text-display font-bold leading-none tracking-tight text-ink tabular-nums">
-          {`${strength.pct > 0 ? '+' : ''}${fmtNum(strength.pct)}%`}
+    <div>
+      <SectionHeader
+        title="Moving"
+        controls={
+          <div className="flex rounded-pill bg-surface-strong p-0.5">
+            {PERIODS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => onPeriod(p.key)}
+                className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
+                  period === p.key ? 'bg-ink text-white' : 'text-muted'
+                }`}
+              >
+                {p.pill}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        {/* Only the counts that happened. A red "0↓" is a number drawing
+            attention to the absence of the thing it counts. */}
+        {heavier > 0 && <span className="font-semibold text-good">{heavier}↑</span>}
+        {heavier > 0 && lighter > 0 && ' '}
+        {lighter > 0 && <span className="font-semibold text-danger">{lighter}↓</span>}
+      </SectionHeader>
+
+      {movers.length === 0 ? (
+        <div className="mt-3 rounded-card bg-paper-card p-5 text-sm text-muted shadow-card">
+          {previous.sets === 0
+            ? `Nothing logged ${prose}.`
+            : `Nothing trained in both ${period === 'season' ? 'windows' : 'weeks'}.`}
         </div>
       ) : (
-        <div className="mt-1 text-base font-semibold leading-tight text-muted">
-          Not enough data yet
-        </div>
+        <>
+          <div className="mt-3">
+            <MoverHero
+              move={lead}
+              series={leadSeries}
+              unit={unit}
+              onOpen={canOpen(lead.normalizedName) ? () => onOpen(lead.normalizedName) : undefined}
+            />
+          </div>
+          {rest.length > 0 && (
+            <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
+              {rest.slice(0, MOVERS_SHOWN - 1).map((m) => (
+                <MoverRow
+                  key={m.normalizedName}
+                  move={m}
+                  unit={unit}
+                  onOpen={canOpen(m.normalizedName) ? () => onOpen(m.normalizedName) : undefined}
+                />
+              ))}
+            </ul>
+          )}
+        </>
       )}
-      <div className="mt-1 text-xs text-muted">{hint}</div>
-      {strength.series.length >= 2 && (
-        <div className="mt-3 h-20 w-full">
-          <Sparkline
-            values={strength.series.map((p) => p.pct)}
-            stroke="#0A0A0A"
-            fill="rgba(10,10,10,0.08)"
-          />
-        </div>
-      )}
+
+      <button
+        type="button"
+        onClick={onSeeAll}
+        className="mt-4 flex items-center gap-1 text-sm font-semibold text-muted active:text-ink"
+      >
+        See all exercises <ChevronRight />
+      </button>
     </div>
   );
 }
 
-function MostImprovedCard({
-  mi,
+/** The lift at the top of the list, with the shape of how it got there. */
+function MoverHero({
+  move,
   series,
   unit,
+  onOpen,
 }: {
-  mi: NonNullable<ReturnType<typeof computeMostImproved>>;
+  move: ExerciseMove;
   series: number[];
   unit: MachineUnit;
+  onOpen?: () => void;
 }) {
-  return (
-    <div className="rounded-card bg-ink p-5 text-white shadow-card">
-      <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
-        Most improved this month
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-label font-semibold uppercase tracking-[0.14em] text-white/60">
+          Biggest gain
+        </div>
+        {onOpen && (
+          <span className="text-white/60">
+            <ChevronRight />
+          </span>
+        )}
       </div>
       <div className="mt-2 flex items-end justify-between gap-4">
         <div className="min-w-0">
-          <div className="truncate text-base font-semibold">{mi.displayName}</div>
+          <div className="truncate text-base font-semibold">{move.displayName}</div>
           <div className="mt-1 text-display font-bold leading-none tracking-tight tabular-nums">
-            {fmtNum(fromKgFor(mi.toKg, unit))}
-            <span className="ml-1 text-base font-semibold text-white/70">{unit}</span>
+            {formatLoadShort(move.currentKg, unit)}
           </div>
-          <div className="mt-1 text-xs text-white/60">estimated 1RM</div>
-          <div className="mt-2 text-sm font-semibold tabular-nums">
-            ↑ +{fmtNum(fromKgFor(mi.deltaKg, unit))} {unit} · +{fmtNum(mi.deltaPct)}%
+          <div className="mt-1.5 text-sm font-semibold tabular-nums">
+            {deltaArrow(move.deltaPct)} {fmtNum(Math.abs(move.deltaPct))}%
           </div>
         </div>
         {series.length >= 2 && (
-          <div className="h-16 w-32 shrink-0">
+          <div className="h-16 w-28 shrink-0">
             <Sparkline values={series} stroke="#FFFFFF" fill="rgba(255,255,255,0.12)" />
           </div>
         )}
       </div>
-    </div>
+    </>
   );
-}
-
-function TopRecords({
-  records,
-  newThisMonth,
-  unit,
-  onViewAll,
-  onSelect,
-}: {
-  records: LiftRecord[];
-  newThisMonth: number;
-  unit: MachineUnit;
-  onViewAll: () => void;
-  onSelect: (normalizedName: string) => void;
-}) {
-  return (
-    // The heading sits on the page rather than inside the card, at the size a
-    // section of a screen is titled — everything above it is the dashboard,
-    // and everything from here down is the record book. The gap is doing the
-    // same work as the type: this is a new part of the page, not the next
-    // card in a stack.
-    <div className="mt-12">
-      <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-2xl font-bold tracking-tight text-ink">All-time records</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            {newThisMonth > 0
-              ? `${newThisMonth} set this month`
-              : 'Your best ever on every movement'}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="flex shrink-0 items-center gap-1 pb-1 text-sm text-muted active:text-ink"
-        >
-          View all <ChevronRight />
-        </button>
-      </div>
-      <ul className="mt-4 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
-        {records.map((r) => (
-          <li key={r.normalizedName}>
-            {/* Straight to the lift's own history. This used to open the
-                records board instead, so the row you had just tapped had to be
-                found and tapped again on the screen in between. */}
-            <button
-              type="button"
-              onClick={() => onSelect(r.normalizedName)}
-              className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left active:bg-surface"
-            >
-              <span className="min-w-0 truncate text-sm text-ink">{r.displayName}</span>
-              <span className="flex shrink-0 items-center gap-2 text-sm font-semibold text-ink tabular-nums">
-                {r.heaviest ? formatLoadShort(r.heaviest.weightKg ?? 0, unit) : '–'}
-                <ChevronRight />
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// --- This week against another one ---------------------------------------------
-
-const VS_LABELS: { weeks: VsWeeks; pill: string; prose: string }[] = [
-  { weeks: 1, pill: 'Last week', prose: 'last week' },
-  { weeks: 2, pill: '2 weeks ago', prose: 'two weeks ago' },
-];
-
-/**
- * This week beside an earlier one, lift by lift.
- *
- * The rest of the tab is written in seasons — twelve weeks of load, a month of
- * PRs, a plan's worth of consistency. None of that answers the question you
- * actually open the tab with on a Thursday: is this week going better than the
- * last one? So this card names two weeks and puts them side by side.
- *
- * Two weeks back is offered as well as one because a plan on a fortnight's
- * rotation trains a given movement every other week, and comparing Tuesday's
- * push day with a week that had no push day in it compares nothing.
- *
- * Rows go straight to the lift's history — the card names a movement and a
- * number, and the next thing you want is the chart behind it.
- */
-function WeekCompareCard({
-  comparison,
-  weeksBack,
-  onWeeksBack,
-  unit,
-  canOpen,
-  onOpen,
-}: {
-  comparison: WeekComparison;
-  weeksBack: VsWeeks;
-  onWeeksBack: (w: VsWeeks) => void;
-  unit: MachineUnit;
-  canOpen: (normalizedName: string) => boolean;
-  onOpen: (normalizedName: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const { current, previous, movers, heavier, lighter, held } = comparison;
-  const prose = VS_LABELS.find((v) => v.weeks === weeksBack)?.prose ?? 'last week';
-  // Enough to see the shape of the week without the card becoming the page;
-  // the rest are one tap away.
-  const shown = expanded ? movers : movers.slice(0, 4);
-
-  return (
-    <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <div className="flex items-center justify-between gap-3">
-        <SectionLabel>This week vs</SectionLabel>
-        <div className="flex rounded-pill bg-surface-strong p-0.5">
-          {VS_LABELS.map((v) => (
-            <button
-              key={v.weeks}
-              type="button"
-              onClick={() => onWeeksBack(v.weeks)}
-              className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
-                weeksBack === v.weeks ? 'bg-ink text-white' : 'text-muted'
-              }`}
-            >
-              {v.pill}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-2 flex items-baseline gap-2">
-        <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
-          {current.workouts}
-        </div>
-        <div className="text-sm font-semibold text-muted">
-          {current.workouts === 1 ? 'workout' : 'workouts'} · {current.sets}{' '}
-          {current.sets === 1 ? 'set' : 'sets'}
-        </div>
-      </div>
-      <div className="mt-1 text-xs text-muted tabular-nums">
-        {previous.workouts === 0 && previous.sets === 0
-          ? `Nothing logged ${prose}`
-          : `${previous.workouts} ${previous.workouts === 1 ? 'workout' : 'workouts'} · ${previous.sets} ${
-              previous.sets === 1 ? 'set' : 'sets'
-            } ${prose}`}
-      </div>
-
-      {movers.length === 0 ? (
-        <div className="mt-4 rounded-panel bg-surface px-4 py-3 text-sm text-muted">
-          {previous.sets === 0
-            ? `No sets logged ${prose} to compare with yet.`
-            : `Nothing trained in both weeks — try comparing with ${
-                weeksBack === 1 ? 'two weeks ago' : 'last week'
-              }.`}
-        </div>
-      ) : (
-        <>
-          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums">
-            {heavier > 0 && <span className="font-semibold text-good">{heavier} heavier</span>}
-            {lighter > 0 && <span className="font-semibold text-danger">{lighter} lighter</span>}
-            {held > 0 && <span className="text-muted">{held} held</span>}
-            <span className="text-muted">
-              · {movers.length} {movers.length === 1 ? 'lift' : 'lifts'} in both weeks
-            </span>
-          </div>
-
-          <ul className="mt-2 divide-y divide-line/60">
-            {shown.map((m) => (
-              <MoveRow
-                key={m.normalizedName}
-                move={m}
-                unit={unit}
-                onOpen={canOpen(m.normalizedName) ? () => onOpen(m.normalizedName) : undefined}
-              />
-            ))}
-          </ul>
-
-          {movers.length > shown.length && (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className="mt-3 text-sm font-semibold text-muted active:text-ink"
-            >
-              Show all {movers.length} lifts
-            </button>
-          )}
-          {expanded && movers.length > 4 && (
-            <button
-              type="button"
-              onClick={() => setExpanded(false)}
-              className="mt-3 text-sm font-semibold text-muted active:text-ink"
-            >
-              Show less
-            </button>
-          )}
-        </>
-      )}
-    </div>
+  const cls = 'w-full rounded-card bg-ink p-5 text-left text-white shadow-card';
+  return onOpen ? (
+    <button type="button" onClick={onOpen} className={`${cls} active:bg-ink-soft`}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 
 /**
- * One lift's two weeks: the earlier set, the one just done, and the change.
+ * One lift under the hero.
  *
- * Both sets are printed as they were logged — the weight and the reps you'd
- * recognise from the logger — while the percentage beside them is the change
- * in estimated 1RM, which is the only way five more kilos for three fewer reps
- * can be told from an actual gain.
+ * The set on top, the change under it — the same shape the records board
+ * gives a row, so the two lists read as one thing seen twice. It used to
+ * spell out both sets ("55 kg × 7 → 56.5 kg × 8"); the arrow and the
+ * percentage already say which way it went, and the earlier set is one tap
+ * away in the history.
  */
-function MoveRow({
+function MoverRow({
   move,
   unit,
   onOpen,
@@ -1025,42 +913,38 @@ function MoveRow({
   const up = move.deltaPct > 1;
   const down = move.deltaPct < -1;
   const body = (
-    <>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="min-w-0 truncate text-sm font-semibold text-ink">{move.displayName}</span>
-        <span
-          className={`shrink-0 text-sm font-semibold tabular-nums ${
+    <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+      <span className="min-w-0 flex-1 truncate text-sm text-ink">{move.displayName}</span>
+      <div className="shrink-0 text-right">
+        <div className="whitespace-nowrap text-sm font-semibold text-ink tabular-nums">
+          {formatSetShort(move.currentKg, move.currentReps, unit)}
+        </div>
+        <div
+          className={`whitespace-nowrap text-caption font-semibold tabular-nums ${
             up ? 'text-good' : down ? 'text-danger' : 'text-muted'
           }`}
         >
-          {up ? '↑' : down ? '↓' : '·'} {fmtNum(Math.abs(move.deltaPct))}%
-        </span>
+          {deltaArrow(move.deltaPct)} {fmtNum(Math.abs(move.deltaPct))}%
+        </div>
       </div>
-      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted tabular-nums">
-        <span>{formatSetShort(move.previousKg, move.previousReps, unit)}</span>
-        <span aria-hidden="true">→</span>
-        <span className="font-semibold text-ink">
-          {formatSetShort(move.currentKg, move.currentReps, unit)}
-        </span>
-        {onOpen && <ChevronRight />}
-      </div>
-    </>
+      {onOpen && <ChevronRight />}
+    </div>
   );
   return (
     <li>
       {onOpen ? (
-        <button
-          type="button"
-          onClick={onOpen}
-          className="w-full py-3 text-left active:bg-surface"
-        >
+        <button type="button" onClick={onOpen} className="w-full text-left active:bg-surface">
           {body}
         </button>
       ) : (
-        <div className="py-3">{body}</div>
+        body
       )}
     </li>
   );
+}
+
+function deltaArrow(pct: number): string {
+  return pct > 1 ? '↑' : pct < -1 ? '↓' : '·';
 }
 
 // --- Formatting -------------------------------------------------------------------------
@@ -1089,19 +973,6 @@ function formatLoadShort(kg: number, unit: MachineUnit): string {
 
 // --- Icons -------------------------------------------------------------------------------
 
-function CalendarIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="4" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M3 8h12M6.5 2.5v3M11.5 2.5v3"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 /**
  * One block of the dashboard.
  *
@@ -1112,7 +983,7 @@ function CalendarIcon() {
  * the loading state had already cleared.
  */
 function Block({ children }: { children: React.ReactNode }) {
-  return <div className="mt-7 first:mt-6">{children}</div>;
+  return <div className="mt-9 first:mt-6">{children}</div>;
 }
 
 // --- One lift's history, under its record ---------------------------------
@@ -1415,14 +1286,11 @@ function formatSets(sets: SessionSet[], unit: MachineUnit): string {
 function BodyWeightCard({
   rows,
   bwUnit,
-  controls,
   latestKg,
   delta,
 }: {
   rows: PerformanceData['bodyWeights'];
   bwUnit: BodyWeightUnit;
-  /** Rendered beside the label — the range pills. */
-  controls?: React.ReactNode;
   /** Most recent reading, for the headline above the graph. */
   latestKg?: number | null;
   /** The change under it, already worded. */
@@ -1439,15 +1307,10 @@ function BodyWeightCard({
 
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <div className="flex items-center justify-between gap-3">
-        <SectionLabel>Body weight</SectionLabel>
-        {controls}
-      </div>
-      {/* The headline the stat grid used to carry. It belonged here all along,
-          above the graph that explains it, rather than in a tile directly
-          above a card showing the same figure. */}
+      {/* No heading of its own: the section is titled on the page above, where
+          the range pills that govern it also sit. */}
       {latestKg != null && (
-        <div className="mt-1">
+        <div>
           <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
             {formatBw(latestKg, bwUnit)}
           </div>
