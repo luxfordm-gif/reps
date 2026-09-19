@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { BODY_PARTS } from '../lib/parseTrainingPlan';
@@ -21,6 +22,7 @@ import {
 } from '../lib/machinesApi';
 import type { MachineUnit } from '../lib/units';
 import { clearHomeCache } from '../lib/homeCache';
+import { getActivePlan } from '../lib/plansApi';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
 
@@ -31,10 +33,22 @@ interface Props {
   onBack: () => void;
 }
 
+/** Which slice of the list you are looking at. */
+type Scope = 'all' | 'plan';
+
+/** The "no body part chosen" sentinel, kept out of the real names. */
+const ALL_PARTS = '__all__';
+
 export function Machines({ onBack }: Props) {
   const [machines, setMachines] = useState<MachineRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>('alpha');
+  const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<Scope>('all');
+  const [bodyPart, setBodyPart] = useState<string>(ALL_PARTS);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  /** Normalized names the active plan actually uses. Null until it loads. */
+  const [planNames, setPlanNames] = useState<Set<string> | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<MachineRow | null>(null);
@@ -54,9 +68,54 @@ export function Machines({ onBack }: Props) {
     reload();
   }, []);
 
-  const sorted = useMemo(() => {
+  // Which machines the plan you are on right now calls for. Everything else in
+  // this list is something you trained on a previous plan or logged ad hoc —
+  // which is exactly where the duplicates collect.
+  useEffect(() => {
+    let cancelled = false;
+    getActivePlan()
+      .then((plan) => {
+        if (cancelled) return;
+        const names = new Set<string>();
+        for (const day of plan?.training_days ?? []) {
+          for (const ex of day.plan_exercises ?? []) {
+            if (ex.normalized_name) names.add(ex.normalized_name);
+          }
+        }
+        setPlanNames(names);
+      })
+      .catch(() => {
+        // The filter is an extra; the list stands without it.
+        if (!cancelled) setPlanNames(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Body parts present, for the filter sheet. */
+  const bodyParts = useMemo(() => {
+    if (!machines) return [];
+    return [...new Set(machines.map((m) => m.bodyPart ?? 'Other'))].sort((a, b) =>
+      a === 'Other' ? 1 : b === 'Other' ? -1 : a.localeCompare(b),
+    );
+  }, [machines]);
+
+  const filtered = useMemo(() => {
     if (!machines) return null;
-    const rows = [...machines];
+    const q = query.trim().toLowerCase();
+    return machines.filter((m) => {
+      if (scope === 'plan' && planNames && !planNames.has(m.normalizedName)) return false;
+      if (bodyPart !== ALL_PARTS && (m.bodyPart ?? 'Other') !== bodyPart) return false;
+      return !q || m.displayName.toLowerCase().includes(q);
+    });
+  }, [machines, query, scope, bodyPart, planNames]);
+
+  const filtersOn = scope !== 'all' || bodyPart !== ALL_PARTS;
+
+  const sorted = useMemo(() => {
+    if (!filtered) return null;
+    const rows = [...filtered];
     rows.sort((a, b) => {
       if (sort === 'bodyPart') {
         const ap = a.bodyPart ?? '￿';
@@ -66,7 +125,7 @@ export function Machines({ onBack }: Props) {
       return a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' });
     });
     return rows;
-  }, [machines, sort]);
+  }, [filtered, sort]);
 
   const grouped = useMemo(() => {
     if (!sorted) return null;
@@ -202,27 +261,46 @@ export function Machines({ onBack }: Props) {
           }
         />
 
-        <p className="mt-2 text-sm text-muted">
-          Every machine you've planned or logged. Tap one to rename, change its
-          unit, or remove it. Use Select to merge duplicates.
+        <p className="mt-1 text-sm text-muted">
+          {machines ? `${machines.length} machines` : 'Every machine you\u2019ve planned or logged'}
+          {' \u00b7 '}Select to merge duplicates
         </p>
 
-        <div className="mt-5 flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-            Sort by
-          </div>
-          <div className="flex rounded-pill bg-line p-0.5">
-            <SortPill active={sort === 'alpha'} onClick={() => setSort('alpha')}>
-              A–Z
-            </SortPill>
-            <SortPill
-              active={sort === 'bodyPart'}
-              onClick={() => setSort('bodyPart')}
-            >
-              Body part
-            </SortPill>
-          </div>
+        {/* Search and one button, the same shape the records board uses — the
+            two screens are both "find the movement you mean in a long list",
+            and this one had a paragraph and a pair of pills instead. */}
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search a machine"
+            aria-label="Search your machines"
+            className="min-w-0 flex-1 rounded-pill border border-line bg-paper-card px-4 py-2.5 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            aria-label="Sort and filter"
+            aria-haspopup="dialog"
+            className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border active:bg-pressed ${
+              filtersOn ? 'border-ink bg-ink text-white' : 'border-line bg-paper-card text-ink'
+            }`}
+          >
+            <FilterIcon />
+          </button>
         </div>
+
+        {filtersOn && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {scope === 'plan' && (
+              <FilterChip onClear={() => setScope('all')}>Current plan</FilterChip>
+            )}
+            {bodyPart !== ALL_PARTS && (
+              <FilterChip onClear={() => setBodyPart(ALL_PARTS)}>{bodyPart}</FilterChip>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 rounded-card border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger">
@@ -241,7 +319,13 @@ export function Machines({ onBack }: Props) {
           </div>
         )}
 
-        {sorted && sort === 'alpha' && (
+        {sorted && sorted.length === 0 && machines && machines.length > 0 && (
+          <p className="mt-8 text-center text-sm text-muted">
+            {query.trim() ? `Nothing matches \u201c${query.trim()}\u201d.` : 'Nothing here.'}
+          </p>
+        )}
+
+        {sorted && sorted.length > 0 && sort === 'alpha' && (
           <div className="mt-4 overflow-hidden rounded-card bg-paper-card shadow-card">
             {sorted.map((m, i) => (
               <Row
@@ -282,6 +366,22 @@ export function Machines({ onBack }: Props) {
           </div>
         )}
       </div>
+
+      {sheetOpen &&
+        createPortal(
+          <MachineFilterSheet
+            sort={sort}
+            onSort={setSort}
+            scope={scope}
+            onScope={setScope}
+            planCount={planNames?.size ?? null}
+            bodyPart={bodyPart}
+            bodyParts={bodyParts}
+            onBodyPart={setBodyPart}
+            onClose={() => setSheetOpen(false)}
+          />,
+          document.body,
+        )}
 
       {selectMode && selectedCount > 0 && (
         <div
@@ -377,6 +477,143 @@ function buildDeleteWarning(rows: MachineRow[]): string {
     parts.push(`${planTotal} plan reference${planTotal === 1 ? '' : 's'}`);
   if (parts.length === 0) return 'This cannot be undone.';
   return `Also deletes ${parts.join(' and ')}. This cannot be undone.`;
+}
+
+/**
+ * Order and filter, in one sheet.
+ *
+ * The same shape the records board's sheet has, for the same reason: these
+ * are all "show me a different slice of the same list", and a row of pills
+ * per question puts six controls between you and the first machine.
+ */
+function MachineFilterSheet({
+  sort,
+  onSort,
+  scope,
+  onScope,
+  planCount,
+  bodyPart,
+  bodyParts,
+  onBodyPart,
+  onClose,
+}: {
+  sort: SortMode;
+  onSort: (s: SortMode) => void;
+  scope: Scope;
+  onScope: (s: Scope) => void;
+  /** How many machines the active plan uses, or null if there isn't one. */
+  planCount: number | null;
+  bodyPart: string;
+  bodyParts: string[];
+  onBodyPart: (b: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sort and filter machines"
+    >
+      <div
+        className="sheet-in max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-bold tracking-tight text-ink">Sort and filter</h2>
+
+        <div className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Show
+        </div>
+        {/* Everything, or only what the plan you're on calls for. Duplicates
+            collect in the gap between the two: an old plan's wording for a
+            machine the current plan names differently. */}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <SortPill active={scope === 'all'} onClick={() => { onScope('all'); onClose(); }}>
+            Everything
+          </SortPill>
+          {planCount != null && planCount > 0 && (
+            <SortPill active={scope === 'plan'} onClick={() => { onScope('plan'); onClose(); }}>
+              Current plan
+            </SortPill>
+          )}
+        </div>
+
+        <div className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Order
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <SortPill active={sort === 'alpha'} onClick={() => { onSort('alpha'); onClose(); }}>
+            A–Z
+          </SortPill>
+          <SortPill active={sort === 'bodyPart'} onClick={() => { onSort('bodyPart'); onClose(); }}>
+            Body part
+          </SortPill>
+        </div>
+
+        {bodyParts.length > 1 && (
+          <>
+            <div className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Body part
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <SortPill
+                active={bodyPart === ALL_PARTS}
+                onClick={() => { onBodyPart(ALL_PARTS); onClose(); }}
+              >
+                All
+              </SortPill>
+              {bodyParts.map((b) => (
+                <SortPill
+                  key={b}
+                  active={bodyPart === b}
+                  onClick={() => { onBodyPart(b); onClose(); }}
+                >
+                  {b}
+                </SortPill>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** What's currently narrowing the list, and the way to stop it. */
+function FilterChip({
+  children,
+  onClear,
+}: {
+  children: React.ReactNode;
+  onClear: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      className="flex items-center gap-1.5 rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
+    >
+      {children}
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+        <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 4.5h13M4.5 9h9M7 13.5h4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 function SortPill({
