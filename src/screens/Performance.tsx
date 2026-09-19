@@ -162,7 +162,7 @@ export function Performance() {
 
   if (view === 'records' && data) {
     return (
-      <div className="min-h-screen bg-paper pb-28">
+      <div className="pb-nav min-h-screen bg-paper">
         <div
           className="mx-auto max-w-md px-5"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}
@@ -199,7 +199,7 @@ export function Performance() {
   }
 
   return (
-    <div className="min-h-screen bg-paper pb-28">
+    <div className="pb-nav min-h-screen bg-paper">
       <div
         className="mx-auto max-w-md px-5"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
@@ -810,7 +810,7 @@ function RecordDetail({
         : '–';
 
   return (
-    <div className="min-h-screen bg-paper pb-28">
+    <div className="pb-nav min-h-screen bg-paper">
       <div
         className="mx-auto max-w-md px-5"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}

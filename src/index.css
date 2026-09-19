@@ -190,7 +190,8 @@ h1, h2, h3, h4 {
     transform: none;
   }
 
-  .animate-shake {
+  .animate-shake,
+  .live-dot {
     animation: none;
   }
 
@@ -206,6 +207,28 @@ h1, h2, h3, h4 {
   [style*='reps-rise'] {
     animation-name: reps-fade !important;
   }
+}
+
+/* Room at the bottom of a scrolling screen for the floating tab bar, plus the
+   active-workout bar when one is docked above it. The allowance is a variable
+   rather than two classes because the bar comes and goes while the screen
+   stays put: App sets --active-bar-h when it mounts the bar, and the padding
+   under every tab grows to match instead of the last card disappearing behind
+   it. */
+.pb-nav {
+  padding-bottom: calc(7rem + var(--active-bar-h, 0px));
+}
+
+/* The dot on the active-workout bar. It breathes rather than blinks — this is
+   saying "still running", not asking for attention, and a hard on/off in the
+   corner of the eye is the second thing you'd want to turn off. */
+.live-dot {
+  animation: live-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* A tab arriving. 110ms is about as short as a fade can be and still register
