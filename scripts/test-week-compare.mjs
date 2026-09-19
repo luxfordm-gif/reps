@@ -1,6 +1,11 @@
 // Tests the week-against-week comparison and the weekly intensity series.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-week-compare.mjs
-import { compareWeeks, compareWindow, computeWeeklyIntensity } from '../src/lib/dashboard.ts';
+import {
+  compareWeeks,
+  compareWindow,
+  computeWeeklyVolume,
+  weekVsAveragePct,
+} from '../src/lib/dashboard.ts';
 
 let failures = 0;
 function eq(label, got, want) {
@@ -76,48 +81,6 @@ console.log('\n=== nothing to compare with ===');
   eq('but this week still totals up', [c.current.workouts, c.current.sets], [1, 1]);
 }
 
-console.log('\n=== intensity is measured against the window, not the units ===');
-{
-  // One lift, four weeks, climbing. Weekly bests: 50, 55, 60, 65 (5 reps each,
-  // so estimated 1RM scales with the weight) — mean sits between weeks 2 and 3.
-  const sets = [
-    set('bench', 50, 5, 21),
-    set('bench', 55, 5, 14),
-    set('bench', 60, 5, 7),
-    set('bench', 65, 5, 1),
-    // A second lift, flat, so each week clears the two-lift floor.
-    set('row', 40, 5, 21),
-    set('row', 40, 5, 14),
-    set('row', 40, 5, 7),
-    set('row', 40, 5, 1),
-  ];
-  const series = computeWeeklyIntensity(sets, 4, NOW);
-  eq('a point per week in the window', series.length, 4);
-  eq('the earliest week is below its own normal', series[0].pct < 0, true);
-  eq('the latest is above it', series[3].pct > 0, true);
-  eq('and it climbs throughout', series.map((p) => p.pct).every((p, i, a) => i === 0 || p > a[i - 1]), true);
-  eq('the flat lift pulls the swing in', Math.abs(series[3].pct) < 13, true);
-}
-
-console.log('\n=== a week that cannot support the figure says so ===');
-{
-  // Two lifts, but each trained in only one week of the window: no normal to
-  // measure either against.
-  const sets = [set('bench', 60, 5, 7), set('row', 40, 5, 1)];
-  const series = computeWeeklyIntensity(sets, 4, NOW);
-  eq('every week comes back null', series.map((p) => p.pct), [null, null, null, null]);
-}
-{
-  // One lift with a real trend, but on its own.
-  const sets = [set('bench', 60, 5, 7), set('bench', 65, 5, 1)];
-  const series = computeWeeklyIntensity(sets, 4, NOW);
-  eq('one lift is not a week', series.map((p) => p.pct), [null, null, null, null]);
-}
-{
-  const series = computeWeeklyIntensity([], 12, NOW);
-  eq('no sets at all is still twelve weeks of nulls', series.filter((p) => p.pct == null).length, 12);
-}
-
 console.log('\n=== the rolling window, for the longer view ===');
 {
   // 56 days each side. Bench climbs across the boundary, curl only ever
@@ -155,6 +118,45 @@ console.log('\n=== a mover carries its body part through ===');
   eq('so the list can be filtered by it', c.movers[0].bodyPart, 'Chest');
   const none = compareWeeks([set('bench', 70, 5, 1), set('bench', 60, 5, 8)], [], 1);
   eq('and is null when the sets have none', none.movers[0].bodyPart, null);
+}
+
+console.log('\n=== volume, counted both ways ===');
+{
+  // Two lifts this week: 100×5 and 60×10 = 500 + 600 = 1100 kg over 2 sets.
+  const sets = [set('bench', 100, 5, 1), set('row', 60, 10, 2)];
+  const v = computeWeeklyVolume(sets, 4, NOW);
+  eq('a point per week in the window', v.length, 4);
+  eq('this week totals the kilograms', v[3].kg, 1100);
+  eq('and counts the sets', v[3].sets, 2);
+  eq('empty weeks are drawn, not skipped', [v[0].kg, v[0].sets], [0, 0]);
+}
+{
+  // Pegs and curves store the real total in `weight`, so nothing is excluded.
+  const sets = [set('pegmachine', 40, 10, 1)];
+  eq('every machine counts', computeWeeklyVolume(sets, 1, NOW)[0].kg, 400);
+}
+{
+  // A set with no weight still counts as a set, but adds no kilograms.
+  const sets = [{ ...set('pullup', 0, 12, 1), weight: null }];
+  const v = computeWeeklyVolume(sets, 1, NOW)[0];
+  eq('a bodyweight set is a set with no volume', [v.kg, v.sets], [0, 1]);
+}
+
+console.log('\n=== this week against the weeks behind it ===');
+{
+  // Eleven quiet weeks then a big one: 500 kg a week, then 1000.
+  const sets = [];
+  for (let wk = 1; wk < 12; wk++) sets.push(set('bench', 50, 10, wk * 7));
+  sets.push(set('bench', 100, 10, 1));
+  const v = computeWeeklyVolume(sets, 12, NOW);
+  eq('a week at double the norm reads as +100%', weekVsAveragePct(v, 'kg'), 100);
+  eq('sets held level read as no change', weekVsAveragePct(v, 'sets'), 0);
+}
+{
+  // Nothing behind this week: no normal to measure against.
+  const v = computeWeeklyVolume([set('bench', 100, 10, 1)], 12, NOW);
+  eq('an empty history yields null', weekVsAveragePct(v, 'kg'), null);
+  eq('and a single week has nothing to compare', weekVsAveragePct(v.slice(-1), 'kg'), null);
 }
 
 console.log(failures === 0 ? '\nAll passed.' : `\n${failures} failed.`);

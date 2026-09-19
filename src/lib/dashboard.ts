@@ -521,83 +521,87 @@ export function weekDailyAverage(
   return { average: total / byDay.size, daysLogged: byDay.size };
 }
 
-// --- Intensity, alongside the load -------------------------------------------------------
+// --- Volume, week by week ----------------------------------------------------------------
 
-export interface WeeklyIntensityPoint {
-  /** Monday (yyyy-mm-dd) of the week. Same weeks as computeWeeklyLoad. */
+export interface WeeklyVolumePoint {
+  /** Monday (yyyy-mm-dd) of the week. */
   weekStart: string;
-  /** How heavy the week was against the window's own baseline, as a %. */
-  pct: number | null;
-  /** Lifts the figure was averaged over — null pct when too few. */
-  lifts: number;
+  /** Weight × reps, summed across every set that week. */
+  kg: number;
+  /** Sets logged that week — the same figure computeWeeklyLoad reports. */
+  sets: number;
 }
 
-/** A lift needs weeks either side of one to say anything about a trend. */
-const INTENSITY_MIN_WEEKS = 2;
-/** One lift having a good week isn't the week being heavy. */
-const INTENSITY_MIN_LIFTS = 2;
-
 /**
- * How heavy the training was each week, next to how much of it there was.
+ * How much work was done each week, both ways of counting it.
  *
- * Sets answer "how much" and nothing else: a deload week of light triples and
- * a week of grinding singles at the same set count draw the same line, which
- * is exactly the case where the line is worth doubting. This is the other
- * half — the same twelve weeks, asked whether the weight on the bar was going
- * up.
+ * Kilograms answer "how much did I move" and sets answer "how much did I do",
+ * and the card lets you switch because neither is the whole story: a week of
+ * heavy triples and a week of light high-rep work can match on volume and
+ * differ threefold on sets, or the reverse.
  *
- * It is a ratio, not a total, for the reason computeWeeklyLoad gives for not
- * adding kilograms up: the weight column holds kilograms on some machines and
- * pin positions on others, and those cannot be summed. A lift compared against
- * its own baseline can, because the units cancel — 60kg against a 55kg
- * baseline and pin 8 against pin 7 are both "heavier than usual", and both
- * come out as a percentage that means the same thing.
+ * Both count every set. An earlier version of this excluded machines whose
+ * unit is a pin position, on the theory that a pin number isn't a weight —
+ * but the machines that actually prompted the worry are the multi-peg and cam
+ * ones, and those store the real total lifted in `weight`, with
+ * position_weights recording only how it was spread across the pegs.
+ * 0017_weight_profiles.sql puts it plainly: the total is there so "volume,
+ * PRs, records and history carry on reading the one number they always have".
+ * How you distributed the load matters when you're setting the machine up,
+ * not when you're totalling a week.
  *
- * Each lift's baseline is its own mean best over the window, so the series
- * sits around zero by construction and reads as "heavier or lighter than this
- * season's normal" rather than as progress from a start date. Lifts trained in
- * only one week of the window are left out: they have no normal to be measured
- * against, and including them would peg a week to exactly its own average.
+ * Every week in the window comes back, including the empty ones, for the same
+ * reason computeWeeklyLoad returns them: a fortnight off is the most
+ * informative thing a season of training has to say, and a series that omits
+ * it draws a straight line over the gap.
  */
-export function computeWeeklyIntensity(
+export function computeWeeklyVolume(
   sets: StrengthSet[],
   weeks = 12,
   now: Date = new Date(),
-): WeeklyIntensityPoint[] {
-  const window: string[] = [];
-  for (let i = weeks - 1; i >= 0; i--) window.push(weekStartISO(addWeeks(now, -i)));
-  const inWindow = new Set(window);
-
-  // lift -> week -> best estimated 1RM that week.
-  const byLift = new Map<string, Map<string, number>>();
+): WeeklyVolumePoint[] {
+  const byWeek = new Map<string, { kg: number; sets: number }>();
   for (const s of sets) {
-    if (s.weight == null || s.reps == null) continue;
-    const wk = weekStartISO(new Date(s.completedAt));
-    if (!inWindow.has(wk)) continue;
-    let weeksOfLift = byLift.get(s.normalizedName);
-    if (!weeksOfLift) {
-      weeksOfLift = new Map();
-      byLift.set(s.normalizedName, weeksOfLift);
+    const k = weekStartISO(new Date(s.completedAt));
+    let acc = byWeek.get(k);
+    if (!acc) {
+      acc = { kg: 0, sets: 0 };
+      byWeek.set(k, acc);
     }
-    const e = estimate1RM(s.weight, s.reps);
-    weeksOfLift.set(wk, Math.max(weeksOfLift.get(wk) ?? 0, e));
+    acc.sets += 1;
+    if (s.weight != null && s.reps != null) acc.kg += s.weight * s.reps;
   }
-
-  const ratios = new Map<string, number[]>(window.map((w) => [w, []]));
-  for (const weeksOfLift of byLift.values()) {
-    if (weeksOfLift.size < INTENSITY_MIN_WEEKS) continue;
-    const values = [...weeksOfLift.values()];
-    const baseline = values.reduce((sum, v) => sum + v, 0) / values.length;
-    if (baseline <= 0) continue;
-    for (const [wk, best] of weeksOfLift) ratios.get(wk)?.push(best / baseline);
+  const out: WeeklyVolumePoint[] = [];
+  for (let i = weeks - 1; i >= 0; i--) {
+    const weekStart = weekStartISO(addWeeks(now, -i));
+    const acc = byWeek.get(weekStart);
+    out.push({ weekStart, kg: acc?.kg ?? 0, sets: acc?.sets ?? 0 });
   }
+  return out;
+}
 
-  return window.map((weekStart) => {
-    const rs = ratios.get(weekStart) ?? [];
-    if (rs.length < INTENSITY_MIN_LIFTS) return { weekStart, pct: null, lifts: rs.length };
-    const mean = rs.reduce((sum, r) => sum + r, 0) / rs.length;
-    return { weekStart, pct: Math.round((mean - 1) * 1000) / 10, lifts: rs.length };
-  });
+/**
+ * This week against the weeks behind it, as a percentage.
+ *
+ * The headline under the volume chart compares the week in progress with the
+ * average of the window's completed weeks — "is this a big week for me" —
+ * rather than totalling the window, which barely moves and isn't something
+ * anyone acts on.
+ *
+ * Null when there are no completed weeks behind it, or when they hold
+ * nothing: a first month of training has no normal to be measured against,
+ * and 0% would read as "no change" rather than "no answer".
+ */
+export function weekVsAveragePct(
+  volume: WeeklyVolumePoint[],
+  metric: 'kg' | 'sets',
+): number | null {
+  if (volume.length < 2) return null;
+  const current = volume[volume.length - 1][metric];
+  const prior = volume.slice(0, -1);
+  const mean = prior.reduce((sum, p) => sum + p[metric], 0) / prior.length;
+  if (mean <= 0) return null;
+  return Math.round(((current - mean) / mean) * 1000) / 10;
 }
 
 // --- One period against another ----------------------------------------------------------

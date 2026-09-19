@@ -122,8 +122,17 @@ export function computeRecords(sets: RawSet[]): LiftRecord[] {
           best1RMkg = e;
           best1RM = as();
         }
-      } else if (s.reps != null && s.reps > 0) {
-        // Bodyweight: no weight on the bar, but the reps are still a record.
+      }
+
+      // The most reps ever done on this movement, loaded or not.
+      //
+      // This used to live in the `else` above, so it only ever saw sets with
+      // no weight on them. Any movement with a single weighted set is
+      // `kind: 'weighted'`, which meant every weighted lift reported no rep
+      // record at all — the Performance tab printed a dash for it on every
+      // one. Bodyweight movements are unaffected: their sets still pass
+      // through here, they just aren't the only ones that do.
+      if (s.reps != null && s.reps > 0) {
         if (mostReps == null || s.reps > (mostReps.reps ?? 0)) mostReps = as();
       }
 
