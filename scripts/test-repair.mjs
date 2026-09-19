@@ -27,10 +27,12 @@ function check(label, actual, expected) {
 
 const HDR = 'BODY PART EXERCISE TOTAL SETS RANGE REP TEMPO NOTES';
 
-console.log('\n=== rows before any recognised day are kept, not dropped ===');
+console.log('\n=== a day title the parser has never seen is still read ===');
 {
-  // "DAY 1 - CHEST" isn't a title the parser knows and nothing table-like
-  // follows it directly, so its rows used to vanish. Now they're rescued.
+  // "DAY 1 - CHEST" is in no list of day names, and no column header follows it
+  // to give it away structurally. Layout recognition takes it as a day anyway,
+  // because two exercise rows sit directly beneath it. Its rows used to be
+  // surfaced as orphans for the user to re-key by hand.
   const r = parseTrainingPlan(`
 WEEKS VOLUME
 CHEST 7
@@ -41,12 +43,27 @@ PUSH
 ${HDR}
 SHOULDERS LATERAL RAISE 3 12-15 2 0 1 0
 `);
-  check('the recognised day still parses', r.days.map((d) => d.name), ['Push']);
+  check('both titles become days', r.days.map((d) => d.name), ['Day 1 - Chest', 'Push']);
+  check('with their rows under them', r.days.map((d) => d.exercises.length), [2, 1]);
   check(
-    'both orphan rows are kept under the no-day tag',
-    r.unparsedLines,
-    ['[No day] CHEST FLAT BENCH PRESS 3 8-10 2 0 1 0', '[No day] CHEST INCLINE DB PRESS 3 10-12 2 0 1 0']
+    'the body part is read off the front even with no header row',
+    r.days[0].exercises.map((e) => `${e.bodyPart}/${e.name}`),
+    ['Chest/Flat bench press', 'Chest/Incline DB press']
   );
+  check('and a trailing tempo is a tempo, not a note', r.days[0].exercises[0].tempo, '2-0-1-0');
+  check('nothing is left unread', r.unparsedLines, []);
+}
+{
+  // Rows with no day header anywhere still can't be filed, so they stay
+  // rescuable rather than being invented a day.
+  const r = parseTrainingPlan(`
+Barbell Bench Press 4 8-10 90s
+Incline Dumbbell Press 4 10-12 90s
+`);
+  check('rows under no day at all are kept', r.unparsedLines, [
+    '[No day] Barbell Bench Press 4 8-10 90s',
+    '[No day] Incline Dumbbell Press 4 10-12 90s',
+  ]);
 }
 {
   const r = parseTrainingPlan(`
@@ -60,7 +77,7 @@ SHOULDERS LATERAL RAISE 3 12-15 2 0 1 0
   check('a volume table is not mistaken for orphan rows', r.unparsedLines, []);
 }
 
-console.log('\n=== a row the parser cannot read mid-day is surfaced, not glued to the notes ===');
+console.log('\n=== a row missing a column is read, not surfaced for repair ===');
 {
   const r = parseTrainingPlan(`
 PUSH
@@ -71,12 +88,16 @@ CHEST CABLE FLY 3 12-15
 Optional intensifier for set 3 slow eccentric
 `);
   const ex = r.days[0].exercises;
-  check('the readable row is a row', ex.map((e) => e.name), ['Flat bench press']);
-  check('the tempo-less row is unparsed under its day', r.unparsedLines, ['[Push] CHEST CABLE FLY 3 12-15']);
+  // The cable fly has no tempo. That used to fail the row outright; a blank
+  // trimming column is now just a blank column.
+  check('both rows are rows', ex.map((e) => e.name), ['Flat bench press', 'Cable fly']);
+  check('the complete row keeps its tempo', ex[0].tempo, '2-0-1-0');
+  check('the incomplete one has none', ex[1].tempo, null);
+  check('and nothing needs repairing', r.unparsedLines, []);
   check(
-    'genuine note continuations still attach to the previous row',
-    ex[0].notes,
-    '1 X 8-10 reps / 1 12-15 reps back off Optional intensifier for set 3 slow eccentric'
+    'note continuations attach to the row they follow',
+    ex[1].notes,
+    '1 X 8-10 reps / 1 12-15 reps back off optional intensifier for set 3 slow eccentric'
   );
 }
 

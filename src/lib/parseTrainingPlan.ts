@@ -1,6 +1,7 @@
 import { toSentenceCase } from './textCase';
 import { normalizeExerciseName as normalizeName } from './normalizeExerciseName';
 import { levenshtein } from './stringSimilarity';
+import { recogniseLayout, type LayoutResult } from './recognisePlanLayout';
 
 // Parses the raw text of a trainer's training plan PDF into a structured plan with
 // days, exercises, prescribed sets/reps/tempo and notes.
@@ -532,7 +533,12 @@ function titleCaseDayName(raw: string): string {
     .replace(/(^|[\s/&-])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
 }
 
-export function parseTrainingPlan(rawText: string): ParsedPlan {
+/**
+ * The original parser: reads the BODY PART | EXERCISE | TOTAL SETS | REP RANGE |
+ * TEMPO | NOTES table this app was built around. Kept as the first strategy
+ * because it understands that table better than anything general could.
+ */
+function parseTabularPlan(rawText: string): ParsedPlan {
   const lines = rawText
     .split(/\r?\n/)
     .map((l) => l.replace(/\u00A0/g, ' ').trim())
@@ -722,4 +728,132 @@ export function parseTrainingPlan(rawText: string): ParsedPlan {
 
 function capitaliseDayName(upper: string): string {
   return upper.charAt(0) + upper.slice(1).toLowerCase();
+}
+
+// --- strategy selection -----------------------------------------------------
+
+/**
+ * Turn the rows a layout recogniser found into a plan, applying the same
+ * naming, casing and note handling the tabular parser uses. Layout recognition
+ * decides where a row *is*; this decides what it means, so the two parsers
+ * can't drift apart on how an exercise ends up looking.
+ */
+function planFromLayout(layout: LayoutResult): ParsedPlan {
+  const days: ParsedTrainingDay[] = [];
+  const warnings: string[] = [];
+  const unparsedLines = layout.unparsed.map((l) => `[${NO_DAY_TAG}] ${l}`);
+
+  layout.days.forEach((rawDay, dayIdx) => {
+    const day: ParsedTrainingDay = {
+      name: rawDay.name,
+      position: dayIdx,
+      exercises: [],
+      inlineNotes: [...rawDay.notes],
+      weekIndex: null,
+      referenceOnly: isHomeWorkout(rawDay.name),
+    };
+    rawDay.rows.forEach((r, exIdx) => {
+      const notes = r.notes.trim();
+      const repRange = r.repRange.replace(/\s+/g, ' ').trim();
+      day.exercises.push({
+        bodyPart: r.bodyPart ? toSentenceCase(r.bodyPart) : '',
+        name: toSentenceCase(r.name),
+        normalizedName: normalizeName(r.name),
+        totalSets: r.totalSets,
+        repRange,
+        tempo: r.tempo ? r.tempo.trim().split(/\s+/).join('-') : null,
+        notes: toSentenceCase(notes),
+        setScheme: detectSetScheme(notes, repRange),
+        position: exIdx,
+        repRangeUncertain:
+          !repRange || !(/^\d+(\s*-\s*\d+)?$/.test(repRange) || isRepSentinel(repRange)),
+        tempoUncertain: r.tempo == null,
+        weeklyAlternative: detectWeeklyAlternative(notes),
+        supersetWith: detectSupersetPartners(notes),
+        supersetGroup: null,
+      });
+    });
+    days.push(day);
+  });
+
+  // A lettered plan states its pairings outright (A1/A2 are one round), so those
+  // groups are settled before the note-derived ones get a look in.
+  for (let i = 0; i < days.length; i++) {
+    const next = applyGroupCodes(days[i], layout.days[i].rows, 1);
+    resolveSupersets(days[i], next);
+  }
+
+  if (days.length === 0) warnings.push('No training days found — is this the right PDF?');
+  for (const d of days) {
+    if (d.exercises.length === 0) warnings.push(`Day "${d.name}" has no exercises detected.`);
+  }
+  return { days, warnings, unparsedLines };
+}
+
+/** Group rows whose codes share a letter ("A1"/"A2"). A letter used once is a
+ *  numbering scheme, not a superset, so it's left alone. */
+function applyGroupCodes(
+  day: ParsedTrainingDay,
+  rows: readonly { groupCode: string | null }[],
+  startGroup: number
+): number {
+  const byLetter = new Map<string, number[]>();
+  rows.forEach((r, i) => {
+    if (!r.groupCode) return;
+    const letter = r.groupCode.charAt(0).toUpperCase();
+    // A bare letter with no number ("C") is a position, not a pairing.
+    if (!/\d/.test(r.groupCode)) return;
+    const list = byLetter.get(letter) ?? [];
+    list.push(i);
+    byLetter.set(letter, list);
+  });
+  let group = startGroup;
+  for (const [, idxs] of [...byLetter].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (idxs.length < 2) continue;
+    for (const i of idxs) {
+      const ex = day.exercises[i];
+      if (ex) ex.supersetGroup = group;
+    }
+    group += 1;
+  }
+  // Partner names make the pairing legible on the review screen.
+  for (const ex of day.exercises) {
+    if (ex.supersetGroup == null) continue;
+    ex.supersetPartnerNames = day.exercises
+      .filter((o) => o !== ex && o.supersetGroup === ex.supersetGroup)
+      .map((o) => o.name);
+  }
+  return group;
+}
+
+/**
+ * How much of a plan a parse actually recovered.
+ *
+ * Exercises are the unit that matters — a plan you can train off is a list of
+ * movements — and lines left unread count against it, since each one is a row
+ * the user has to key in by hand. A parse with no days scores nothing at all,
+ * however many rows it claims: rows with nowhere to sit aren't a plan.
+ */
+function parseScore(plan: ParsedPlan): number {
+  if (plan.days.length === 0) return 0;
+  const exercises = plan.days.reduce((n, d) => n + d.exercises.length, 0);
+  if (exercises === 0) return 0;
+  return exercises - plan.unparsedLines.length * 0.5;
+}
+
+/**
+ * Parse a trainer's plan, whatever shape they wrote it in.
+ *
+ * Two strategies run and the better result wins: the tabular parser, which
+ * knows one specific table inside out, and layout recognition, which works from
+ * the structure of the page instead of from a list of known formats. Scoring
+ * them rather than picking by format means a new layout can be supported by
+ * teaching the general recogniser, without touching the parser that already
+ * reads the plans we have — and scripts/test-plan-corpus.mjs holds both to
+ * account on every format we've ever seen.
+ */
+export function parseTrainingPlan(rawText: string): ParsedPlan {
+  const tabular = parseTabularPlan(rawText);
+  const general = planFromLayout(recogniseLayout(rawText, { bodyParts: BODY_PARTS }));
+  return parseScore(general) > parseScore(tabular) ? general : tabular;
 }

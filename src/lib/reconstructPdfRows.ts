@@ -44,6 +44,137 @@ interface Line {
   notesFrags: Line[];
 }
 
+// --- week-at-a-glance grids -------------------------------------------------
+
+/** One cell of a grid: the text at a position, after neighbouring words in the
+ *  same box have been joined up. */
+interface Cell {
+  x: number;
+  y: number;
+  text: string;
+}
+
+const CELL_GAP = 25; // px between words before they count as separate cells
+const COLUMN_GAP = 60; // px between cells before they count as separate columns
+/** A lone wide line is a caption or a footnote spanning the sheet, not a cell. */
+const FULL_WIDTH_CHARS = 60;
+
+/** "4 x 6", "3 x 45s", "3x12" — a set prescription rather than a movement. */
+const PRESCRIPTION_RE = /^\d{1,2}\s*x\s*\d/i;
+
+function isNameLike(text: string): boolean {
+  return /[A-Za-z]{2}/.test(text) && !PRESCRIPTION_RE.test(text);
+}
+
+/** Split one visual line into cells, joining words that sit side by side. */
+function cellsOf(line: Line): Cell[] {
+  const sorted = [...line.parts].sort((a, b) => a.x - b.x);
+  const cells: Cell[] = [];
+  for (const p of sorted) {
+    const last = cells[cells.length - 1];
+    if (last && p.x - last.x <= CELL_GAP + last.text.length * 4) {
+      last.text = `${last.text} ${p.str}`.trim();
+    } else {
+      cells.push({ x: p.x, y: line.y, text: p.str.trim() });
+    }
+  }
+  return cells;
+}
+
+/** Group x positions into columns, returning one representative x each. */
+function columnCentres(xs: number[]): number[] {
+  const sorted = [...xs].sort((a, b) => a - b);
+  const groups: number[][] = [];
+  for (const x of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && x - last[last.length - 1] <= COLUMN_GAP) last.push(x);
+    else groups.push([x]);
+  }
+  return groups.map((g) => median(g));
+}
+
+/**
+ * Read a plan laid out as a week grid — one column per day, one row per slot.
+ *
+ * Stitching this by rows is what produces "Bench Press Back Squat Pull Ups
+ * Deadlift" followed by "4 x 6 4 x 6 4 x 8 3 x 5": five days interleaved into
+ * lines that belong to none of them. So when a page has several rows of three
+ * or more *named* cells — a numeric table has one name per row and figures in
+ * the rest, which is what tells the two apart — we read it down the columns
+ * instead, and hand back one day per column with its movements already paired
+ * to their set schemes.
+ *
+ * Returns null when the page isn't a grid, so the ordinary path still runs.
+ */
+function reconstructGrid(lines: Line[]): string[] | null {
+  const byLine = lines.map(cellsOf);
+  const gridRows = byLine.filter(
+    (cells) => cells.length >= 3 && cells.filter((c) => isNameLike(c.text)).length >= 3
+  );
+  if (gridRows.length < 3) return null;
+
+  const centres = columnCentres(gridRows.flatMap((cells) => cells.map((c) => c.x)));
+  if (centres.length < 3) return null;
+
+  // The header is whatever sits above the first row of movements, which is the
+  // named row directly above the first set prescription on the page.
+  const firstPrescriptionY = Math.max(
+    ...byLine
+      .filter((cells) => cells.some((c) => PRESCRIPTION_RE.test(c.text)))
+      .map((cells) => cells[0].y),
+    -Infinity
+  );
+  if (!Number.isFinite(firstPrescriptionY)) return null;
+  const nameRowYs = gridRows.map((cells) => cells[0].y).filter((y) => y > firstPrescriptionY);
+  if (nameRowYs.length === 0) return null;
+  const firstMovementY = Math.min(...nameRowYs);
+  const headerTop = Math.max(...gridRows.map((cells) => cells[0].y));
+
+  // Everything from the header down belongs to the grid; anything above it is
+  // the sheet's title block and is kept as-is.
+  const preamble: string[] = [];
+  const columns: Cell[][] = centres.map(() => []);
+  for (const cells of byLine) {
+    if (cells.length === 0) continue;
+    if (cells[0].y > headerTop) {
+      preamble.push(cells.map((c) => c.text).join(' '));
+      continue;
+    }
+    for (const cell of cells) {
+      // A single cell running the width of the page is a footnote for the whole
+      // plan, not an entry in one day's column.
+      if (cells.length === 1 && cell.text.length > FULL_WIDTH_CHARS) {
+        preamble.push(cell.text);
+        continue;
+      }
+      let best = 0;
+      for (let i = 1; i < centres.length; i++) {
+        if (Math.abs(cell.x - centres[i]) < Math.abs(cell.x - centres[best])) best = i;
+      }
+      columns[best].push(cell);
+    }
+  }
+
+  const out = [...preamble];
+  for (const column of columns) {
+    if (column.length === 0) continue;
+    column.sort((a, b) => b.y - a.y);
+    const headers = column.filter((c) => c.y > firstMovementY).map((c) => c.text);
+    const body = column.filter((c) => c.y <= firstMovementY);
+    if (headers.length === 0) continue;
+    // "MONDAY" over "Upper Push" is one day with two lines of title.
+    out.push(headers.join(' - '));
+    for (const cell of body) {
+      if (PRESCRIPTION_RE.test(cell.text) && out.length > 0) {
+        out[out.length - 1] = `${out[out.length - 1]} ${cell.text}`;
+      } else {
+        out.push(cell.text);
+      }
+    }
+  }
+  return out;
+}
+
 function median(nums: number[]): number {
   if (nums.length === 0) return 0;
   const s = [...nums].sort((a, b) => a - b);
@@ -124,8 +255,13 @@ export function reconstructRows(items: PositionedText[]): string[] {
     }
   }
   const dataLines = lines.filter((l) => l.isData);
-  // No recognisable table on this page — fall back to a plain Y-ordered join.
+  // No recognisable table on this page. It may still be a week-at-a-glance grid,
+  // where the columns are days rather than fields — reading that by rows gives
+  // you one line per week-row with five days' exercises jumbled together.
   if (dataLines.length === 0) {
+    const grid = reconstructGrid(lines);
+    if (grid) return grid;
+    // Otherwise fall back to a plain Y-ordered join.
     return lines.map((l) => joinParts(l.parts)).filter((t) => t && !/^\d{1,3}$/.test(t));
   }
 
