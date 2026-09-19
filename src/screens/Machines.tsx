@@ -23,6 +23,12 @@ import {
 import type { MachineUnit } from '../lib/units';
 import { clearHomeCache } from '../lib/homeCache';
 import { getActivePlan } from '../lib/plansApi';
+import {
+  findDuplicatePairs,
+  loadDismissedPairs,
+  dismissPair,
+  type DuplicatePair,
+} from '../lib/duplicateExercises';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
 
@@ -49,6 +55,7 @@ export function Machines({ onBack }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
   /** Normalized names the active plan actually uses. Null until it loads. */
   const [planNames, setPlanNames] = useState<Set<string> | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissedPairs());
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<MachineRow | null>(null);
@@ -112,6 +119,14 @@ export function Machines({ onBack }: Props) {
   }, [machines, query, scope, bodyPart, planNames]);
 
   const filtersOn = scope !== 'all' || bodyPart !== ALL_PARTS;
+
+  // Suggested over the whole list, never the filtered one: scoping to the
+  // current plan hides the older half of most pairs, which is exactly the
+  // half you are trying to merge away.
+  const duplicates = useMemo(
+    () => (machines ? findDuplicatePairs(machines, dismissed) : []),
+    [machines, dismissed],
+  );
 
   const sorted = useMemo(() => {
     if (!filtered) return null;
@@ -302,6 +317,24 @@ export function Machines({ onBack }: Props) {
           </div>
         )}
 
+        {duplicates.length > 0 && !selectMode && (
+          <div className="mt-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Possible duplicates
+            </div>
+            <ul className="mt-2 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
+              {duplicates.map((pair) => (
+                <DuplicateRow
+                  key={pair.key}
+                  pair={pair}
+                  onMerge={() => setMerging([pair.survivor, pair.loser])}
+                  onDismiss={() => setDismissed(dismissPair(pair.key))}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
+
         {error && (
           <div className="mt-4 rounded-card border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger">
             {error}
@@ -477,6 +510,50 @@ function buildDeleteWarning(rows: MachineRow[]): string {
     parts.push(`${planTotal} plan reference${planTotal === 1 ? '' : 's'}`);
   if (parts.length === 0) return 'This cannot be undone.';
   return `Also deletes ${parts.join(' and ')}. This cannot be undone.`;
+}
+
+/**
+ * One suggested pair, and the two answers to it.
+ *
+ * Both names in full, because the whole question is which of two similar
+ * strings you meant, and truncating either makes it unanswerable. The set
+ * counts are there because they decide which name survives a merge.
+ */
+function DuplicateRow({
+  pair,
+  onMerge,
+  onDismiss,
+}: {
+  pair: DuplicatePair<MachineRow>;
+  onMerge: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <li className="px-4 py-3.5">
+      <div className="text-sm font-semibold text-ink">{pair.survivor.displayName}</div>
+      <div className="text-sm text-muted">{pair.loser.displayName}</div>
+      <div className="mt-1 text-caption text-muted tabular-nums">
+        {pair.survivor.setCount} sets · {pair.loser.setCount} sets
+        {pair.unitDiffers && ' · different units'}
+      </div>
+      <div className="mt-2.5 flex gap-2">
+        <button
+          type="button"
+          onClick={onMerge}
+          className="rounded-pill bg-ink px-4 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
+        >
+          Merge
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-pill border border-line px-4 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
+        >
+          Not the same
+        </button>
+      </div>
+    </li>
+  );
 }
 
 /**
