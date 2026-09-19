@@ -63,6 +63,7 @@ const CORPUS = [
     source: 'plan-1-beginner-full-body.pdf',
     days: ['Day 1', 'Day 2', 'Day 3'],
     exercises: 15,
+    rows: [{ name: 'Goblet squat', sets: 3, reps: '10' }, { name: 'Plank', sets: 3, reps: '30s' }],
     floor: 1,
   },
   {
@@ -71,6 +72,7 @@ const CORPUS = [
     source: 'plan-2-bro-split.pdf',
     days: ['Monday - Chest', 'Tuesday - Back', 'Wednesday - Legs', 'Thursday - Shoulders', 'Friday - Arms'],
     exercises: 25,
+    rows: [{ name: 'Barbell bench press', sets: 4, reps: '8-10' }, { name: 'Dips', sets: 3, reps: 'To failure' }],
     floor: 1,
   },
   {
@@ -79,6 +81,7 @@ const CORPUS = [
     source: 'plan-3-advanced-ppl.pdf',
     days: ['Push A', 'Pull A', 'Legs A'],
     exercises: 20,
+    rows: [{ name: 'Barbell bench press', sets: 5, reps: '5' }, { name: 'Weighted dip', sets: 5, reps: '8' }, { name: 'Rope pushdown', sets: 3, reps: '15-20' }],
     floor: 1,
   },
   {
@@ -87,6 +90,7 @@ const CORPUS = [
     source: 'plan-4-weekly-grid.pdf',
     days: ['Monday - Upper Push', 'Tuesday - Lower', 'Thursday - Upper Pull', 'Friday - Full Body'],
     exercises: 26,
+    rows: [{ name: 'Bench press', sets: 4, reps: '6' }, { name: 'Plank', sets: 3, reps: '45s' }],
     floor: 1,
     note: "Wednesday is a rest day with nothing loggable, so it isn't a training day.",
   },
@@ -96,6 +100,7 @@ const CORPUS = [
     source: 'plan-5-messy-upper-lower.pdf',
     days: ['Upper 1', 'Lower 1', 'Upper 2', 'Lower 2'],
     exercises: 21,
+    rows: [{ name: 'BB bench', sets: 4, reps: '6' }, { name: 'Pull ups', sets: 3, reps: 'AMRAP' }],
     floor: 1,
   },
   {
@@ -104,6 +109,7 @@ const CORPUS = [
     source: 'plan-6-drop-set-intensifier.pdf',
     days: ['Day 1 - Chest & Triceps', 'Day 2 - Back & Biceps', 'Day 3 - Legs'],
     exercises: 17,
+    rows: [{ name: 'Chest supported row', sets: 4, reps: '10' }, { name: 'Preacher curl (machine)', sets: 3, reps: '12' }],
     floor: 1,
   },
   {
@@ -112,7 +118,9 @@ const CORPUS = [
     source: 'plan-7-station-supersets.pdf',
     days: ['Session A - Push', 'Session B - Pull'],
     exercises: 12,
-    floor: 1,
+    rows: [{ name: 'Flat barbell bench press', sets: 4, reps: '8' }, { name: 'Overhead rope extension', sets: 3, reps: '15' }],
+    floor: 0.66,
+    note: 'A free-text station column between the name and the figures — both stretch, so only the header cells x positions can say where one ends. Names carry the station text and two rows misread their sets.',
   },
   {
     name: 'plan-8 giant sets (bulleted groups, rounds not sets)',
@@ -120,6 +128,7 @@ const CORPUS = [
     source: 'plan-8-giant-sets.pdf',
     days: ['Day 1 - Upper Body', 'Day 2 - Lower Body'],
     exercises: 26,
+    rows: [{ name: 'Back extension', sets: 3, reps: '15' }, { name: 'Wall sit', sets: 4, reps: '45s' }, { name: 'Walking lunge', sets: 4, reps: '10 each leg' }],
     floor: 1,
   },
   {
@@ -135,6 +144,7 @@ const CORPUS = [
       'Week B - Legs',
     ],
     exercises: 34,
+    rows: [{ name: 'Trap bar deadlift', sets: 4, reps: '6' }, { name: 'Walking lunge', sets: 3, reps: '12 each leg' }],
     floor: 1,
   },
   {
@@ -143,6 +153,7 @@ const CORPUS = [
     source: 'plan-10-basic-with-typos.pdf',
     days: ['Day 1 - Upper Body', 'Day 2 - Lower Body', 'Day 3 - Full Body'],
     exercises: 18,
+    rows: [{ name: 'Barbel benche press', sets: 3, reps: '10' }, { name: 'Plank', sets: 3, reps: '30s' }],
     floor: 1,
   },
   {
@@ -151,6 +162,7 @@ const CORPUS = [
     source: 'plan-11-banded-body-part.pdf',
     days: ['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'],
     exercises: 26,
+    rows: [{ name: 'Press ups', sets: 2, reps: 'To failure' }, { name: 'Back squat', sets: 5, reps: '5' }],
     floor: 1,
   },
   {
@@ -159,6 +171,7 @@ const CORPUS = [
     source: 'plan-12-vertical-labels.pdf',
     days: ['Session A - Upper Body', 'Session B - Lower Body'],
     exercises: 25,
+    rows: [{ name: 'Leg extension', sets: 3, reps: '15' }, { name: 'Chest supported row', sets: 4, reps: '10' }],
     floor: 1,
   },
   {
@@ -167,7 +180,8 @@ const CORPUS = [
     source: 'plan-13-per-set-log-grid.pdf',
     days: ['Push - Chest & Triceps', 'Pull - Back & Biceps', 'Legs', 'Shoulders & Core'],
     exercises: 20,
-    floor: 0.8,
+    rows: [{ name: 'Barbell bench press', sets: 4, reps: '6-12' }, { name: 'Pull ups', sets: 4, reps: '6-8' }],
+    floor: 1,
     note: 'A filled-in log, not a prescription: each column is one set written as load x reps.',
   },
 ];
@@ -206,7 +220,42 @@ function score(parsed, expected) {
   const gotEx = parsed.days.reduce((n, d) => n + d.exercises.length, 0);
   const exScore = expected.exercises === 0 ? 1 : Math.min(gotEx, expected.exercises) / Math.max(expected.exercises, gotEx);
 
-  return { total: (dayScore + exScore) / 2, dayScore, exScore, gotDays, gotEx };
+  // Counting rows is not the same as reading them. A parser can find every
+  // exercise and still fold a column of the table into the movement's name, or
+  // read a logged weight as a set count — so a sample of rows is checked
+  // exactly, values and all.
+  const gotNames = new Set(parsed.days.flatMap((d) => d.exercises.map((e) => e.name)));
+  const byName = new Map(
+    parsed.days.flatMap((d) => d.exercises).map((e) => [e.name, e])
+  );
+  const want = expected.rows ?? [];
+  const missed = [];
+  for (const w of want) {
+    const ex = byName.get(w.name);
+    if (!ex) {
+      missed.push(`${w.name} (not found)`);
+      continue;
+    }
+    if (w.sets != null && ex.totalSets !== w.sets) {
+      missed.push(`${w.name} (${ex.totalSets} sets, expected ${w.sets})`);
+      continue;
+    }
+    if (w.reps != null && ex.repRange !== w.reps) {
+      missed.push(`${w.name} (reps "${ex.repRange}", expected "${w.reps}")`);
+    }
+  }
+  const rowScore = want.length === 0 ? 1 : (want.length - missed.length) / want.length;
+
+  return {
+    total: (dayScore + exScore + rowScore) / 3,
+    dayScore,
+    exScore,
+    rowScore,
+    missed,
+    gotDays,
+    gotEx,
+    gotNames,
+  };
 }
 
 const results = [];
@@ -230,9 +279,10 @@ for (const fx of CORPUS) {
   const pct = (n) => `${(n * 100).toFixed(0)}%`;
   console.log(`\n${ok ? '✓' : '✗'} ${fx.name}`);
   console.log(
-    `   score ${pct(s.total)} (floor ${pct(fx.floor)}) · days ${pct(s.dayScore)} · exercises ${s.gotEx}/${fx.exercises}`
+    `   score ${pct(s.total)} (floor ${pct(fx.floor)}) · days ${pct(s.dayScore)} · exercises ${s.gotEx}/${fx.exercises} · sampled rows ${pct(s.rowScore)}`
   );
   if (fx.note) console.log(`   note: ${fx.note}`);
+  for (const m of s.missed) console.log(`   misread: ${m}`);
   const missing = fx.days.filter((d) => !s.gotDays.includes(d));
   const extra = s.gotDays.filter((d) => !fx.days.includes(d));
   if (missing.length) console.log(`   missing days: ${missing.join(', ')}`);

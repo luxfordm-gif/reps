@@ -370,6 +370,120 @@ function joinNotes(cells: Partial<Record<ColumnKind, string>>): string {
   return bits.join(' · ').trim();
 }
 
+// --- per-set logs -----------------------------------------------------------
+
+/**
+ * A log sheet with one column per set, each filled in as "weight x reps".
+ *
+ * This isn't a prescription, it's a record of what was lifted, and reading it as
+ * one turns "60 x 12" into sixty sets of twelve. It's recognisable from its
+ * heading — "Exercise | Set 1 | Set 2 | … | Notes" — so we count the set columns
+ * and read the row as the sets it holds.
+ *
+ * Returns how many set columns the heading declares, or null if it isn't one.
+ */
+export function parseSetLogHeader(line: string): number | null {
+  const t = line.trim();
+  const setColumns = t.match(/\bset\s*\d+\b/gi);
+  if (!setColumns || setColumns.length < 2) return null;
+  // It still has to be an exercise table rather than, say, a set-by-set note.
+  if (!/^\s*(exercise|movement|lift)\b/i.test(t)) return null;
+  return setColumns.length;
+}
+
+/** A word that can be part of a load: a figure, or the handful of words gyms
+ *  write instead of one ("BW", "Plate 6", "Assist 20kg", "Band"). */
+const LOAD_TOKEN_RE =
+  /^(\d+(?:\.\d+)?(?:kg|lbs?)?|BW|bodyweight|plate|pin|band|assist|each|pair)$/i;
+
+interface SetCell {
+  load: string | null;
+  reps: number | null;
+  /** A hold written in seconds rather than a rep count. */
+  seconds: number | null;
+  next: number;
+}
+
+/** Read one set's entry: "60 x 12", "Plate 5 x 15", "BW x 8", "60 sec", "-". */
+function consumeSetCell(tokens: string[], i: number): SetCell | null {
+  const t = tokens[i];
+  if (t == null) return null;
+  if (BLANK_RE.test(t)) return { load: null, reps: null, seconds: null, next: i + 1 };
+  if (/^\d{1,4}$/.test(t) && /^(s|sec|secs|seconds)$/i.test(tokens[i + 1] ?? '')) {
+    return { load: null, reps: null, seconds: parseInt(t, 10), next: i + 2 };
+  }
+  // The load can run to a couple of words ("Plate 5", "BW", "Assist 20kg")
+  // before the "x" that separates it from the rep count — but only words that
+  // can be a load. Without that check "Barbell Bench Press 60 x 12" reads as a
+  // set of 12 at "Bench Press 60", and the movement loses most of its name.
+  for (let k = 1; k <= 3; k++) {
+    if (!/^x$/i.test(tokens[i + k] ?? '')) continue;
+    const load = tokens.slice(i, i + k);
+    if (!load.every((w) => LOAD_TOKEN_RE.test(w))) return null;
+    const reps = tokens[i + k + 1];
+    if (!/^\d{1,3}$/.test(reps ?? '')) return null;
+    return {
+      load: load.join(' '),
+      reps: parseInt(reps, 10),
+      seconds: null,
+      next: i + k + 2,
+    };
+  }
+  return null;
+}
+
+/** Read a row of a per-set log into the movement it records. */
+export function matchSetLogRow(line: string, columns: number): RawRow | null {
+  const tokens = line.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return null;
+
+  for (let split = 1; split < tokens.length; split++) {
+    const name = tokens.slice(0, split).join(' ');
+    if (!/^[A-Za-z]/.test(name) || !/[A-Za-z]{2}/.test(name)) continue;
+    const cells: SetCell[] = [];
+    let i = split;
+    let ok = true;
+    for (let c = 0; c < columns; c++) {
+      const cell = consumeSetCell(tokens, i);
+      if (!cell) {
+        // The trailing columns may simply be absent rather than dashed.
+        if (i >= tokens.length) break;
+        ok = false;
+        break;
+      }
+      cells.push(cell);
+      i = cell.next;
+    }
+    const filled = cells.filter((c) => c.reps != null || c.seconds != null);
+    if (!ok || filled.length === 0) continue;
+
+    const reps = filled.map((c) => c.reps).filter((r): r is number => r != null);
+    const secs = filled.map((c) => c.seconds).filter((s): s is number => s != null);
+    const span = (ns: number[], suffix: string): string => {
+      const lo = Math.min(...ns);
+      const hi = Math.max(...ns);
+      return lo === hi ? `${lo}${suffix}` : `${lo}-${hi}${suffix}`;
+    };
+    const loads = filled.map((c) => c.load).filter((l): l is string => !!l);
+    const trailing = tokens.slice(i).join(' ').trim();
+    const noteBits = [];
+    if (loads.length > 0) noteBits.push(`Logged: ${loads.join(', ')}`);
+    if (trailing) noteBits.push(trailing);
+
+    return {
+      name,
+      totalSets: filled.length,
+      repRange: reps.length > 0 ? span(reps, '') : span(secs, 's'),
+      tempo: null,
+      notes: noteBits.join(' · '),
+      bodyPart: null,
+      groupCode: null,
+      groupId: null,
+    };
+  }
+  return null;
+}
+
 // --- freeform shapes --------------------------------------------------------
 
 // Units that mean the number is a duration, not a rep count — "2 x 30min zone 2"
@@ -379,7 +493,9 @@ const DURATION_UNIT = /^(min|mins|minute|minutes|hr|hour|hours|km|mile|miles)\b/
 // "3 sets of 10 reps", "3 sets x 10 reps", "3 sets × 12" — coaches write the
 // connector either way round and the difference means nothing.
 const PROSE_RE =
-  /^(.+?)\s*[-–—:]?\s*(\d{1,2})\s*sets?\s*(?:of|x|×)\s*(\d{1,3}(?:\s*-\s*\d{1,3})?|AMRAP|max)\s*(reps?|seconds?|secs?|s)?\b\s*(.*)$/i;
+  // The unit is matched loosely on its stem: these sheets are typed by hand and
+  // "secconds" is as likely as "seconds".
+  /^(.+?)\s*[-–—:]?\s*(\d{1,2})\s*sets?\s*(?:of|x|×)\s*(\d{1,3}(?:\s*-\s*\d{1,3})?|AMRAP|max)\s*(rep\w*|sec\w*|s)?\b\s*(.*)$/i;
 
 const COMPACT_RE =
   /^(.+?)\s*[-–—:]?\s*(\d{1,2})\s*x\s*(\d{1,3}(?:\s*-\s*\d{1,3})?|AMRAP|max)\s*(s|secs?|seconds?)?\b\s*(.*)$/i;
@@ -425,7 +541,7 @@ export function matchFreeformRow(line: string, bodyParts: readonly string[] = []
 
   const bullet = trimmed.match(BULLET_RE);
   if (bullet) {
-    const isTime = /^(seconds?|secs?|mins?)$/i.test(bullet[3] ?? '');
+    const isTime = /^(sec\w*|min\w*)$/i.test(bullet[3] ?? '');
     const qualifier = (bullet[4] ?? '').trim();
     const reps = isTime ? `${bullet[2]}s` : bullet[2];
     // Sets stay null: the group's "Rounds: N" line supplies them.
@@ -441,7 +557,7 @@ export function matchFreeformRow(line: string, bodyParts: readonly string[] = []
   const prose = trimmed.match(PROSE_RE);
   if (prose) {
     const unit = prose[4] ?? '';
-    const isTime = /^s(ec|econds?)?$/i.test(unit);
+    const isTime = /^(s|sec\w*)$/i.test(unit);
     return row(prose[1], prose[2], isTime ? `${prose[3]}s` : prose[3], prose[5]);
   }
 
@@ -599,7 +715,14 @@ function rowsFollow(classified: (RawRow | null)[], lines: string[], i: number): 
   for (; j < lines.length && looked < 3; j++) {
     // A column header or a group caption sits between a day title and its first
     // row, so neither counts against the run of rows we're looking for.
-    if (isNoise(lines[j]) || parseColumnTemplate(lines[j]) || isGroupHeader(lines[j])) continue;
+    if (
+      isNoise(lines[j]) ||
+      parseColumnTemplate(lines[j]) ||
+      parseSetLogHeader(lines[j]) ||
+      isGroupHeader(lines[j])
+    ) {
+      continue;
+    }
     looked += 1;
     if (classified[j]) seen += 1;
     else if (looked === 1) return false; // the very next content line isn't a row
@@ -634,15 +757,27 @@ export function recogniseLayout(
   const classified: (RawRow | null)[] = new Array(lines.length).fill(null);
   const templateAt: (ColumnKind[] | null)[] = new Array(lines.length).fill(null);
   let template: ColumnKind[] | null = null;
+  let setLogColumns: number | null = null;
   for (let i = 0; i < lines.length; i++) {
+    // A per-set log is checked first: its heading also reads as an ordinary
+    // table ("Exercise … Set … Notes"), but its rows mean something else.
+    const asSetLog = parseSetLogHeader(lines[i]);
+    if (asSetLog) {
+      setLogColumns = asSetLog;
+      template = null;
+      templateAt[i] = [];
+      continue;
+    }
     const asHeader = parseColumnTemplate(lines[i]);
     if (asHeader) {
       template = asHeader;
+      setLogColumns = null;
       templateAt[i] = asHeader;
       continue;
     }
     if (isNoise(lines[i])) continue;
-    classified[i] = template ? matchTemplateRow(lines[i], template, bodyParts) : null;
+    if (setLogColumns != null) classified[i] = matchSetLogRow(lines[i], setLogColumns);
+    if (!classified[i] && template) classified[i] = matchTemplateRow(lines[i], template, bodyParts);
     if (!classified[i]) classified[i] = matchFreeformRow(lines[i], bodyParts);
   }
 
@@ -660,14 +795,21 @@ export function recogniseLayout(
   );
   const peelBodyPartColumn =
     leading.length >= 2 && leading.length >= freeform.length * 0.6;
-  if (peelBodyPartColumn) {
-    for (const r of freeform) {
-      const { bodyPart, rest } = splitLeadingBodyPart(r.name, labels);
-      if (bodyPart && rest) {
-        r.bodyPart = bodyPart;
-        r.name = rest;
-      }
-    }
+  for (const r of freeform) {
+    const { bodyPart, rest } = splitLeadingBodyPart(r.name, labels);
+    if (!bodyPart || !rest) continue;
+    // The other way a body part ends up glued to a name: a label printed down
+    // the side of a band of rows, which lands in front of whichever row it was
+    // level with. Those are set in capitals while the movement isn't, and that
+    // is the whole difference between "QUADS Leg Extension" and the machine
+    // actually called "Chest Supported Row".
+    // Compare the words as the sheet printed them, not the label we matched —
+    // the label list is uppercase by construction.
+    const printed = r.name.slice(0, r.name.length - rest.length).trim();
+    const shouted = printed === printed.toUpperCase() && rest !== rest.toUpperCase();
+    if (!peelBodyPartColumn && !shouted) continue;
+    r.bodyPart = bodyPart;
+    r.name = rest;
   }
 
   // Pass 2 — a header is a short non-row line that rows follow.
@@ -689,7 +831,13 @@ export function recogniseLayout(
   // groups are the only captions there are, they're how the plan splits its days.
   const headerIdxs: number[] = [];
   for (let i = 0; i < lines.length; i++) if (isHeader(i)) headerIdxs.push(i);
-  const bandsAreBodyParts = headerIdxs.some((i) => !isBodyPartLabel(lines[i]));
+  const bodyPartHeaders = headerIdxs.filter((i) => isBodyPartLabel(lines[i])).length;
+  const otherHeaders = headerIdxs.length - bodyPartHeaders;
+  // Bands are the many inside the few: a handful of sessions, each broken into
+  // muscle groups. When the muscle groups don't outnumber the other headings
+  // they're peers of them — a sheet with PUSH, PULL, LEGS and SHOULDERS & CORE
+  // is four days, one of which happens to be named after a muscle group.
+  const bandsAreBodyParts = otherHeaders > 0 && bodyPartHeaders > otherHeaders;
 
   // Pass 3 — assign rows to days.
   const days: RawDay[] = [];
