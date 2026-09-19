@@ -517,3 +517,232 @@ export function weekDailyAverage(
   const total = [...byDay.values()].reduce((sum, v) => sum + v, 0);
   return { average: total / byDay.size, daysLogged: byDay.size };
 }
+
+// --- Intensity, alongside the load -------------------------------------------------------
+
+export interface WeeklyIntensityPoint {
+  /** Monday (yyyy-mm-dd) of the week. Same weeks as computeWeeklyLoad. */
+  weekStart: string;
+  /** How heavy the week was against the window's own baseline, as a %. */
+  pct: number | null;
+  /** Lifts the figure was averaged over — null pct when too few. */
+  lifts: number;
+}
+
+/** A lift needs weeks either side of one to say anything about a trend. */
+const INTENSITY_MIN_WEEKS = 2;
+/** One lift having a good week isn't the week being heavy. */
+const INTENSITY_MIN_LIFTS = 2;
+
+/**
+ * How heavy the training was each week, next to how much of it there was.
+ *
+ * Sets answer "how much" and nothing else: a deload week of light triples and
+ * a week of grinding singles at the same set count draw the same line, which
+ * is exactly the case where the line is worth doubting. This is the other
+ * half — the same twelve weeks, asked whether the weight on the bar was going
+ * up.
+ *
+ * It is a ratio, not a total, for the reason computeWeeklyLoad gives for not
+ * adding kilograms up: the weight column holds kilograms on some machines and
+ * pin positions on others, and those cannot be summed. A lift compared against
+ * its own baseline can, because the units cancel — 60kg against a 55kg
+ * baseline and pin 8 against pin 7 are both "heavier than usual", and both
+ * come out as a percentage that means the same thing.
+ *
+ * Each lift's baseline is its own mean best over the window, so the series
+ * sits around zero by construction and reads as "heavier or lighter than this
+ * season's normal" rather than as progress from a start date. Lifts trained in
+ * only one week of the window are left out: they have no normal to be measured
+ * against, and including them would peg a week to exactly its own average.
+ */
+export function computeWeeklyIntensity(
+  sets: StrengthSet[],
+  weeks = 12,
+  now: Date = new Date(),
+): WeeklyIntensityPoint[] {
+  const window: string[] = [];
+  for (let i = weeks - 1; i >= 0; i--) window.push(weekStartISO(addWeeks(now, -i)));
+  const inWindow = new Set(window);
+
+  // lift -> week -> best estimated 1RM that week.
+  const byLift = new Map<string, Map<string, number>>();
+  for (const s of sets) {
+    if (s.weight == null || s.reps == null) continue;
+    const wk = weekStartISO(new Date(s.completedAt));
+    if (!inWindow.has(wk)) continue;
+    let weeksOfLift = byLift.get(s.normalizedName);
+    if (!weeksOfLift) {
+      weeksOfLift = new Map();
+      byLift.set(s.normalizedName, weeksOfLift);
+    }
+    const e = estimate1RM(s.weight, s.reps);
+    weeksOfLift.set(wk, Math.max(weeksOfLift.get(wk) ?? 0, e));
+  }
+
+  const ratios = new Map<string, number[]>(window.map((w) => [w, []]));
+  for (const weeksOfLift of byLift.values()) {
+    if (weeksOfLift.size < INTENSITY_MIN_WEEKS) continue;
+    const values = [...weeksOfLift.values()];
+    const baseline = values.reduce((sum, v) => sum + v, 0) / values.length;
+    if (baseline <= 0) continue;
+    for (const [wk, best] of weeksOfLift) ratios.get(wk)?.push(best / baseline);
+  }
+
+  return window.map((weekStart) => {
+    const rs = ratios.get(weekStart) ?? [];
+    if (rs.length < INTENSITY_MIN_LIFTS) return { weekStart, pct: null, lifts: rs.length };
+    const mean = rs.reduce((sum, r) => sum + r, 0) / rs.length;
+    return { weekStart, pct: Math.round((mean - 1) * 1000) / 10, lifts: rs.length };
+  });
+}
+
+// --- This week against another one -------------------------------------------------------
+
+export interface WeekTotals {
+  /** Monday (yyyy-mm-dd) of the week. */
+  weekStart: string;
+  workouts: number;
+  sets: number;
+  exercises: number;
+}
+
+/** One lift, this week against the week being compared with. */
+export interface ExerciseMove {
+  normalizedName: string;
+  displayName: string;
+  /** Heaviest set of the week, and the reps hit on it. */
+  currentKg: number;
+  currentReps: number;
+  previousKg: number;
+  previousReps: number;
+  /** Change in best estimated 1RM — what the rows are ranked on. */
+  deltaPct: number;
+  deltaKg: number;
+}
+
+export interface WeekComparison {
+  current: WeekTotals;
+  previous: WeekTotals;
+  /** Lifts trained in both weeks, biggest gain first. */
+  movers: ExerciseMove[];
+  heavier: number;
+  lighter: number;
+  held: number;
+}
+
+/** Below this a lift is "held" rather than moved — logging noise, not progress. */
+const MOVE_EPSILON_PCT = 1;
+
+/**
+ * This week beside an earlier one, lift by lift.
+ *
+ * The tab's other numbers are seasons and averages; this is the question
+ * actually being asked on a Thursday — am I ahead of where I was the last time
+ * round this plan? So it compares two named weeks rather than rolling windows,
+ * and `weeksBack` is how far to reach: 1 for last week, 2 for the week before
+ * that, which is the one to use when the plan runs on a fortnight's rotation.
+ *
+ * A lift only appears if it was trained in both weeks. Ranking is by estimated
+ * 1RM rather than by weight, so five more kilos for three fewer reps doesn't
+ * read as a clean gain, but the rows still show the sets themselves — the
+ * number you'd recognise from the logger.
+ */
+export function compareWeeks(
+  sets: StrengthSet[],
+  sessions: { completed_at: string }[],
+  weeksBack: number,
+  now: Date = new Date(),
+): WeekComparison {
+  const currentWeek = weekStartISO(now);
+  const previousWeek = weekStartISO(addWeeks(now, -Math.max(1, weeksBack)));
+
+  interface Best {
+    display: string;
+    e1rm: number;
+    topKg: number;
+    topReps: number;
+  }
+  const bests = new Map<string, Map<string, Best>>([
+    [currentWeek, new Map()],
+    [previousWeek, new Map()],
+  ]);
+  const setCounts = new Map<string, number>([
+    [currentWeek, 0],
+    [previousWeek, 0],
+  ]);
+  const seen = new Map<string, Set<string>>([
+    [currentWeek, new Set()],
+    [previousWeek, new Set()],
+  ]);
+
+  for (const s of sets) {
+    const wk = weekStartISO(new Date(s.completedAt));
+    const week = bests.get(wk);
+    if (!week) continue;
+    setCounts.set(wk, (setCounts.get(wk) ?? 0) + 1);
+    seen.get(wk)?.add(s.normalizedName);
+    if (s.weight == null || s.reps == null) continue;
+    const e = estimate1RM(s.weight, s.reps);
+    const prev = week.get(s.normalizedName);
+    if (!prev || e > prev.e1rm) {
+      week.set(s.normalizedName, {
+        display: s.displayName,
+        e1rm: e,
+        topKg: s.weight,
+        topReps: s.reps,
+      });
+    }
+  }
+
+  const workouts = new Map<string, number>([
+    [currentWeek, 0],
+    [previousWeek, 0],
+  ]);
+  for (const s of sessions) {
+    const wk = weekStartISO(new Date(s.completed_at));
+    if (workouts.has(wk)) workouts.set(wk, (workouts.get(wk) ?? 0) + 1);
+  }
+
+  const totals = (weekStart: string): WeekTotals => ({
+    weekStart,
+    workouts: workouts.get(weekStart) ?? 0,
+    sets: setCounts.get(weekStart) ?? 0,
+    exercises: seen.get(weekStart)?.size ?? 0,
+  });
+
+  const movers: ExerciseMove[] = [];
+  let heavier = 0;
+  let lighter = 0;
+  let held = 0;
+  const currentBests = bests.get(currentWeek)!;
+  const previousBests = bests.get(previousWeek)!;
+  for (const [name, cur] of currentBests) {
+    const prev = previousBests.get(name);
+    if (!prev || prev.e1rm <= 0) continue;
+    const deltaPct = Math.round(((cur.e1rm - prev.e1rm) / prev.e1rm) * 1000) / 10;
+    movers.push({
+      normalizedName: name,
+      displayName: cur.display,
+      currentKg: cur.topKg,
+      currentReps: cur.topReps,
+      previousKg: prev.topKg,
+      previousReps: prev.topReps,
+      deltaPct,
+      deltaKg: Math.round((cur.topKg - prev.topKg) * 100) / 100,
+    });
+    if (deltaPct > MOVE_EPSILON_PCT) heavier += 1;
+    else if (deltaPct < -MOVE_EPSILON_PCT) lighter += 1;
+    else held += 1;
+  }
+  movers.sort((a, b) => b.deltaPct - a.deltaPct || a.displayName.localeCompare(b.displayName));
+
+  return {
+    current: totals(currentWeek),
+    previous: totals(previousWeek),
+    movers,
+    heavier,
+    lighter,
+    held,
+  };
+}

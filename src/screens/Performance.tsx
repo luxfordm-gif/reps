@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  LineChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+} from 'recharts';
 import { PageHeader } from '../components/PageHeader';
-import { Tile, ChevronRight, BarsIcon, BoltIcon, WaterIcon, StepsIcon } from '../components/Tile';
+import { Tile, MiniTile, ChevronRight, BoltIcon, WaterIcon, StepsIcon } from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
   loadPerformanceData,
@@ -34,9 +44,14 @@ import {
   type WeeklyLoadPoint,
   computeMostImproved,
   computeOverallStrength,
+  computeWeeklyIntensity,
   computeWorkoutsPerWeek,
+  compareWeeks,
   newRecordCount,
   summarizeBodyWeight,
+  type WeeklyIntensityPoint,
+  type WeekComparison,
+  type ExerciseMove,
 } from '../lib/dashboard';
 import {
   getBodyWeightUnit,
@@ -50,15 +65,22 @@ import {
 
 // The Performance tab.
 //
-// A dashboard first: where you are on the plan, what's changed this month,
-// body weight, how consistently you've turned up, and whether you're getting
-// stronger — each as a tile with one number and the picture behind it. Every
-// figure comes from lib/dashboard.ts, which says "not enough data" rather than
-// invent a number. "View all" on the records tile opens the full records board,
-// which is where a lift's history lives.
+// A dashboard first: where you are on the plan, how this week compares with
+// the last one lift by lift, body weight, how hard and how much you've
+// trained, and whether you're getting stronger. Every figure comes from
+// lib/dashboard.ts, which says "not enough data" rather than invent a number.
+//
+// Two rules hold the page together. The first is about weight: the big
+// numbers get a card with the chart that explains them, and the supporting
+// ones get a mini tile a third of the height — water and steps are worth
+// knowing and are not worth a 156px tile each. The second is about depth: any
+// lift named anywhere on this tab opens its own history, in one tap, from
+// wherever you tapped it. Nothing routes through an index on the way.
 
 type View = 'dashboard' | 'records' | 'record';
 type BwRange = 84 | 182 | 365;
+/** How far back the week-on-week card reaches: last week, or the one before. */
+type VsWeeks = 1 | 2;
 
 interface Loaded {
   perf: PerformanceData;
@@ -98,7 +120,13 @@ export function Performance() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('dashboard');
   const [selected, setSelected] = useState<string | null>(null);
+  // Where the open lift was tapped, so Back returns there. A lift reached from
+  // the dashboard goes back to the dashboard; one reached from the board goes
+  // back to the board. Without this every lift's Back led to the records
+  // index, which is the screen you were trying not to visit.
+  const [recordFrom, setRecordFrom] = useState<Exclude<View, 'record'>>('dashboard');
   const [bwRange, setBwRange] = useState<BwRange>(84);
+  const [vsWeeks, setVsWeeks] = useState<VsWeeks>(1);
   const bwUnit = getBodyWeightUnit();
   const liftUnit = getLiftWeightUnit();
 
@@ -141,6 +169,7 @@ export function Performance() {
       water: weekDailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
       steps: weekDailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
       load: computeWeeklyLoad(perf.sets),
+      intensity: computeWeeklyIntensity(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       strength: computeOverallStrength(perf.sets, activatedAt),
       mostImproved,
@@ -150,8 +179,28 @@ export function Performance() {
       bodyWeight: summarizeBodyWeight(perf.bodyWeights, activatedAt),
       newPrs: newRecordCount(records),
       topRecords: headlineRecords(records),
+      // Every lift that has ever been logged has a record, so this is what
+      // decides whether a name anywhere on the tab is worth making tappable.
+      recordNames: new Set(records.map((r) => r.normalizedName)),
     };
   }, [data]);
+
+  // Its own memo rather than part of `derived`: the pills above it change
+  // which week is compared, and nothing else on the tab should recompute for
+  // that. Sessions are counted before the reference day is filtered out — this
+  // card is "what did I do", not "did I hit the plan".
+  const comparison = useMemo(
+    () => (data ? compareWeeks(data.perf.sets, data.sessions, vsWeeks) : null),
+    [data, vsWeeks],
+  );
+
+  /** Open one lift's history. Ignored for a name with no record behind it. */
+  function openRecord(normalizedName: string, from: Exclude<View, 'record'> = 'dashboard') {
+    if (!derived?.recordNames.has(normalizedName)) return;
+    setSelected(normalizedName);
+    setRecordFrom(from);
+    setView('record');
+  }
 
   const hasAnyData =
     !!data &&
@@ -171,10 +220,7 @@ export function Performance() {
           <div className="mt-4">
             <RecordsBoard
               records={data.records}
-              onSelect={(n) => {
-                setSelected(n);
-                setView('record');
-              }}
+              onSelect={(n) => openRecord(n, 'records')}
             />
           </div>
         </div>
@@ -190,7 +236,7 @@ export function Performance() {
           record={record}
           sets={data.perf.sets}
           onBack={() => {
-            setView('records');
+            setView(recordFrom);
             setSelected(null);
           }}
         />
@@ -238,33 +284,26 @@ export function Performance() {
               </Block>
             )}
 
-            <Block>
-              <div className="grid grid-cols-2 gap-3">
-                <Tile
-                  icon={<BarsIcon />}
-                  label="New PRs"
-                  value={String(derived.newPrs)}
-                  hint="this month"
-                  onClick={() => setView('records')}
+            {comparison && (
+              <Block>
+                <WeekCompareCard
+                  comparison={comparison}
+                  weeksBack={vsWeeks}
+                  onWeeksBack={setVsWeeks}
+                  unit={liftUnit}
+                  canOpen={(n) => derived.recordNames.has(n)}
+                  onOpen={(n) => openRecord(n)}
                 />
-                <Tile
-                  icon={<BoltIcon />}
-                  label="Workouts / week"
-                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
-                  hint={
-                    derived.perWeek.average != null ? 'average on this plan' : 'nothing logged yet'
-                  }
-                />
-              </div>
-            </Block>
+              </Block>
+            )}
 
-            {/* The daily habits, in the same shape as the training numbers
-                above them. Both are averaged over the days they were actually
-                logged — see weekDailyAverage — so the hint names that count
-                rather than letting "a day" imply a full week. */}
+            {/* The supporting numbers, three across and a third the height of
+                a stat tile. Water and steps are averaged over the days they
+                were actually logged — see weekDailyAverage — so the hint names
+                that count rather than letting "a day" imply a full week. */}
             <Block>
-              <div className="grid grid-cols-2 gap-3">
-                <Tile
+              <div className="grid grid-cols-3 gap-2.5">
+                <MiniTile
                   icon={<WaterIcon />}
                   label="Water"
                   value={
@@ -274,11 +313,11 @@ export function Performance() {
                   }
                   hint={
                     derived.water.average != null
-                      ? `a day over ${derived.water.daysLogged} ${derived.water.daysLogged === 1 ? 'day' : 'days'}`
-                      : 'none logged this week'
+                      ? `over ${derived.water.daysLogged} ${derived.water.daysLogged === 1 ? 'day' : 'days'}`
+                      : 'none this week'
                   }
                 />
-                <Tile
+                <MiniTile
                   icon={<StepsIcon />}
                   label="Steps"
                   value={
@@ -288,9 +327,15 @@ export function Performance() {
                   }
                   hint={
                     derived.steps.average != null
-                      ? `a day over ${derived.steps.daysLogged} ${derived.steps.daysLogged === 1 ? 'day' : 'days'}`
-                      : 'none logged this week'
+                      ? `over ${derived.steps.daysLogged} ${derived.steps.daysLogged === 1 ? 'day' : 'days'}`
+                      : 'none this week'
                   }
+                />
+                <MiniTile
+                  icon={<BoltIcon />}
+                  label="Workouts"
+                  value={derived.perWeek.average != null ? String(derived.perWeek.average) : '–'}
+                  hint={derived.perWeek.average != null ? 'a week on plan' : 'none logged'}
                 />
               </div>
             </Block>
@@ -330,7 +375,11 @@ export function Performance() {
 
             {derived.load.some((p) => p.sets > 0) && (
               <Block>
-                <TrainingLoadCard load={derived.load} perWeek={derived.perWeek.average} />
+                <TrainingLoadCard
+                  load={derived.load}
+                  intensity={derived.intensity}
+                  perWeek={derived.perWeek.average}
+                />
               </Block>
             )}
 
@@ -349,9 +398,13 @@ export function Performance() {
             )}
 
             {derived.topRecords.length > 0 && (
-              <Block>
-                <TopRecords records={derived.topRecords} onViewAll={() => setView('records')} />
-              </Block>
+              <TopRecords
+                records={derived.topRecords}
+                newThisMonth={derived.newPrs}
+                unit={liftUnit}
+                onViewAll={() => setView('records')}
+                onSelect={(n) => openRecord(n)}
+              />
             )}
           </div>
         )}
@@ -449,21 +502,43 @@ function StreakTile({ streak, target }: { streak: WeekStreak; target: number }) 
 }
 
 /**
- * Twelve weeks of training, in sets.
+ * Twelve weeks of training: how much, and how heavy.
  *
  * The rest of the tab looks at a fortnight or at one lift. This is the only
  * place that answers "how has it been going lately", which is the question a
  * chart is for — and the empty weeks are drawn, because a month off is the
  * most informative thing a season of training has to say.
  *
- * Built like the body-weight chart rather than as a sparkline: two charts on
- * one screen drawn in two different idioms read as two different apps, and
- * this one has axes worth labelling.
+ * Two series, because sets alone were being read as a verdict they can't
+ * give: a week of heavy triples and a week of light high-rep work look
+ * identical by set count, so a block that gets harder and shorter draws a line
+ * going down. The bars are the volume of work; the line over them is how heavy
+ * that work was against the window's own normal (computeWeeklyIntensity has
+ * the arithmetic and the reason it's a percentage rather than a tonnage). Load
+ * down and intensity up is a real and common shape, and now it's visible
+ * rather than looking like a decline.
  */
-function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek: number | null }) {
+function TrainingLoadCard({
+  load,
+  intensity,
+  perWeek,
+}: {
+  load: WeeklyLoadPoint[];
+  intensity: WeeklyIntensityPoint[];
+  perWeek: number | null;
+}) {
   const thisWeek = load[load.length - 1]?.sets ?? 0;
   const average = Math.round(load.reduce((sum, p) => sum + p.sets, 0) / load.length);
-  const points = load.map((p) => ({ label: p.weekStart, value: p.sets }));
+  const byWeek = new Map(intensity.map((p) => [p.weekStart, p]));
+  const points = load.map((p) => ({
+    label: p.weekStart,
+    value: p.sets,
+    intensity: byWeek.get(p.weekStart)?.pct ?? null,
+  }));
+  // The most recent week the figure could be computed for — not necessarily
+  // this one, which on a Monday has nothing in it yet.
+  const latestIntensity = [...intensity].reverse().find((p) => p.pct != null) ?? null;
+  const hasIntensity = intensity.some((p) => p.pct != null);
 
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
@@ -482,9 +557,29 @@ function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek:
       <div className="mt-0.5 text-xs text-muted tabular-nums">
         {average} a week on average{perWeek != null && ` · ${perWeek} workouts a week`}
       </div>
+      {latestIntensity?.pct != null && (
+        <div className="mt-1 text-xs tabular-nums">
+          <span
+            className={`font-semibold ${
+              latestIntensity.pct > 1
+                ? 'text-good'
+                : latestIntensity.pct < -1
+                  ? 'text-danger'
+                  : 'text-muted'
+            }`}
+          >
+            {latestIntensity.pct > 0 ? '+' : latestIntensity.pct < 0 ? '−' : ''}
+            {fmtNum(Math.abs(latestIntensity.pct))}%
+          </span>{' '}
+          <span className="text-muted">
+            on the weight lifted, against these 12 weeks — over {latestIntensity.lifts}{' '}
+            {latestIntensity.lifts === 1 ? 'lift' : 'lifts'}
+          </span>
+        </div>
+      )}
       <div className="mt-3">
-        <ResponsiveContainer width="100%" height={140}>
-          <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <ResponsiveContainer width="100%" height={150}>
+          <ComposedChart data={points} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
             <XAxis
               dataKey="label"
               tick={{ fill: '#8E8E93', fontSize: 10 }}
@@ -502,16 +597,26 @@ function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek:
                 and an axis that starts at the smallest value would draw the
                 gap as a shallow dip instead of the floor it is. */}
             <YAxis
+              yAxisId="sets"
               tick={{ fill: '#8E8E93', fontSize: 10 }}
               axisLine={false}
               tickLine={false}
-              width={40}
+              width={32}
               allowDecimals={false}
               domain={[0, 'dataMax + 4']}
             />
+            {/* Hidden rather than absent: the line needs its own scale — a
+                percentage swing of six would be invisible against a set count
+                — but a second set of numbers down the right-hand edge of a
+                phone-width card buys nothing the headline hasn't said. */}
+            <YAxis yAxisId="intensity" hide domain={['dataMin - 4', 'dataMax + 4']} />
             <Tooltip
               contentStyle={{ borderRadius: 12, border: '1px solid #E5E5EA', fontSize: 12 }}
-              formatter={(v) => [`${v} ${Number(v) === 1 ? 'set' : 'sets'}`, 'Logged']}
+              formatter={(v, name) =>
+                name === 'Weight lifted'
+                  ? [`${Number(v) > 0 ? '+' : ''}${fmtNum(Number(v))}% vs usual`, name]
+                  : [`${v} ${Number(v) === 1 ? 'set' : 'sets'}`, name]
+              }
               labelFormatter={(d) =>
                 `Week of ${new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', {
                   day: 'numeric',
@@ -519,18 +624,54 @@ function TrainingLoadCard({ load, perWeek }: { load: WeeklyLoadPoint[]; perWeek:
                 })}`
               }
             />
-            <Line
-              type="monotone"
+            {/* Each series keyed as it's drawn — a bar with a line for a
+                swatch reads as two lines, one of which has gone missing. The
+                formatter is there because recharts colours a legend label to
+                match its series, which left "Sets" written in the bars' own
+                14% ink and all but invisible. */}
+            {hasIntensity && (
+              <Legend
+                verticalAlign="top"
+                height={24}
+                wrapperStyle={{ fontSize: 11 }}
+                formatter={(value) => <span style={{ color: '#8E8E93' }}>{value}</span>}
+              />
+            )}
+            <Bar
+              yAxisId="sets"
+              name="Sets"
               dataKey="value"
-              stroke="#0A0A0A"
-              strokeWidth={2}
-              dot={{ r: 2.5, fill: '#0A0A0A' }}
-              activeDot={{ r: 4 }}
+              // A tint of ink rather than the hairline grey: these bars carry
+              // a number, and at #E5E5EA they read as the gridlines they
+              // aren't.
+              fill="rgba(10,10,10,0.14)"
+              legendType="rect"
+              radius={[3, 3, 0, 0]}
+              maxBarSize={14}
               isAnimationActive
               animationDuration={900}
               animationEasing="ease-out"
             />
-          </LineChart>
+            {hasIntensity && (
+              <Line
+                yAxisId="intensity"
+                name="Weight lifted"
+                legendType="plainline"
+                type="monotone"
+                dataKey="intensity"
+                stroke="#0A0A0A"
+                strokeWidth={2}
+                dot={{ r: 2.5, fill: '#0A0A0A' }}
+                activeDot={{ r: 4 }}
+                // A week the figure can't be computed for is a gap, not a
+                // straight line drawn through it.
+                connectNulls={false}
+                isAnimationActive
+                animationDuration={900}
+                animationEasing="ease-out"
+              />
+            )}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -667,30 +808,57 @@ function MostImprovedCard({
   );
 }
 
-function TopRecords({ records, onViewAll }: { records: LiftRecord[]; onViewAll: () => void }) {
+function TopRecords({
+  records,
+  newThisMonth,
+  unit,
+  onViewAll,
+  onSelect,
+}: {
+  records: LiftRecord[];
+  newThisMonth: number;
+  unit: MachineUnit;
+  onViewAll: () => void;
+  onSelect: (normalizedName: string) => void;
+}) {
   return (
-    <div className="rounded-card bg-paper-card shadow-card">
-      <div className="flex items-center justify-between px-5 pt-4">
-        <div className="text-base font-bold tracking-tight text-ink">All-time records</div>
+    // The heading sits on the page rather than inside the card, at the size a
+    // section of a screen is titled — everything above it is the dashboard,
+    // and everything from here down is the record book. The gap is doing the
+    // same work as the type: this is a new part of the page, not the next
+    // card in a stack.
+    <div className="mt-12">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold tracking-tight text-ink">All-time records</h2>
+          <p className="mt-0.5 text-sm text-muted">
+            {newThisMonth > 0
+              ? `${newThisMonth} set this month`
+              : 'Your best ever on every movement'}
+          </p>
+        </div>
         <button
           type="button"
           onClick={onViewAll}
-          className="flex items-center gap-1 text-sm text-muted active:text-ink"
+          className="flex shrink-0 items-center gap-1 pb-1 text-sm text-muted active:text-ink"
         >
           View all <ChevronRight />
         </button>
       </div>
-      <ul className="mt-2 divide-y divide-line/60">
+      <ul className="mt-4 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
         {records.map((r) => (
           <li key={r.normalizedName}>
+            {/* Straight to the lift's own history. This used to open the
+                records board instead, so the row you had just tapped had to be
+                found and tapped again on the screen in between. */}
             <button
               type="button"
-              onClick={onViewAll}
+              onClick={() => onSelect(r.normalizedName)}
               className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left active:bg-surface"
             >
               <span className="min-w-0 truncate text-sm text-ink">{r.displayName}</span>
               <span className="flex shrink-0 items-center gap-2 text-sm font-semibold text-ink tabular-nums">
-                {r.heaviest ? formatLoadShort(r.heaviest.weightKg ?? 0, r.unit) : '–'}
+                {r.heaviest ? formatLoadShort(r.heaviest.weightKg ?? 0, unit) : '–'}
                 <ChevronRight />
               </span>
             </button>
@@ -698,6 +866,200 @@ function TopRecords({ records, onViewAll }: { records: LiftRecord[]; onViewAll: 
         ))}
       </ul>
     </div>
+  );
+}
+
+// --- This week against another one ---------------------------------------------
+
+const VS_LABELS: { weeks: VsWeeks; pill: string; prose: string }[] = [
+  { weeks: 1, pill: 'Last week', prose: 'last week' },
+  { weeks: 2, pill: '2 weeks ago', prose: 'two weeks ago' },
+];
+
+/**
+ * This week beside an earlier one, lift by lift.
+ *
+ * The rest of the tab is written in seasons — twelve weeks of load, a month of
+ * PRs, a plan's worth of consistency. None of that answers the question you
+ * actually open the tab with on a Thursday: is this week going better than the
+ * last one? So this card names two weeks and puts them side by side.
+ *
+ * Two weeks back is offered as well as one because a plan on a fortnight's
+ * rotation trains a given movement every other week, and comparing Tuesday's
+ * push day with a week that had no push day in it compares nothing.
+ *
+ * Rows go straight to the lift's history — the card names a movement and a
+ * number, and the next thing you want is the chart behind it.
+ */
+function WeekCompareCard({
+  comparison,
+  weeksBack,
+  onWeeksBack,
+  unit,
+  canOpen,
+  onOpen,
+}: {
+  comparison: WeekComparison;
+  weeksBack: VsWeeks;
+  onWeeksBack: (w: VsWeeks) => void;
+  unit: MachineUnit;
+  canOpen: (normalizedName: string) => boolean;
+  onOpen: (normalizedName: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const { current, previous, movers, heavier, lighter, held } = comparison;
+  const prose = VS_LABELS.find((v) => v.weeks === weeksBack)?.prose ?? 'last week';
+  // Enough to see the shape of the week without the card becoming the page;
+  // the rest are one tap away.
+  const shown = expanded ? movers : movers.slice(0, 4);
+
+  return (
+    <div className="rounded-card bg-paper-card p-4 shadow-card">
+      <div className="flex items-center justify-between gap-3">
+        <SectionLabel>This week vs</SectionLabel>
+        <div className="flex rounded-pill bg-surface-strong p-0.5">
+          {VS_LABELS.map((v) => (
+            <button
+              key={v.weeks}
+              type="button"
+              onClick={() => onWeeksBack(v.weeks)}
+              className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
+                weeksBack === v.weeks ? 'bg-ink text-white' : 'text-muted'
+              }`}
+            >
+              {v.pill}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-baseline gap-2">
+        <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
+          {current.workouts}
+        </div>
+        <div className="text-sm font-semibold text-muted">
+          {current.workouts === 1 ? 'workout' : 'workouts'} · {current.sets}{' '}
+          {current.sets === 1 ? 'set' : 'sets'}
+        </div>
+      </div>
+      <div className="mt-1 text-xs text-muted tabular-nums">
+        {previous.workouts === 0 && previous.sets === 0
+          ? `Nothing logged ${prose}`
+          : `${previous.workouts} ${previous.workouts === 1 ? 'workout' : 'workouts'} · ${previous.sets} ${
+              previous.sets === 1 ? 'set' : 'sets'
+            } ${prose}`}
+      </div>
+
+      {movers.length === 0 ? (
+        <div className="mt-4 rounded-panel bg-surface px-4 py-3 text-sm text-muted">
+          {previous.sets === 0
+            ? `No sets logged ${prose} to compare with yet.`
+            : `Nothing trained in both weeks — try comparing with ${
+                weeksBack === 1 ? 'two weeks ago' : 'last week'
+              }.`}
+        </div>
+      ) : (
+        <>
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums">
+            {heavier > 0 && <span className="font-semibold text-good">{heavier} heavier</span>}
+            {lighter > 0 && <span className="font-semibold text-danger">{lighter} lighter</span>}
+            {held > 0 && <span className="text-muted">{held} held</span>}
+            <span className="text-muted">
+              · {movers.length} {movers.length === 1 ? 'lift' : 'lifts'} in both weeks
+            </span>
+          </div>
+
+          <ul className="mt-2 divide-y divide-line/60">
+            {shown.map((m) => (
+              <MoveRow
+                key={m.normalizedName}
+                move={m}
+                unit={unit}
+                onOpen={canOpen(m.normalizedName) ? () => onOpen(m.normalizedName) : undefined}
+              />
+            ))}
+          </ul>
+
+          {movers.length > shown.length && (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="mt-3 text-sm font-semibold text-muted active:text-ink"
+            >
+              Show all {movers.length} lifts
+            </button>
+          )}
+          {expanded && movers.length > 4 && (
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="mt-3 text-sm font-semibold text-muted active:text-ink"
+            >
+              Show less
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One lift's two weeks: the earlier set, the one just done, and the change.
+ *
+ * Both sets are printed as they were logged — the weight and the reps you'd
+ * recognise from the logger — while the percentage beside them is the change
+ * in estimated 1RM, which is the only way five more kilos for three fewer reps
+ * can be told from an actual gain.
+ */
+function MoveRow({
+  move,
+  unit,
+  onOpen,
+}: {
+  move: ExerciseMove;
+  unit: MachineUnit;
+  /** Absent for a lift with no record behind it — nothing to open. */
+  onOpen?: () => void;
+}) {
+  const up = move.deltaPct > 1;
+  const down = move.deltaPct < -1;
+  const body = (
+    <>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate text-sm font-semibold text-ink">{move.displayName}</span>
+        <span
+          className={`shrink-0 text-sm font-semibold tabular-nums ${
+            up ? 'text-good' : down ? 'text-danger' : 'text-muted'
+          }`}
+        >
+          {up ? '↑' : down ? '↓' : '·'} {fmtNum(Math.abs(move.deltaPct))}%
+        </span>
+      </div>
+      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted tabular-nums">
+        <span>{formatSetShort(move.previousKg, move.previousReps, unit)}</span>
+        <span aria-hidden="true">→</span>
+        <span className="font-semibold text-ink">
+          {formatSetShort(move.currentKg, move.currentReps, unit)}
+        </span>
+        {onOpen && <ChevronRight />}
+      </div>
+    </>
+  );
+  return (
+    <li>
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="w-full py-3 text-left active:bg-surface"
+        >
+          {body}
+        </button>
+      ) : (
+        <div className="py-3">{body}</div>
+      )}
+    </li>
   );
 }
 
@@ -713,6 +1075,11 @@ function formatBwDelta(kg: number, unit: BodyWeightUnit): string {
     return `${fmtNum(lb)} lb`;
   }
   return `${fmtNum(kg)} kg`;
+}
+
+/** A set as it was logged: the weight, then the reps hit on it. */
+function formatSetShort(kg: number, reps: number, unit: MachineUnit): string {
+  return `${formatLoadShort(kg, unit)} × ${reps}`;
 }
 
 function formatLoadShort(kg: number, unit: MachineUnit): string {
@@ -826,17 +1193,19 @@ function RecordDetail({
 
         {/* Three across, and compact: these support the headline above them
             rather than being the headline, which is why they aren't the
-            dashboard's stat tile. */}
+            dashboard's stat tile. The same MiniTile the dashboard's water and
+            steps sit in — one small-stat component, not two that differ by a
+            font size. */}
         <div className="mt-5 grid grid-cols-3 gap-2.5">
-          <MiniStat
+          <MiniTile
             label="Est. 1RM"
             value={record.best1RMkg > 0 ? formatLoadShort(record.best1RMkg, record.unit) : '–'}
           />
-          <MiniStat
+          <MiniTile
             label="Best reps"
             value={record.mostReps?.reps != null ? String(record.mostReps.reps) : '–'}
           />
-          <MiniStat label="Record date" value={shortDate(recordAchievedAt(record))} />
+          <MiniTile label="Record date" value={shortDate(recordAchievedAt(record))} />
         </div>
 
         {record.kind === 'weighted' && (
@@ -873,17 +1242,6 @@ function RecordDetail({
         )}
 
         <SessionHistoryList history={inRange} unit={record.unit} />
-      </div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-panel bg-paper-card p-3 shadow-card">
-      <div className="truncate text-caption text-muted">{label}</div>
-      <div className="mt-0.5 truncate text-base font-bold leading-tight tracking-tight text-ink tabular-nums">
-        {value}
       </div>
     </div>
   );
