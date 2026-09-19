@@ -43,8 +43,8 @@ import {
 import {
   bodyWeightChange,
   bodyWeightRange,
-  weekDailyAverage,
-  weekStartISO,
+  dailyAverage,
+  HABIT_WINDOW_DAYS,
   computeWeekStreak,
   computeWeeklyVolume,
   weekVsAveragePct,
@@ -135,9 +135,13 @@ const EMPTY_WEEK: WeekSummary = {
 
 /** Each source fails on its own; one missing table must not blank the tab. */
 async function loadAll(): Promise<Loaded> {
-  // Only this week is needed for the habit averages, so the water query is
-  // bounded rather than fetching a year to divide seven days by.
-  const weekFrom = weekStartISO(new Date());
+  // Bounded to what the habit average actually reads rather than fetching a
+  // year of rows to divide by. This used to ask for the current week only,
+  // which quietly capped the average at however much of this week had
+  // happened however wide the window said it was.
+  const from = new Date();
+  from.setDate(from.getDate() - (HABIT_WINDOW_DAYS - 1));
+  const weekFrom = `${from.getFullYear()}-${pad2(from.getMonth() + 1)}-${pad2(from.getDate())}`;
   const [perf, records, plan, sessions, week, water, steps] = await Promise.all([
     loadPerformanceData().catch(() => ({ sets: [], bodyWeights: [] })),
     loadRecords().catch(() => []),
@@ -199,8 +203,8 @@ export function Performance() {
     return {
       weeklyTarget,
       streak: computeWeekStreak(gymSessions, weeklyTarget),
-      water: weekDailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
-      steps: weekDailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
+      water: dailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
+      steps: dailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
       volume: computeWeeklyVolume(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       bodyWeight: summarizeBodyWeight(perf.bodyWeights, activatedAt),
@@ -260,8 +264,9 @@ export function Performance() {
     return (
       <div className="pb-nav min-h-screen bg-paper">
         <div
+          // No safe-area padding here: PageHeader's sticky bar carries it,
+          // and adding it again left the status-bar gap doubled.
           className="mx-auto max-w-md px-5"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}
         >
           <PageHeader title="All-time records" onBack={() => setView('dashboard')} />
           <div className="mt-4">
@@ -345,9 +350,11 @@ export function Performance() {
               </Block>
             )}
 
-            {/* How often, and the two habits. Averaged over the days actually
-                logged — see weekDailyAverage — so a well-tracked Tuesday and
-                Wednesday don't read as a failed week. */}
+            {/* How often, and the two habits. The habits average over three
+                weeks and over the days actually logged — see dailyAverage —
+                so a couple of missed days don't read as a collapse, and a
+                Monday with nothing written down yet doesn't blank the tile
+                entirely, which is what made steps look broken. */}
             <Block>
               <div className="grid grid-cols-3 gap-2.5">
                 <MiniTile
@@ -364,7 +371,7 @@ export function Performance() {
                       ? String(Math.round(derived.water.average * 10) / 10)
                       : '—'
                   }
-                  hint={derived.water.average != null ? 'per day' : 'Not tracked'}
+                  hint={derived.water.average != null ? 'per day · 3w' : 'Not tracked'}
                 />
                 <MiniTile
                   icon={<StepsIcon />}
@@ -374,7 +381,7 @@ export function Performance() {
                       ? formatSteps(Math.round(derived.steps.average))
                       : '—'
                   }
-                  hint={derived.steps.average != null ? 'per day' : 'Not tracked'}
+                  hint={derived.steps.average != null ? 'per day · 3w' : 'Not tracked'}
                 />
               </div>
             </Block>
@@ -1072,8 +1079,8 @@ function RecordDetail({
   return (
     <div className="pb-nav min-h-screen bg-paper">
       <div
+        // No safe-area padding here: PageHeader's sticky bar carries it.
         className="mx-auto max-w-md px-5"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0px)' }}
       >
         {/* PageHeader already draws the large title and collapses it into the
             sticky bar on scroll, so the movement's name is not repeated here.
