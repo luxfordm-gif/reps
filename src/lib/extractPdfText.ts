@@ -2,32 +2,111 @@
 // items' transform (x/y) coordinates to reconstruct the table rows, since
 // trainer plans are tabular and naive text extraction scrambles columns and
 // splits wrapped cells (long exercise names / notes) away from their row.
+//
+// pdf.js ships two builds, and we load the *legacy* one deliberately. The
+// default build is compiled for the very newest browsers: getDocument itself
+// calls Promise.withResolvers — Safari only got that in 17.4, March 2024 — and
+// the parser goes on to use Math.sumPrecise, Uint8Array.toBase64 and
+// AbortSignal.any, all newer still. On a phone a year or two behind, every
+// upload died inside pdf.js with "undefined is not a function" before a byte of
+// the plan had been read, and that raw browser error was what the screen showed.
+// The legacy build is the same parser, transpiled with its polyfills, and it's
+// the build the PDF corpus tests already run under Node — so what we test is now
+// what we ship.
+//
+// It's also ~1.4MB, and this is the only screen that needs it, so it loads on
+// demand rather than riding in the app bundle.
 
-import * as pdfjsLib from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { reconstructRows, type PositionedText } from './reconstructPdfRows';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+type Pdfjs = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+
+let loading: Promise<Pdfjs> | null = null;
+
+function loadPdfjs(): Promise<Pdfjs> {
+  if (!loading) {
+    loading = import('pdfjs-dist/legacy/build/pdf.mjs')
+      .then((lib) => {
+        lib.GlobalWorkerOptions.workerSrc = workerUrl;
+        return lib;
+      })
+      .catch((cause) => {
+        // A failed load must not be remembered: picking the file again on a
+        // better connection should get a fresh attempt, not the old rejection.
+        loading = null;
+        throw new Error(
+          "Couldn't load the PDF reader — check your connection and try again.",
+          { cause }
+        );
+      });
+  }
+  return loading;
+}
+
+/**
+ * What to tell someone when pdf.js won't read their file.
+ *
+ * Whatever comes out of here lands in the red box under the file picker, so it
+ * has to say what they can do about it. pdf.js's own errors are named rather
+ * than typed in any way we can switch on, and its message text is written for
+ * developers, so we translate the cases a trainer's plan actually hits.
+ */
+function describeReadFailure(err: unknown): Error {
+  const name = err instanceof Error ? err.name : '';
+  const detail = err instanceof Error ? err.message : String(err);
+  if (name === 'PasswordException') {
+    return new Error(
+      'That PDF is password-protected. Save an unlocked copy and upload that instead.'
+    );
+  }
+  if (name === 'InvalidPDFException' || name === 'MissingPDFException') {
+    return new Error(
+      "That file isn't a PDF Reps can read — it may be damaged, or not a PDF at all."
+    );
+  }
+  if (err instanceof TypeError || err instanceof ReferenceError) {
+    // The browser is missing something pdf.js needs. Nothing about the plan is
+    // wrong, so don't send them back to the file picker to try another file.
+    return new Error(
+      `This browser can't run the PDF reader (${detail}). Updating it, or opening Reps in another browser, should fix it.`
+    );
+  }
+  return new Error(`Couldn't read that PDF (${detail}).`);
+}
 
 export async function extractPdfText(file: File): Promise<string> {
+  const pdfjsLib = await loadPdfjs();
   const buffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
   const allLines: string[] = [];
 
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const content = await page.getTextContent();
-    const items = content.items as Array<{ str: string; transform: number[] }>;
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
 
-    const positioned: PositionedText[] = [];
-    for (const item of items) {
-      if (!item.str || !item.str.trim()) continue;
-      positioned.push({ x: item.transform[4], y: item.transform[5], str: item.str });
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      const items = content.items as Array<{ str?: string; transform?: number[] }>;
+
+      const positioned: PositionedText[] = [];
+      for (const item of items) {
+        // Marked-content items carry no text or position at all.
+        if (!item.str || !item.str.trim() || !item.transform) continue;
+        positioned.push({ x: item.transform[4], y: item.transform[5], str: item.str });
+      }
+
+      // Column geometry is per-page (headers repeat on each page), so reconstruct
+      // each page independently.
+      allLines.push(...reconstructRows(positioned));
     }
+  } catch (err) {
+    throw describeReadFailure(err);
+  }
 
-    // Column geometry is per-page (headers repeat on each page), so reconstruct
-    // each page independently.
-    allLines.push(...reconstructRows(positioned));
+  if (allLines.length === 0) {
+    throw new Error(
+      "There's no text in that PDF — it looks like a scan or a photo of a plan. Ask your trainer for the file they exported, and Reps can read that."
+    );
   }
 
   return allLines.join('\n');
