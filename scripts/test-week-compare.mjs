@@ -1,9 +1,9 @@
 // Tests the week-against-week comparison and the weekly intensity series.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-week-compare.mjs
 import {
-  compareWeeks,
-  compareWindow,
-  computeWeeklyVolume,
+  compareWeeks as compareWeeksAt,
+  compareWindow as compareWindowAt,
+  computeWeeklyVolume as computeWeeklyVolumeAt,
   weekVsAveragePct,
   countSessionsByExercise,
 } from '../src/lib/dashboard.ts';
@@ -31,6 +31,19 @@ const set = (name, weight, reps, daysAgo) => ({
   completedAt: at(daysAgo),
 });
 const session = (daysAgo) => ({ completed_at: at(daysAgo) });
+
+// Every fixture here is dated backwards from NOW, so the functions under test
+// have to be read from NOW as well. They fall back to the real clock when that
+// argument is left off, which doesn't fail — it quietly moves the week
+// boundaries out from under the fixtures, so a case that omitted it passed in
+// the week it was written and failed from the next Monday on. Defaulted here so
+// a call can't be dated from today by accident.
+const compareWeeks = (sets, sessions, weeksBack, now = NOW) =>
+  compareWeeksAt(sets, sessions, weeksBack, now);
+const compareWindow = (sets, sessions, days, now = NOW) =>
+  compareWindowAt(sets, sessions, days, now);
+const computeWeeklyVolume = (sets, weeks, now = NOW) =>
+  computeWeeklyVolumeAt(sets, weeks, now);
 
 console.log('\n=== a lift is only compared where both weeks have it ===');
 {
