@@ -18,12 +18,21 @@
 
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, extname, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { reconstructRows } from '../src/lib/reconstructPdfRows.ts';
 import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
 import { parseSetMods } from '../src/lib/parseSetMods.ts';
 import { restSecondsForExercises } from '../src/lib/restDefaults.ts';
 import { normalizePositions, planProblems, withUids } from '../src/lib/planRepair.ts';
+
+/** The standard fonts the app serves, read straight from the package here.
+ *  A plan names Helvetica without embedding it, and the character widths are
+ *  what put each word in a column — so the corpus has to be read with the same
+ *  font data the browser gets, or it isn't reading what users read. */
+const STANDARD_FONT_DATA_URL = fileURLToPath(
+  new URL('../node_modules/pdfjs-dist/standard_fonts/', import.meta.url)
+);
 
 const args = process.argv.slice(2);
 const dump = args.includes('--dump');
@@ -50,7 +59,11 @@ async function collectPdfs(paths) {
  *  the app ships) and the same positioned-text reconstruction, without the Vite
  *  `?url` worker import that only resolves in the browser. */
 async function extractLines(data) {
-  const pdf = await pdfjsLib.getDocument({ data, useSystemFonts: false }).promise;
+  const pdf = await pdfjsLib.getDocument({
+    data,
+    useSystemFonts: false,
+    standardFontDataUrl: STANDARD_FONT_DATA_URL,
+  }).promise;
   const lines = [];
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);

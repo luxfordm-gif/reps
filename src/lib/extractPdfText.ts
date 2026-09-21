@@ -90,13 +90,33 @@ function describeReadFailure(err: unknown): Error {
   return new Error(`Couldn't read that PDF (${detail}).`);
 }
 
+/**
+ * Where the build serves pdf.js's standard fonts (see vite.config.ts).
+ *
+ * A plan PDF names Helvetica and leaves it out of the file — that's what every
+ * tool a trainer exports from does — so pdf.js needs a copy of its own to know
+ * how wide each character is. Character widths are how we know where a word
+ * sits on the page, and where it sits is how we know which column it's in.
+ */
+const STANDARD_FONT_DATA_URL = `${import.meta.env.BASE_URL}assets/standard_fonts/`;
+
 export async function extractPdfText(file: File): Promise<string> {
   const pdfjsLib = await loadPdfjs();
   const buffer = await file.arrayBuffer();
   const allLines: string[] = [];
 
   try {
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const pdf = await pdfjsLib.getDocument({
+      data: buffer,
+      standardFontDataUrl: STANDARD_FONT_DATA_URL,
+      // Left to itself, pdf.js measures a font the PDF didn't embed using
+      // whichever Helvetica the phone happens to have — so the same plan is
+      // measured slightly differently on an iPhone, a Pixel and the machine
+      // the corpus tests run on, and the column boundaries move with it. The
+      // fonts above ship with the reader and are the ones those tests measure
+      // with, so this pins every device to them.
+      useSystemFonts: false,
+    }).promise;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
