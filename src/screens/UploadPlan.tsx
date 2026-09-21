@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { extractPdfText } from '../lib/extractPdfText';
+import { extractPdfText, prewarmPdfReader } from '../lib/extractPdfText';
 import {
   parseTrainingPlan,
   type ParsedExercise,
@@ -95,6 +95,14 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   // made the two disagree: a machine in the current plan was reset by default,
   // while one from an older plan silently kept its weights and was never asked
   // about. Machines with no logged sets are left out — there's nothing to carry.
+  // The PDF reader is a 1.4MB download that only this screen needs, so it's
+  // fetched on demand — which puts it on the clock between choosing a file and
+  // seeing the plan. Starting it now moves that wait into the time it takes to
+  // find the file.
+  useEffect(() => {
+    prewarmPdfReader();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     listMachines()
@@ -470,7 +478,12 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
             />
             <div>
               {parsing ? (
-                <div className="text-sm text-muted">Reading PDF…</div>
+                // Something that moves: on a slow connection this sits for a
+                // few seconds, and a line of static text reads as a hang.
+                <div className="flex items-center justify-center gap-2.5 text-sm text-muted">
+                  <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-line border-t-muted" />
+                  Reading PDF…
+                </div>
               ) : file ? (
                 <>
                   <div className="text-sm font-semibold text-ink">{file.name}</div>

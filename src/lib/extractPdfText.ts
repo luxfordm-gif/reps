@@ -45,6 +45,21 @@ function loadPdfjs(): Promise<Pdfjs> {
 }
 
 /**
+ * Start fetching the reader before there's a file to read.
+ *
+ * The upload screen calls this when it opens. Reading a plan takes about a
+ * fifth of a second once the reader is here, but fetching the reader is 1-4
+ * seconds on gym signal, and it used to be spent staring at the file picker's
+ * drop zone. Spent instead while someone hunts through Files for their plan,
+ * it's usually over before they've chosen one. Failure is silent on purpose:
+ * extractPdfText tries again on the real upload, and has something to say if
+ * it fails then.
+ */
+export function prewarmPdfReader(): void {
+  loadPdfjs().catch(() => {});
+}
+
+/**
  * What to tell someone when pdf.js won't read their file.
  *
  * Whatever comes out of here lands in the red box under the file picker, so it
