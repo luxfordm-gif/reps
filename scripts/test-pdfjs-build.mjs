@@ -16,6 +16,7 @@ import { readFile } from 'node:fs/promises';
 
 const APP = 'src/lib/extractPdfText.ts';
 const CORPUS = ['scripts/test-plan-corpus.mjs', 'scripts/stress-pdfs.mjs'];
+const VITE_CONFIG = 'vite.config.ts';
 const LEGACY_LIB = 'pdfjs-dist/legacy/build/pdf.mjs';
 const LEGACY_WORKER = 'pdfjs-dist/legacy/build/pdf.worker.min.mjs';
 
@@ -64,6 +65,49 @@ for (const file of CORPUS) {
     `${file} tests the same reader the app ships`,
     used.some((s) => s.split('?')[0] === LEGACY_LIB),
     `found: ${used.join(', ') || 'none'}`
+  );
+}
+
+// Standard fonts: a plan names Helvetica and doesn't embed it, so pdf.js needs
+// its own copy to know how wide each character is — and character widths are
+// what put a word in a column. The app serves them from the path vite.config.ts
+// emits them to, and the corpus has to read with the same font data, or it
+// isn't measuring what users measure.
+const viteConfig = await readFile(new URL(`../${VITE_CONFIG}`, import.meta.url), 'utf8');
+const fontsPath = viteConfig.match(/STANDARD_FONTS_PATH = '([^']+)'/)?.[1];
+const appSource = await readFile(new URL(`../${APP}`, import.meta.url), 'utf8');
+
+check(`${VITE_CONFIG} names a path for the standard fonts`, Boolean(fontsPath), 'no STANDARD_FONTS_PATH found');
+check(
+  `${APP} asks for the standard fonts`,
+  /standardFontDataUrl/.test(appSource),
+  'no standardFontDataUrl passed to getDocument'
+);
+check(
+  `${APP} asks for them where the build puts them`,
+  Boolean(fontsPath) && appSource.includes(fontsPath),
+  `build emits to '${fontsPath}', which ${APP} never mentions`
+);
+// And they have to be the fonts actually measured with. Left to itself pdf.js
+// measures a non-embedded font with whatever the device has installed, which
+// differs between an iPhone, a Pixel and this machine — so the app pins it off
+// the same way the corpus runners do.
+check(
+  `${APP} measures with the shipped fonts, not the phone's`,
+  /useSystemFonts:\s*false/.test(appSource),
+  'useSystemFonts is not pinned to false'
+);
+for (const file of CORPUS) {
+  const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+  check(
+    `${file} reads with the same font data`,
+    /standardFontDataUrl/.test(source),
+    'no standardFontDataUrl passed to getDocument'
+  );
+  check(
+    `${file} measures with the same fonts`,
+    /useSystemFonts:\s*false/.test(source),
+    'useSystemFonts is not pinned to false'
   );
 }
 

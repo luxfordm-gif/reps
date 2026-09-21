@@ -25,6 +25,14 @@ import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
 import { reconstructRows } from '../src/lib/reconstructPdfRows.ts';
 import { FORMAT_A_TEXT, FORMAT_B_TEXT } from './fixtures/plans/trainer-formats.mjs';
 
+/** The standard fonts the app serves, read straight from the package here.
+ *  A plan names Helvetica without embedding it, and the character widths are
+ *  what put each word in a column — so the corpus has to be read with the same
+ *  font data the browser gets, or it isn't reading what users read. */
+const STANDARD_FONT_DATA_URL = fileURLToPath(
+  new URL('../node_modules/pdfjs-dist/standard_fonts/', import.meta.url)
+);
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PDF_DIR = join(HERE, 'fixtures', 'plans');
 
@@ -188,7 +196,11 @@ const CORPUS = [
 
 async function pdfText(file) {
   const data = new Uint8Array(await readFile(join(PDF_DIR, file)));
-  const pdf = await pdfjsLib.getDocument({ data, useSystemFonts: false }).promise;
+  const pdf = await pdfjsLib.getDocument({
+    data,
+    useSystemFonts: false,
+    standardFontDataUrl: STANDARD_FONT_DATA_URL,
+  }).promise;
   const lines = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     const content = await (await pdf.getPage(p)).getTextContent();
