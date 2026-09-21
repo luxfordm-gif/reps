@@ -46,8 +46,9 @@ async function collectPdfs(paths) {
   return out;
 }
 
-/** The Node-side twin of extractPdfText: same positioned-text reconstruction,
- *  without the Vite `?url` worker import that only resolves in the browser. */
+/** The Node-side twin of extractPdfText: the same pdf.js build (legacy, the one
+ *  the app ships) and the same positioned-text reconstruction, without the Vite
+ *  `?url` worker import that only resolves in the browser. */
 async function extractLines(data) {
   const pdf = await pdfjsLib.getDocument({ data, useSystemFonts: false }).promise;
   const lines = [];
