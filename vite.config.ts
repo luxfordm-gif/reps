@@ -154,8 +154,19 @@ function precacheServiceWorker(): Plugin {
   }
 }
 
+/**
+ * Which bundle this is, for the detail block under an error message.
+ *
+ * The changelog's version is a date, and a date can't tell two deploys on the
+ * same day apart — which is exactly the day a fix goes out and someone reports
+ * it still broken. This is stamped per build, so a pasted report says whether
+ * the phone was running the fix or still holding yesterday's from its cache.
+ */
+const BUILD_STAMP = new Date().toISOString()
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: { __BUILD_STAMP__: JSON.stringify(BUILD_STAMP) },
   plugins: [react(), pdfjsStandardFonts(), precacheServiceWorker()],
   build: {
     // Stated rather than inherited from whatever the bundler's default is this
