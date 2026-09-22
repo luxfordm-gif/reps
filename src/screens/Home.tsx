@@ -24,6 +24,7 @@ import type { Profile } from '../lib/profileApi';
 import { greetingName } from '../lib/displayName';
 import { useElapsedLabel } from '../lib/elapsed';
 import { haptics } from '../lib/haptics';
+import { notePlanState } from '../lib/installPrompt';
 import { WaterIcon, StepsIcon } from '../components/Tile';
 
 type Day = FullPlan['training_days'][number];
@@ -254,6 +255,14 @@ export function Home({
       mounted = false;
     };
   }, []);
+
+  // Home is the one screen that knows whether there's a plan, and the install
+  // banner — which App renders over the top of it — has to wait for one. Told
+  // from an effect on the loaded value, so it covers both the cached hydrate
+  // and the refresh that follows.
+  useEffect(() => {
+    notePlanState(plan != null);
+  }, [plan]);
 
   // The day the open session belongs to, and the exercise to drop back into:
   // the last one a set was logged on, or the first if nothing has been logged

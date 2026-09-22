@@ -471,18 +471,21 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       <div
         className="mx-auto max-w-md px-5 pt-3"
         // With a back arrow, PageHeader's sticky bar carries the status-bar
-        // inset. Without one there is no bar, so the page owes it itself.
-        style={standalone ? { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' } : undefined}
+        // inset. Without one this is a tab screen like Performance and Home,
+        // and it owes the inset itself — plus the same 40px, so the title sits
+        // exactly where theirs do and nothing moves when you switch tabs.
+        style={standalone ? { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' } : undefined}
       >
         <PageHeader title="Upload plan" onBack={onCancel} />
 
-        <p className="mt-6 text-base text-muted">
-          Drop in the PDF from your trainer. Reps will turn it into your training days.
-        </p>
-
         {!parsed && (
+          // Same offset as the empty card on Performance (mt-12), and the same
+          // shape inside it — icon, one bold line, the explanation under it.
+          // Switching between the two tabs before there's a plan shouldn't
+          // move anything, so the sentence that used to sit above the box now
+          // sits in it rather than pushing it down the screen.
           <label
-            className={`mt-8 flex h-44 cursor-pointer items-center justify-center rounded-card border-2 border-dashed border-line bg-paper-card px-5 text-center transition-colors ${
+            className={`mt-12 flex min-h-[11rem] cursor-pointer items-center justify-center rounded-card border-2 border-dashed border-line bg-paper-card px-6 py-8 text-center transition-colors ${
               parsing ? 'opacity-60' : 'active:border-ink'
             }`}
           >
@@ -515,7 +518,10 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                   <div className="mt-2 text-sm font-semibold text-ink">
                     Tap to choose a PDF
                   </div>
-                  <div className="mt-0.5 text-xs text-muted">Max 10MB</div>
+                  <p className="mt-1 text-sm text-muted">
+                    Drop in the PDF from your trainer. Reps will turn it into your training days.
+                  </p>
+                  <div className="mt-2 text-xs text-muted">Max 10MB</div>
                 </>
               )}
             </div>

@@ -53,6 +53,20 @@ export const DISMISSED_KEY = 'reps.installPrompt.dismissedAt';
  */
 export const SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** When a plan was first seen on this device, in epoch ms. */
+export const PLAN_READY_KEY = 'reps.installPrompt.planReadyAt';
+
+/**
+ * How long after the first plan lands before the banner is allowed to speak.
+ *
+ * Nothing should be asked of someone who is still arriving. Until a plan is in
+ * there is only one thing to do on this app — upload one — and a card about
+ * home screens on top of that screen is noise in the one place there was none.
+ * Even once the plan is in, the minutes straight after are spent reading it,
+ * so the banner waits those out too and turns up on a later visit instead.
+ */
+export const PLAN_GRACE_MS = 5 * 60 * 1000;
+
 // --- Detection -----------------------------------------------------------------
 
 /**
@@ -108,6 +122,14 @@ export interface InstallEnv {
   ios: IosBrowser | null;
   /** When "Not now" was last tapped, in epoch ms. */
   dismissedAt: number | null;
+  /** Is there an active plan right now? */
+  hasPlan: boolean;
+  /**
+   * When a plan was first seen on this device, in epoch ms — null until one
+   * has been. Persisted, so the grace period is served once rather than
+   * restarting on every launch.
+   */
+  planReadyAt: number | null;
   now: number;
 }
 
@@ -118,6 +140,11 @@ export interface InstallEnv {
 export function chooseInstallAdvice(env: InstallEnv): InstallAdvice {
   if (env.installed) return null;
   if (env.dismissedAt != null && env.now - env.dismissedAt < SNOOZE_MS) return null;
+  // Nothing until there's a plan, and nothing for a while after it lands.
+  // Someone still uploading — or still filling in their name — is being asked
+  // to commit to an app they haven't seen do anything yet.
+  if (!env.hasPlan) return null;
+  if (env.planReadyAt == null || env.now - env.planReadyAt < PLAN_GRACE_MS) return null;
   // A held prompt beats the iOS advice: if a browser gave us one, one tap is
   // always better than a paragraph of instructions.
   if (env.hasDeferredPrompt) return 'prompt';
@@ -152,6 +179,55 @@ export function markDismissed(now: number = Date.now()): void {
     // Private mode. The banner comes back next launch; that's the cost.
   }
   notify();
+}
+
+// --- The plan gate -------------------------------------------------------------
+
+/**
+ * Whether there is a plan right now. Session-only and default false: the
+ * banner stays quiet until Home has actually loaded and said otherwise, which
+ * is also what keeps it quiet for a second account signing in on a phone that
+ * already carries the stamp below.
+ */
+let hasPlan = false;
+
+/**
+ * A mirror of the persisted stamp, for a browser that won't give us storage.
+ * Without it Safari's private mode would never open the gate at all.
+ */
+let planReadyAtMemo: number | null = null;
+
+export function readPlanReadyAt(): number | null {
+  if (typeof window === 'undefined') return planReadyAtMemo;
+  try {
+    const raw = window.localStorage.getItem(PLAN_READY_KEY);
+    const n = raw == null ? NaN : Number(raw);
+    if (Number.isFinite(n)) return n;
+  } catch {
+    // Private mode. The in-memory copy is all there is.
+  }
+  return planReadyAtMemo;
+}
+
+/**
+ * Home reporting what it just loaded. Called with `true` the first time a plan
+ * is seen, which starts the grace period; the stamp is written once and never
+ * moved, so uploading a second plan doesn't buy another five minutes of quiet.
+ */
+export function notePlanState(present: boolean, now: number = Date.now()): void {
+  const had = hasPlan;
+  hasPlan = present;
+  let stamped = false;
+  if (present && readPlanReadyAt() == null) {
+    planReadyAtMemo = now;
+    try {
+      window.localStorage.setItem(PLAN_READY_KEY, String(now));
+    } catch {
+      // Private mode: the stamp lasts as long as the tab does.
+    }
+    stamped = true;
+  }
+  if (stamped || had !== present) notify();
 }
 
 // --- The live bit --------------------------------------------------------------
@@ -209,6 +285,8 @@ export function readInstallEnv(): InstallEnv {
         ? null
         : detectIos(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
     dismissedAt: readDismissedAt(),
+    hasPlan,
+    planReadyAt: readPlanReadyAt(),
     now: Date.now(),
   };
 }
