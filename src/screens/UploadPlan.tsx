@@ -598,13 +598,14 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
         />
 
         {!parsed && (
-          // Same offset as the empty card on Performance (mt-12), and the same
-          // shape inside it — icon, one bold line, the explanation under it.
+          // The same gap under the title as the first card on Performance
+          // (mt-2 + Block's first:mt-6 = mt-8), and the same shape inside it —
+          // icon, one bold line, the explanation under it.
           // Switching between the two tabs before there's a plan shouldn't
           // move anything, so the sentence that used to sit above the box now
           // sits in it rather than pushing it down the screen.
           <label
-            className={`mt-12 flex min-h-[11rem] cursor-pointer items-center justify-center rounded-card border-2 border-dashed border-line bg-paper-card px-6 py-8 text-center transition-colors ${
+            className={`mt-8 flex min-h-[11rem] cursor-pointer items-center justify-center rounded-card border-2 border-dashed border-line bg-paper-card px-6 py-8 text-center transition-colors ${
               parsing ? 'opacity-60' : 'active:border-ink'
             }`}
           >

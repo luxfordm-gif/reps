@@ -1487,7 +1487,10 @@ function LoadingState() {
 
 function EmptyState() {
   return (
-    <div className="mt-12 rounded-card bg-paper-card p-8 text-center shadow-card">
+    // The same gap under the title as a populated Performance (mt-2 + Block's
+    // first:mt-6) and as the upload screen's drop zone, so nothing jumps
+    // between the two tabs before there's a plan.
+    <div className="mt-8 rounded-card bg-paper-card p-8 text-center shadow-card">
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-paper text-muted">
         <svg width="24" height="24" viewBox="0 0 22 22" fill="none">
           <path
