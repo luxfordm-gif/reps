@@ -27,6 +27,26 @@ import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { reconstructRows, type PositionedText } from './reconstructPdfRows';
 import { installStreamAsyncIterator } from './streamAsyncIterator';
 
+/**
+ * A read that failed, with enough on it to write a report.
+ *
+ * `message` is for the person holding the phone and says what to do next.
+ * `code` and `doing` are for whoever they forward it to: the code names the
+ * kind of failure in words that don't drift when we rewrite the message, and
+ * `doing` says how far the read had got. The browser's own error rides along
+ * as `cause` — it belongs in the detail block, not in the sentence.
+ */
+export class PlanReadError extends Error {
+  readonly code: string;
+  readonly doing: string;
+  constructor(message: string, info: { code: string; doing: string; cause?: unknown }) {
+    super(message, { cause: info.cause });
+    this.name = 'PlanReadError';
+    this.code = info.code;
+    this.doing = info.doing;
+  }
+}
+
 type Pdfjs = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
 let loading: Promise<Pdfjs> | null = null;
@@ -45,9 +65,9 @@ function loadPdfjs(): Promise<Pdfjs> {
         // A failed load must not be remembered: picking the file again on a
         // better connection should get a fresh attempt, not the old rejection.
         loading = null;
-        throw new Error(
+        throw new PlanReadError(
           "Couldn't load the PDF reader — check your connection and try again.",
-          { cause }
+          { code: 'reader-download', doing: 'downloading the PDF reader', cause }
         );
       });
   }
@@ -76,28 +96,41 @@ export function prewarmPdfReader(): void {
  * has to say what they can do about it. pdf.js's own errors are named rather
  * than typed in any way we can switch on, and its message text is written for
  * developers, so we translate the cases a trainer's plan actually hits.
+ *
+ * The browser's own words aren't in the sentence any more. They were, and what
+ * a tester saw was a line of app copy with "undefined is not a function (near
+ * '...e of t...')" wedged into the middle of it — unreadable as English and
+ * useless as a bug report, because the one thing it didn't say was which
+ * browser. They're in the detail block under the message now, where they sit
+ * beside the iOS version and can be copied in one tap.
  */
-function describeReadFailure(err: unknown): Error {
+function describeReadFailure(err: unknown, doing: string): PlanReadError {
   const name = err instanceof Error ? err.name : '';
-  const detail = err instanceof Error ? err.message : String(err);
   if (name === 'PasswordException') {
-    return new Error(
-      'That PDF is password-protected. Save an unlocked copy and upload that instead.'
+    return new PlanReadError(
+      'That PDF is password-protected. Save an unlocked copy and upload that instead.',
+      { code: 'pdf-password', doing, cause: err }
     );
   }
   if (name === 'InvalidPDFException' || name === 'MissingPDFException') {
-    return new Error(
-      "That file isn't a PDF Reps can read — it may be damaged, or not a PDF at all."
+    return new PlanReadError(
+      "That file isn't a PDF Reps can read — it may be damaged, or not a PDF at all.",
+      { code: 'pdf-damaged', doing, cause: err }
     );
   }
   if (err instanceof TypeError || err instanceof ReferenceError) {
     // The browser is missing something pdf.js needs. Nothing about the plan is
     // wrong, so don't send them back to the file picker to try another file.
-    return new Error(
-      `This browser can't run the PDF reader (${detail}). Updating it, or opening Reps in another browser, should fix it.`
+    return new PlanReadError(
+      "This browser can't run the PDF reader. Updating it, or opening Reps in another browser, should fix it — and sending the details below would help us fix it properly.",
+      { code: 'browser-too-old', doing, cause: err }
     );
   }
-  return new Error(`Couldn't read that PDF (${detail}).`);
+  return new PlanReadError("Couldn't read that PDF.", {
+    code: 'pdf-unreadable',
+    doing,
+    cause: err,
+  });
 }
 
 /**
@@ -115,6 +148,11 @@ export async function extractPdfText(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const allLines: string[] = [];
 
+  // Kept current as the read moves through the file, so a failure can say how
+  // far it got. "Opening the PDF" and "reading page 4" are different bugs, and
+  // which one it was is the first thing anyone looking at the report asks.
+  let doing = 'opening the PDF';
+
   try {
     const pdf = await pdfjsLib.getDocument({
       data: buffer,
@@ -129,6 +167,7 @@ export async function extractPdfText(file: File): Promise<string> {
     }).promise;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      doing = `reading page ${pageNum} of ${pdf.numPages}`;
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
       const items = content.items as Array<{ str?: string; transform?: number[] }>;
@@ -145,12 +184,13 @@ export async function extractPdfText(file: File): Promise<string> {
       allLines.push(...reconstructRows(positioned));
     }
   } catch (err) {
-    throw describeReadFailure(err);
+    throw describeReadFailure(err, doing);
   }
 
   if (allLines.length === 0) {
-    throw new Error(
-      "There's no text in that PDF — it looks like a scan or a photo of a plan. Ask your trainer for the file they exported, and Reps can read that."
+    throw new PlanReadError(
+      "There's no text in that PDF — it looks like a scan or a photo of a plan. Ask your trainer for the file they exported, and Reps can read that.",
+      { code: 'pdf-no-text', doing: 'reading the text out of the PDF' }
     );
   }
 

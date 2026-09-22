@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { extractPdfText, prewarmPdfReader } from '../lib/extractPdfText';
+import { PlanReadError, extractPdfText, prewarmPdfReader } from '../lib/extractPdfText';
+import { buildErrorReport } from '../lib/errorReport';
 import {
   parseTrainingPlan,
   type ParsedExercise,
@@ -21,6 +22,7 @@ import {
 import { restLabel, restSecondsForExercises } from '../lib/restDefaults';
 import { formatNameList, groupedSetLabel } from '../lib/supersets';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ErrorPanel } from '../components/ErrorPanel';
 import { PageHeader } from '../components/PageHeader';
 import { DayEditorSheet, ExerciseEditorSheet } from '../components/PlanRepairSheets';
 import {
@@ -35,6 +37,36 @@ import {
   withUids,
   type ExerciseDraft,
 } from '../lib/planRepair';
+
+/** What the red box shows: the sentence, and the block under it to send on. */
+interface UploadError {
+  message: string;
+  report: string | null;
+}
+
+/**
+ * Turn whatever was thrown into both halves of the red box.
+ *
+ * extractPdfText says where it got to and what kind of failure it was; anything
+ * else — the parser, a save — is described by the caller, which knows what it
+ * was doing even when the error doesn't.
+ */
+function uploadError(
+  e: unknown,
+  fallback: { code: string; doing: string; message: string },
+  file: File | null
+): UploadError {
+  const read = e instanceof PlanReadError ? e : null;
+  return {
+    message: e instanceof Error && e.message ? e.message : fallback.message,
+    report: buildErrorReport({
+      code: read?.code ?? fallback.code,
+      doing: read?.doing ?? fallback.doing,
+      cause: read?.cause ?? e,
+      file,
+    }),
+  };
+}
 
 /** Stable identity for a row while it's being edited (see planRepair.withUids). */
 const keyOf = (e: ParsedExercise): string => e.uid ?? `${e.name}#${e.position}`;
@@ -85,7 +117,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }, [parsed]);
   const [rawText, setRawText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UploadError | null>(null);
   const [previousExercises, setPreviousExercises] = useState<PreviousExercise[]>([]);
   const [matches, setMatches] = useState<Map<string, Match>>(new Map());
   // The repair sheets: fixing a row the parser got wrong, or a day's name/week.
@@ -162,7 +194,8 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     const problem = describePlanFileProblem(f);
     if (problem) {
       // Leave the previous selection alone — nothing about this file was read.
-      setError(problem);
+      // No report either: this one says everything it knows in its sentence.
+      setError({ message: problem, report: null });
       return;
     }
     setError(null);
@@ -180,7 +213,13 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       setEditor(null);
       setDayEditor(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to parse PDF');
+      setError(
+        uploadError(
+          e,
+          { code: 'plan-parse', doing: 'reading the plan', message: 'Failed to parse PDF' },
+          f
+        )
+      );
     } finally {
       setParsing(false);
     }
@@ -209,7 +248,13 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       await savePlan(normalized, planName, rawText, { historyResetKeys });
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save plan');
+      setError(
+        uploadError(
+          e,
+          { code: 'plan-save', doing: 'saving the plan', message: 'Failed to save plan' },
+          file
+        )
+      );
     } finally {
       setSaving(false);
     }
@@ -523,9 +568,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
         )}
 
         {error && (
-          <div className="mt-4 rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">
-            {error}
-          </div>
+          <ErrorPanel className="mt-4" message={error.message} report={error.report} />
         )}
 
         {parsed && (
