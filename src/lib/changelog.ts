@@ -10,6 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-22.2',
+    title: "What's new",
+    bullets: [
+      'Setup no longer wipes what you\u2019ve already told us \u2014 opening it again and leaving a question blank used to put \u201CNot set\u201D through the whole of Personal details. A question you skip is simply left as it was',
+      'The last screen of setup is just Get started. If you did skip anything it says what, with a tap to fill it in there and then',
+      'Tapping a field no longer zooms the page in on an iPhone and leave it zoomed',
+      'Setup holds still as you type: the question stays where it is instead of sliding down the screen and taking Continue off the bottom with it',
+      'Checking an imported plan is its own screen now \u2014 the tab bar steps out of the way of Save plan, and a cross in the corner asks before it throws the import away',
+      'Each exercise reads down the left \u2014 name, body part, then sets, reps and rest \u2014 so long names fit. The per-set pills only turn up where the coach notes actually change a set',
+      'A back day gets the back photograph even when it\u2019s called \u201CBack / Rear Delt\u201D, and the same goes for any day named after two muscle groups',
+      'Adding an exercise under a day no longer asks which day, and Profile says what to do when there\u2019s no plan rather than leaving a gap above Upload plan',
+    ],
+  },
+  {
     version: '2026-09-22.1',
     title: "What's new",
     bullets: [

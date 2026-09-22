@@ -54,6 +54,9 @@ interface Props {
    * Must be stable (useCallback): it fires from an effect that runs whenever
    * its identity changes, and App re-renders on what it sets.
    */
+  /** Passed to the upload screen Home stands in for while there's no plan —
+   *  see UploadPlan's own prop. */
+  onUploadReviewingChange?: (reviewing: boolean) => void;
   onActiveWorkoutChange?: (info: ActiveWorkoutInfo | null) => void;
   /**
    * Whether the in-progress card is still on screen. The docked bar is the
@@ -168,6 +171,7 @@ export function Home({
   onTapDay,
   onResumeWorkout,
   profile,
+  onUploadReviewingChange,
   onActiveWorkoutChange,
   onActiveCardVisibilityChange,
 }: Props) {
@@ -365,7 +369,7 @@ export function Home({
     // here yet. No back arrow, for the same reason: this is the bottom of the
     // stack, and the tab bar is still there to get to the rest of the app.
     if (!offline) {
-      return <UploadPlan onSaved={onPlanSaved} />;
+      return <UploadPlan onSaved={onPlanSaved} onReviewingChange={onUploadReviewingChange} />;
     }
     // Offline there is nothing to upload to, so say what's happened instead.
     return (

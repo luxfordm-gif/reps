@@ -63,6 +63,12 @@ const ALIASES: Record<string, string> = {
   recovery: 'mobility',
   'active recovery': 'mobility',
   yoga: 'mobility',
+  lats: 'back',
+  traps: 'back',
+  'rear delt': 'shoulders',
+  'rear delts': 'shoulders',
+  'side delts': 'shoulders',
+  calves: 'legs',
 };
 
 /**
@@ -84,5 +90,20 @@ function normalise(dayName: string): string {
 
 export function imageForDay(dayName: string): string | null {
   const key = normalise(dayName);
+  const exact = lookup(key);
+  if (exact) return exact;
+  // A trainer's day is often two muscle groups in one heading — "Back / Rear
+  // Delt", "Chest + Triceps", "Legs and Abs". There's no photo named for a
+  // pair, and there shouldn't be one per combination either, so the first part
+  // we do recognise is the one the day gets its picture from. Reading left to
+  // right means the heading's own emphasis decides.
+  for (const part of key.split(/[/+&,]| and /)) {
+    const hit = lookup(normalise(part));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function lookup(key: string): string | null {
   return DAY_IMAGES[key] ?? DAY_IMAGES[ALIASES[key] ?? ''] ?? null;
 }

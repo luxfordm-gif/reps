@@ -15,6 +15,13 @@ import { iconForGoal } from '../lib/goalIcons';
 import { logBodyWeight } from '../lib/bodyWeightApi';
 import { cleanDisplayName, MAX_DISPLAY_NAME } from '../lib/displayName';
 import {
+  ONBOARDING_QUESTIONS,
+  answersToPatch,
+  unansweredQuestions,
+  type OnboardingAnswers,
+  type OnboardingQuestion,
+} from '../lib/onboardingPatch';
+import {
   getBodyWeightUnit,
   setBodyWeightUnit,
   stoneLbToKg,
@@ -32,9 +39,26 @@ interface Props {
   onClose: (completed: boolean) => void;
 }
 
-type Step = 'name' | 'gender' | 'birthday' | 'weight' | 'height' | 'goal' | 'experience' | 'ready';
-// Name first: it's the one answer the app shows straight back to you.
-const ORDER: Step[] = ['name', 'gender', 'birthday', 'weight', 'height', 'goal', 'experience', 'ready'];
+type Question = OnboardingQuestion;
+type Step = Question | 'ready';
+const ORDER: Step[] = [...ONBOARDING_QUESTIONS, 'ready'];
+
+/** How each question is named when the last screen lists what's still blank. */
+const QUESTION_LABELS: Record<Question, string> = {
+  name: 'name',
+  gender: 'gender',
+  birthday: 'birthday',
+  weight: 'weight',
+  height: 'height',
+  goal: 'goals',
+  experience: 'experience level',
+};
+
+/** "height", "weight and height", "a, b and c". */
+function listSentence(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
 
 const MOTIVATIONAL_LINES = [
   "Go get your dreams.",
@@ -72,37 +96,25 @@ export function Onboarding({ initial, onClose }: Props) {
   const stepIdx = ORDER.indexOf(step);
   const isLast = step === 'ready';
 
+  const answers: OnboardingAnswers = {
+    displayName: cleanDisplayName(name),
+    gender,
+    dateOfBirth: dob,
+    startingWeightKg: weightKg,
+    heightCm: heightCm,
+    topGoals: goals,
+    experience,
+  };
+
+  /** Questions the user skipped past, in the order they were asked. */
+  const unanswered = unansweredQuestions(answers);
+
   function patchForStep(s: Step): ProfilePatch {
-    switch (s) {
-      case 'name':
-        return { display_name: cleanDisplayName(name) };
-      case 'gender':
-        return { gender };
-      case 'birthday':
-        return { date_of_birth: dob || null };
-      case 'weight':
-        return { starting_weight_kg: weightKg };
-      case 'height':
-        return { height_cm: heightCm };
-      case 'goal':
-        return { top_goals: goals.length > 0 ? goals : null };
-      case 'experience':
-        return { experience_level: experience };
-      case 'ready':
-        return {};
-    }
+    return s === 'ready' ? {} : answersToPatch(answers, [s]);
   }
 
   function fullPatch(): ProfilePatch {
-    return {
-      display_name: cleanDisplayName(name),
-      gender,
-      date_of_birth: dob || null,
-      starting_weight_kg: weightKg,
-      height_cm: heightCm,
-      top_goals: goals.length > 0 ? goals : null,
-      experience_level: experience,
-    };
+    return answersToPatch(answers);
   }
 
   async function persistInitialWeightAsWeighIn() {
@@ -186,8 +198,9 @@ export function Onboarding({ initial, onClose }: Props) {
         busy={busy}
         error={error}
         motivationalLine={motivationalLine}
+        unanswered={unanswered}
         onFinish={handleFinish}
-        onExit={handleExit}
+        onFillIn={() => unanswered[0] && setStep(unanswered[0])}
       />
     );
   }
@@ -285,6 +298,10 @@ export function Onboarding({ initial, onClose }: Props) {
  * scroll, and sizing this box to the visual viewport puts the step in what the
  * keyboard has left rather than under it. What doesn't fit scrolls in here,
  * where the heading stays put and the Continue button is a swipe away.
+ *
+ * The box is only ever resized, never moved: see useVisualViewport for why
+ * offsetting it by the visual viewport's own offset moved the heading down the
+ * screen on iOS instead of holding it still.
  */
 function OnboardingSurface({ children }: { children: React.ReactNode }) {
   useScrollLock();
@@ -292,7 +309,7 @@ function OnboardingSurface({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="fixed inset-x-0 z-30 overflow-y-auto overscroll-contain bg-paper"
-      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
+      style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
     >
       {children}
     </div>
@@ -895,19 +912,32 @@ function StepExperience({
 
 // ---------- Step: Ready ----------
 
+/**
+ * The last screen of setup, and the only way out of it: Get started.
+ *
+ * There used to be an "I'll finish this later" underneath, which read as a
+ * second exit from a flow the user had just finished — and offered to defer
+ * work they'd already done. Anything genuinely left blank is worth saying out
+ * loud instead, with the one tap that goes back and fills it in; the X in the
+ * header is still there on every question for leaving setup part-way.
+ */
 function ReadyScreen({
   busy,
   error,
   motivationalLine,
+  unanswered,
   onFinish,
-  onExit,
+  onFillIn,
 }: {
   busy: boolean;
   error: string | null;
   motivationalLine: string;
+  unanswered: Question[];
   onFinish: () => void;
-  onExit: () => void;
+  onFillIn: () => void;
 }) {
+  const skipped = unanswered.length > 0;
+  const one = unanswered.length === 1;
   return (
     <OnboardingSurface>
       <div
@@ -923,7 +953,7 @@ function ReadyScreen({
             <CheckIcon />
           </div>
           <h1 className="mt-6 text-display font-bold leading-tight tracking-tight text-ink">
-            You're ready.
+            {skipped ? "You're all set." : "You're ready."}
           </h1>
           <p className="mt-2 text-base text-muted">{motivationalLine}</p>
         </div>
@@ -931,19 +961,30 @@ function ReadyScreen({
           {error && (
             <div className="mb-3 rounded-panel bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
           )}
+          {skipped && (
+            <div className="mb-3 rounded-panel bg-surface-strong px-4 py-3 text-left">
+              <p className="text-sm text-ink">
+                You skipped your {listSentence(unanswered.map((q) => QUESTION_LABELS[q]))}.
+              </p>
+              <p className="mt-0.5 text-sm text-muted">
+                You can add {one ? 'it' : 'them'} now, or any time from Profile → Personal
+                details.
+              </p>
+              <button
+                onClick={onFillIn}
+                disabled={busy}
+                className="mt-2 text-sm font-semibold text-ink underline underline-offset-2 active:opacity-60 disabled:opacity-50"
+              >
+                Fill {one ? 'it' : 'them'} in now
+              </button>
+            </div>
+          )}
           <button
             onClick={onFinish}
             disabled={busy}
             className="pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
           >
             {busy ? 'Please wait…' : 'Get started'}
-          </button>
-          <button
-            onClick={onExit}
-            disabled={busy}
-            className="mt-2 w-full py-2 text-sm font-semibold text-muted active:text-ink disabled:opacity-50"
-          >
-            I'll finish this later
           </button>
         </div>
       </div>

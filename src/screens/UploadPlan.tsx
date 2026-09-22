@@ -74,7 +74,19 @@ const keyOf = (e: ParsedExercise): string => e.uid ?? `${e.name}#${e.position}`;
 type EditorState =
   | null
   | { mode: 'edit'; dayIdx: number; exIdx: number }
-  | { mode: 'new'; dayIdx: number; prefill?: ExerciseDraft; sourceRaw?: string };
+  | {
+      mode: 'new';
+      dayIdx: number;
+      prefill?: ExerciseDraft;
+      sourceRaw?: string;
+      /**
+       * Whether the sheet asks which day this goes in. Only the lines that
+       * sat under no day have to: everywhere else the row is being added
+       * under a day heading you just tapped, so the day is already answered
+       * and `dayIdx` is it.
+       */
+      chooseDay?: boolean;
+    };
 
 function parseTargetReps(repRange: string): number | null {
   const match = repRange.match(/(\d+)\s*(?:-\s*(\d+))?/);
@@ -92,9 +104,17 @@ interface Props {
    */
   onCancel?: () => void;
   onSaved: () => void;
+  /**
+   * Told when a PDF has been read and the screen is a review rather than a
+   * picker. The host hides the tab bar while it's true: the review has its own
+   * way out, and the bar was sitting on top of the save button.
+   *
+   * Must keep its identity across renders — it's an effect dependency.
+   */
+  onReviewingChange?: (reviewing: boolean) => void;
 }
 
-export function UploadPlan({ onCancel, onSaved }: Props) {
+export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [planName, setPlanName] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -125,6 +145,8 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   const [dayEditor, setDayEditor] = useState<{ dayIdx: number } | 'new' | null>(null);
   // Saving with lines still unread is allowed, but not by accident.
   const [confirmDrop, setConfirmDrop] = useState(false);
+  // Leaving the review screen throws away everything read out of the PDF.
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
 
   // Candidates are every machine you have actually logged sets on, across all
@@ -223,6 +245,30 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     } finally {
       setParsing(false);
     }
+  }
+
+  /**
+   * Leave the review without saving.
+   *
+   * Nothing here has been written yet — the plan only exists in this
+   * component's state — so closing puts the screen back to choosing a file. As
+   * a modal that means handing back to whoever opened it; as the home screen
+   * there's nowhere to hand back to, so it returns to the empty picker.
+   */
+  function discardReview() {
+    setConfirmDiscard(false);
+    if (onCancel) {
+      onCancel();
+      return;
+    }
+    setParsed(null);
+    setFile(null);
+    setRawText('');
+    setPlanName('');
+    setMatches(new Map());
+    setEditor(null);
+    setDayEditor(null);
+    setError(null);
   }
 
   async function handleSave() {
@@ -503,11 +549,19 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
   }, [matches]);
 
   const standalone = !onCancel;
-  // The tab bar floats over the bottom of the screen when Upload is the home
-  // screen, so everything down there — the page's own tail, and the save bar —
-  // has to leave room for it. 5.75rem is what the bar occupies: its pill plus
-  // the padding it floats in.
-  const navRoom = standalone ? '5.75rem' : '0rem';
+  // Choosing a file turns this screen from a tab into a job: everything below
+  // is the plan being checked over, and the one way out is Save or the close
+  // button. The tab bar has no business over that — it was covering the save
+  // bar, and costing the review a sixth of the screen — so the host is told to
+  // put it away for as long as there's a plan up.
+  const reviewing = !!parsed;
+  useEffect(() => {
+    onReviewingChange?.(reviewing);
+    return () => onReviewingChange?.(false);
+  }, [reviewing, onReviewingChange]);
+  // Room at the bottom for the tab bar where it is still showing. 5.75rem is
+  // what it occupies: its pill plus the padding it floats in.
+  const navRoom = standalone && !reviewing ? '5.75rem' : '0rem';
   return (
     <div
       className={`min-h-screen bg-paper ${parsed ? 'pb-32' : standalone ? 'pb-nav' : 'pb-12'}`}
@@ -515,13 +569,33 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     >
       <div
         className="mx-auto max-w-md px-5 pt-3"
-        // With a back arrow, PageHeader's sticky bar carries the status-bar
-        // inset. Without one this is a tab screen like Performance and Home,
-        // and it owes the inset itself — plus the same 40px, so the title sits
-        // exactly where theirs do and nothing moves when you switch tabs.
-        style={standalone ? { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' } : undefined}
+        // With a back arrow or a close button, PageHeader's sticky bar carries
+        // the status-bar inset. With neither this is a tab screen like
+        // Performance and Home, and it owes the inset itself — plus the same
+        // 40px, so the title sits exactly where theirs do and nothing moves
+        // when you switch tabs.
+        style={
+          standalone && !reviewing
+            ? { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }
+            : undefined
+        }
       >
-        <PageHeader title="Upload plan" onBack={onCancel} />
+        <PageHeader
+          title="Upload plan"
+          onBack={reviewing ? undefined : onCancel}
+          rightAction={
+            reviewing ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDiscard(true)}
+                aria-label="Close without saving"
+                className="pressable flex h-11 w-11 items-center justify-center rounded-full text-muted active:bg-surface-strong active:text-ink"
+              >
+                <CloseIcon />
+              </button>
+            ) : undefined
+          }
+        />
 
         {!parsed && (
           // Same offset as the empty card on Performance (mt-12), and the same
@@ -580,14 +654,21 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
         {parsed && (
           <>
             <div className="mt-8">
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              <label
+                htmlFor="plan-name"
+                className="block text-xs font-semibold uppercase tracking-[0.12em] text-muted"
+              >
                 Plan name
               </label>
+              <p className="mt-1 text-sm text-muted">
+                Give it a quick nickname — it's what you'll see when you switch plans.
+              </p>
               <input
+                id="plan-name"
                 type="text"
                 value={planName}
                 onChange={(e) => setPlanName(e.target.value)}
-                className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-base text-ink focus:border-ink focus:outline-none"
+                className="mt-2 w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-base text-ink focus:border-ink focus:outline-none"
               />
             </div>
 
@@ -719,6 +800,7 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
                             dayIdx: 0,
                             prefill: guessDraftFromText(u.text),
                             sourceRaw: u.raw,
+                            chooseDay: true,
                           })
                         }
                         addDisabled={parsed.days.length === 0}
@@ -817,6 +899,17 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
         />
       )}
 
+      {confirmDiscard && (
+        <ConfirmModal
+          title="Discard this plan?"
+          message="It hasn't been saved. Close now and everything read out of the PDF — the days, the exercises and any edits you've made — is thrown away."
+          confirmLabel="Discard"
+          cancelLabel="Keep editing"
+          onConfirm={discardReview}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      )}
+
       {parsed && editor && (
         <ExerciseEditorSheet
           title={editor.mode === 'edit' ? 'Edit exercise' : 'Add exercise'}
@@ -825,7 +918,11 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
               ? draftFromExercise(parsed.days[editor.dayIdx].exercises[editor.exIdx])
               : editor.prefill ?? EMPTY_DRAFT
           }
-          dayOptions={parsed.days.map((d, idx) => ({ idx, name: d.name }))}
+          dayOptions={
+            editor.mode === 'edit' || editor.chooseDay
+              ? parsed.days.map((d, idx) => ({ idx, name: d.name }))
+              : []
+          }
           dayIdx={editor.dayIdx}
           sourceText={editor.mode === 'new' && editor.sourceRaw ? splitUnparsed(editor.sourceRaw).text : null}
           onSave={saveExercise}
@@ -1084,34 +1181,58 @@ function ExerciseReviewRow({
     return out;
   }, [exercise.notes, exercise.repRange, exercise.totalSets]);
 
+  /**
+   * Whether any set differs from the plain "n sets of the rep range" above.
+   *
+   * Three ways it can: a set carries drops or a scheme of its own, the sets
+   * disagree with each other, or they agree on a number that isn't the one the
+   * rep range implies — notes reading "all sets 8" under a 10-12 range are
+   * uniform, but not what the line above says.
+   */
+  const setsVary = useMemo(() => {
+    const base = parseTargetReps(exercise.repRange);
+    return sets.some(
+      (s) =>
+        s.drops.length > 0 ||
+        s.tag != null ||
+        s.reps !== sets[0].reps ||
+        (base != null && s.reps !== String(base))
+    );
+  }, [sets, exercise.repRange]);
+
   return (
     <div className="px-5 py-4">
+      {/* One left-hand column — name, muscle group, prescription — and the
+          pencil on its own at the right. Sets, reps and rest used to be a
+          right-aligned stack of their own, which cost the name half the row's
+          width and truncated most of them mid-word; read down the left they
+          line up with everything else and the names fit. */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-base font-semibold text-ink">
-            {exercise.name}
-          </div>
+          <div className="text-base font-semibold text-ink">{exercise.name}</div>
           {exercise.bodyPart && (
             <div className="mt-0.5 text-xs text-muted">{exercise.bodyPart}</div>
           )}
-        </div>
-        <div className="flex shrink-0 items-start gap-1">
-          <div className="text-right text-xs text-muted">
-            <div>
-              <span className="text-ink">{exercise.totalSets ?? '—'}</span> sets
-            </div>
-            <div>{exercise.repRange || '—'} reps</div>
-            {restSeconds != null && <div>{restLabel(restSeconds)} rest</div>}
+          <div className="mt-1 text-xs text-muted">
+            <span className="font-semibold text-ink">{exercise.totalSets ?? '—'}</span> sets
+            {' · '}
+            <span className="font-semibold text-ink">{exercise.repRange || '—'}</span> reps
+            {restSeconds != null && (
+              <>
+                {' · '}
+                <span className="font-semibold text-ink">{restLabel(restSeconds)}</span> rest
+              </>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label={`Edit ${exercise.name}`}
-            className="pressable -mr-2 -mt-1 flex h-8 w-8 items-center justify-center rounded-full text-muted active:bg-surface-strong"
-          >
-            <PencilIcon />
-          </button>
         </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`Edit ${exercise.name}`}
+          className="pressable -mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+        >
+          <PencilIcon />
+        </button>
       </div>
 
       {(exercise.supersetPartnerNames ?? []).length === 0 &&
@@ -1204,6 +1325,12 @@ function ExerciseReviewRow({
         />
       )}
 
+      {/* Three identical pills reading S1 12, S2 12, S3 12 under a line that
+          already says "3 sets · 10-12 reps" is the same fact three more times.
+          They earn their place only where the coach notes make a set differ
+          from the others — a drop set, a rep target of its own, a scheme —
+          which is exactly what the summary at the top asks you to check. */}
+      {setsVary && (
       <div className="mt-3 flex flex-wrap gap-1.5">
         {sets.map((s) => (
           <div
@@ -1226,6 +1353,7 @@ function ExerciseReviewRow({
           </div>
         ))}
       </div>
+      )}
 
       {(exercise.notes || editing) && (
         <div className="mt-3">
@@ -1275,6 +1403,19 @@ function ExerciseReviewRow({
         </div>
       )}
     </div>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M6 6l12 12M18 6L6 18"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

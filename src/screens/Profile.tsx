@@ -182,7 +182,18 @@ export function Profile({
                 </div>
               </>
             ) : planKnown ? (
-              <div className="text-sm text-muted">No plan loaded.</div>
+              // The empty state has to stand as tall as a loaded plan — three
+              // lines — or the card changes height the moment the answer
+              // arrives. "No plan loaded." on its own left most of that as a
+              // hole above the button, and said nothing about what to do; this
+              // fills the same space with the answer to "what now?".
+              <>
+                <div className="text-base font-semibold text-ink">No plan yet</div>
+                <div className="mt-0.5 text-sm text-muted">
+                  Upload the PDF your trainer gave you and Reps turns it into your training
+                  days.
+                </div>
+              </>
             ) : (
               <div className="animate-pulse" aria-hidden>
                 <div className="h-3 w-14 rounded bg-line" />

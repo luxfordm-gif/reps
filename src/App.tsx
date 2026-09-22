@@ -151,6 +151,9 @@ function Root() {
   // the card lives there — without that the bar flashes in for a frame before
   // the observer has had anything to report.
   const [activeCardVisible, setActiveCardVisible] = useState(true);
+  // True while the upload screen Home shows in place of a plan has a PDF up
+  // for review — see navVisible.
+  const [uploadReviewing, setUploadReviewing] = useState(false);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
 
@@ -247,9 +250,14 @@ function Root() {
     : -1;
 
   const navVisible =
-    screenKey === 'tab:home' ||
-    screenKey === 'tab:performance' ||
-    screenKey === 'tab:profile';
+    (screenKey === 'tab:home' ||
+      screenKey === 'tab:performance' ||
+      screenKey === 'tab:profile') &&
+    // Home *is* the upload screen until there's a plan, and once a PDF has
+    // been read that screen becomes a review with its own close button. The
+    // bar was floating over its save button; it stands down until the review
+    // is done with.
+    !uploadReviewing;
 
   // Both of these are read by effects in Home, so they have to keep the same
   // identity across renders — an inline arrow would re-run the effect that
@@ -475,6 +483,7 @@ function Root() {
             }}
             profile={profile}
             onResumeWorkout={handleResumeWorkout}
+            onUploadReviewingChange={setUploadReviewing}
             onActiveWorkoutChange={setActiveWorkout}
             onActiveCardVisibilityChange={setActiveCardVisible}
           />

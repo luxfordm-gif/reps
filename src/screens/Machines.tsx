@@ -905,7 +905,7 @@ function MachineEditModal({
   return (
     <div
       className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 px-0 backdrop-blur-sm sm:items-center sm:px-6"
-      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
+      style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onClose}
     >
       <div

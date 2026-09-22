@@ -2749,7 +2749,7 @@ function RenameExerciseModal({
   return (
     <div
       className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
-      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
+      style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onCancel}
     >
       <div

@@ -67,6 +67,17 @@ same('and flexibility', 'Flexibility', 'Mobility');
 same('active recovery', 'Active Recovery', 'Mobility');
 same('yoga', 'Yoga', 'Mobility');
 
+console.log('\n=== two muscle groups in one heading ===');
+// The day this came from: a letter tile where the back photo should have been.
+same('back / rear delt takes the back photo', 'Back / Rear Delt', 'Back');
+same('unspaced too', 'Back/Rear Delt', 'Back');
+same('chest + triceps is a chest day', 'Chest + Triceps', 'Chest');
+same('legs and abs is a leg day', 'Legs and Abs', 'Legs');
+same('comma separated', 'Shoulders, Arms', 'Shoulders');
+same('the first half we know wins', 'Quads / Calves', 'Legs');
+// Neither half is a day we have a photo for, so it still falls back.
+none('neither half known', 'Cardio / Conditioning');
+
 console.log('\n=== and the ones we still have no picture for ===');
 none('a day name we have never seen', 'Cardio');
 // A rest day is not a stretching session — better a letter than a wrong photo.

@@ -108,7 +108,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
   return (
     <div
       className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
-      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
+      style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={status === 'sending' ? undefined : onClose}
       role="dialog"
       aria-modal="true"

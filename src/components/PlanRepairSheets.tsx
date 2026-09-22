@@ -23,7 +23,7 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
   return (
     <div
       className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
-      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
+      style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -59,7 +59,11 @@ const labelClass = 'block text-caption font-semibold uppercase tracking-[0.12em]
 interface ExerciseEditorProps {
   title: string;
   initial: ExerciseDraft;
-  /** Days the row can live in, and which one it's in now. */
+  /**
+   * Days the row can be moved to, and which one it's in now. Empty where the
+   * day isn't in question — adding under a day heading already answers it, and
+   * a picker that defaults to some other day only invites a wrong tap.
+   */
   dayOptions: { idx: number; name: string }[];
   dayIdx: number;
   /** Raw text the guess came from, shown so the user can check it. */
