@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { EndWorkoutDialog } from './components/EndWorkoutDialog';
-import { LATEST_CHANGELOG_ENTRY } from './lib/changelog';
+import { LATEST_CHANGELOG_ENTRY, WITHDRAWN_VERSIONS } from './lib/changelog';
 import {
   decideWhatsNew,
   forgetSeenVersion,
@@ -218,6 +218,7 @@ function Root() {
         planPresence,
         seen: readSeenVersion(),
         latest: LATEST_CHANGELOG_ENTRY.version,
+        withdrawn: WITHDRAWN_VERSIONS,
       })
     ) {
       case 'forget':
