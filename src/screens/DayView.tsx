@@ -76,6 +76,19 @@ function totalSetsForDay(exercises: PlanExerciseRow[]): number {
   return exercises.reduce((sum, e) => sum + (e.total_sets ?? 0), 0);
 }
 
+/**
+ * "chest, shoulders and triceps" — what this day works, in the order it's
+ * trained, each body part named once however many groups carry it.
+ */
+function summariseBodyParts(groups: BodyPartGroup[]): string {
+  const seen: string[] = [];
+  for (const group of groups) {
+    const name = group.bodyPart.toLowerCase();
+    if (!seen.includes(name)) seen.push(name);
+  }
+  return formatNameList(seen);
+}
+
 function estimatedMinutes(setsCount: number): number {
   // ~2.5 minutes per working set incl rest, rounded to nearest 5
   const m = setsCount * 2.5;
@@ -148,6 +161,7 @@ export function DayView({
   const exercises = useMemo(() => day.plan_exercises ?? [], [day.plan_exercises]);
   const groups = groupByBodyPart(exercises);
   const totalSets = totalSetsForDay(exercises);
+  const bodyPartSummary = summariseBodyParts(groups);
 
   // Track which body part sections are expanded. First one open by default.
   const [expanded, setExpanded] = useState<Set<string>>(
@@ -333,7 +347,7 @@ export function DayView({
   }
 
   return (
-    <div className="min-h-screen bg-paper pb-28">
+    <div className={`min-h-screen bg-paper ${referenceOnly ? 'pb-12' : 'pb-32'}`}>
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title={baseDayName(day.name)} onBack={onBack} />
 
@@ -438,39 +452,21 @@ export function DayView({
           </div>
         )}
 
-        {!referenceOnly && (
-        <button
-          className="pressable mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
-          disabled={loadingSession}
-          onClick={() => {
-            haptics.commit();
-            if (inProgress) {
-              const target =
-                exercises[inProgress.lastExerciseIdx] ?? groups[0]?.exercises[0];
-              if (target) onTapExercise?.(target, inProgress.sessionId);
-            } else {
-              const first = groups[0]?.exercises[0];
-              if (first) onTapExercise?.(first);
-            }
-          }}
-        >
-          {loadingSession ? 'Loading…' : inProgress ? 'Continue workout' : 'Start workout'}
-        </button>
-        )}
-        {inProgress && (
-          <div className="mt-2 flex items-center justify-center gap-2 text-xs text-muted">
-            <span>{inProgress.setsLogged} sets logged so far</span>
-            <span className="h-1 w-1 rounded-full bg-muted/50" />
-            <button
-              onClick={() => setConfirmDiscard(true)}
-              className="font-medium underline-offset-2 active:underline"
-            >
-              Discard workout
-            </button>
-          </div>
+        <div className="mt-5 h-px bg-line" />
+
+        <div className="mt-6 flex items-baseline justify-between gap-3">
+          <h2 className="text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
+          <span className="shrink-0 text-label font-semibold uppercase tracking-[0.18em] text-muted">
+            {groups.length} {groups.length === 1 ? 'group' : 'groups'}
+          </span>
+        </div>
+        {bodyPartSummary && (
+          <p className="mt-1.5 text-sm leading-relaxed text-muted">
+            A focused session for {bodyPartSummary}.
+          </p>
         )}
 
-        <div className="mt-[26px] space-y-3">
+        <div className="mt-4 space-y-3">
           {groups.map((group) => {
             const isOpen = expanded.has(group.bodyPart);
             const groupKey = group.exercises[0]?.id ?? group.bodyPart;
@@ -527,7 +523,7 @@ export function DayView({
                           className="text-muted"
                           aria-label={isOpen ? 'Collapse' : 'Expand'}
                         >
-                          <Chevron rotate={isOpen ? 90 : 0} />
+                          <Chevron rotate={isOpen ? -90 : 0} />
                         </button>
                       </>
                     )}
@@ -559,6 +555,7 @@ export function DayView({
                       <ExerciseRow
                         key={ex.id}
                         exercise={ex}
+                        index={i + 1}
                         partnerNames={supersetPartnerNames(ex, exercises)}
                         readOnly={referenceOnly}
                         isLast={i === group.exercises.length - 1}
@@ -575,6 +572,51 @@ export function DayView({
           })}
         </div>
       </div>
+      {/* The action stays on screen however long the plan runs. The strip
+          above it blurs and fades the page into the footer, so a card
+          scrolling underneath reads as passing behind the button rather than
+          being cut off by it — the same footer the completion screen uses. */}
+      {!referenceOnly && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30">
+          <div className="h-10 bg-gradient-to-t from-paper to-transparent backdrop-blur-[2px]" />
+          <div className="bg-paper px-5 pt-2 pb-[max(env(safe-area-inset-bottom),24px)]">
+            <div className="mx-auto w-full max-w-md">
+              {inProgress && (
+                <div className="pointer-events-auto mb-2.5 flex items-center justify-center gap-2 text-xs text-muted">
+                  <span>{inProgress.setsLogged} sets logged so far</span>
+                  <span className="h-1 w-1 rounded-full bg-muted/50" />
+                  <button
+                    onClick={() => setConfirmDiscard(true)}
+                    className="font-medium underline-offset-2 active:underline"
+                  >
+                    Discard workout
+                  </button>
+                </div>
+              )}
+              <button
+                className="pressable pointer-events-auto relative w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+                disabled={loadingSession}
+                onClick={() => {
+                  haptics.commit();
+                  if (inProgress) {
+                    const target =
+                      exercises[inProgress.lastExerciseIdx] ?? groups[0]?.exercises[0];
+                    if (target) onTapExercise?.(target, inProgress.sessionId);
+                  } else {
+                    const first = groups[0]?.exercises[0];
+                    if (first) onTapExercise?.(first);
+                  }
+                }}
+              >
+                {loadingSession ? 'Loading…' : inProgress ? 'Continue workout' : 'Start workout'}
+                <span className="absolute right-6 top-1/2 -translate-y-1/2" aria-hidden>
+                  <ArrowRight />
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmDiscard && (
         <ConfirmModal
           title="Discard this workout?"
@@ -590,12 +632,15 @@ export function DayView({
 
 function ExerciseRow({
   exercise,
+  index,
   partnerNames,
   isLast,
   onTap,
   readOnly,
 }: {
   exercise: PlanExerciseRow;
+  // Its place in its body-part group, counting from 1 — the order it's done in.
+  index: number;
   // The rest of this exercise's superset / tri-set / giant set, if it's in one.
   partnerNames: string[];
   isLast: boolean;
@@ -617,7 +662,10 @@ function ExerciseRow({
   return (
     <div className={`px-5 py-4 ${!isLast ? 'border-b border-line' : ''}`}>
       <div className="flex items-start gap-3">
-        <div className="flex-1">
+        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-strong text-xs font-semibold text-muted">
+          {index}
+        </span>
+        <div className="min-w-0 flex-1">
           <button
             type="button"
             onClick={openImages}
@@ -656,18 +704,20 @@ function ExerciseRow({
           )}
         </div>
         {!readOnly && (
-          <button onClick={onTap} className="mt-0.5 text-muted" aria-label="Open exercise">
+          <button onClick={onTap} className="self-center text-muted" aria-label="Open exercise">
             <ChevronSmall />
           </button>
         )}
       </div>
 
       {hasNotes && (
-        <div className="mt-2.5">
+        // Indented to the row's text column, clear of the number.
+        <div className="mt-2.5 pl-10">
           <button
             onClick={() => setNotesOpen((v) => !v)}
             className="flex items-center gap-1.5 text-xs font-medium text-muted active:text-ink"
           >
+            <NoteIcon />
             <span>Coach notes</span>
             <Chevron rotate={notesOpen ? 90 : 0} small />
           </button>
@@ -766,6 +816,34 @@ function Chevron({ rotate = 0, small = false }: { rotate?: number; small?: boole
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function ArrowRight() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path
+        d="M3.5 9h11M10 4.5L14.5 9 10 13.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function NoteIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M4 2.5h5L12 5.5v8a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path d="M8.75 2.75V5.5H11.5M6 9h4M6 11h2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
