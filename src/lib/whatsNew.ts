@@ -33,12 +33,32 @@ export type WhatsNewAction =
   /** Already up to date. */
   | 'nothing';
 
+/**
+ * What a recorded version is worth now, following any entry that has since been
+ * withdrawn down to the one below it.
+ *
+ * A withdrawn entry can itself point at one that was withdrawn later, so this
+ * walks the chain — bounded, because a map written by hand can be made to
+ * point at itself.
+ */
+function effectiveSeen(seen: string, withdrawn: Readonly<Record<string, string>>): string {
+  let version = seen;
+  for (let hops = 0; hops < 20; hops += 1) {
+    const next = withdrawn[version];
+    if (next === undefined || next === version) break;
+    version = next;
+  }
+  return version;
+}
+
 export function decideWhatsNew(args: {
   planPresence: PlanPresence;
   seen: string | null;
   latest: string;
+  /** Entries withdrawn since they shipped — WITHDRAWN_VERSIONS. */
+  withdrawn: Readonly<Record<string, string>>;
 }): WhatsNewAction {
-  const { planPresence, seen, latest } = args;
+  const { planPresence, seen, latest, withdrawn } = args;
   if (planPresence === 'unknown') return 'wait';
 
   // No plan: there is nothing to announce, and any version recorded while the
@@ -49,9 +69,16 @@ export function decideWhatsNew(args: {
   // rule, which baselined on sign-in.
   if (planPresence === 'none') return seen === null ? 'nothing' : 'forget';
 
-  if (seen === latest) return 'nothing';
   // First time we've seen this user with a plan: start the clock here, quietly.
   if (seen === null) return 'baseline';
+
+  // A device can be carrying an entry that has since been withdrawn. What it
+  // is worth is the entry that sat below it — those notes they have read, the
+  // withdrawn ones never counted. Resolving it first, rather than treating it
+  // as unrecognised, is what lets both halves come out right: no replay of the
+  // entry underneath, and no swallowing a real release that has shipped since.
+  if (effectiveSeen(seen, withdrawn) === latest) return 'nothing';
+
   return 'show';
 }
 

@@ -1,6 +1,25 @@
-// Add a new entry at the TOP of CHANGELOG for every deploy you want
-// users to see a "What's new" popup for. That's the only step — the
-// app reads CHANGELOG[0] as the current version automatically.
+// The "What's new" dialog interrupts someone who is already using Reps — very
+// often standing in a gym, mid-session. An entry here has to be worth that.
+//
+// An entry earns its place when a release contains something a user would want
+// to be stopped for: a new capability, a change in behaviour they will notice
+// and act on, or a bug that was costing them something real. That is the whole
+// test, and most releases do not pass it.
+//
+// What never earns an entry: spacing, alignment, a control made to fit a narrow
+// phone, an arrow taken off a button — and changes to this dialog itself, which
+// nobody asked to be told about. A release made only of those ships with no new
+// entry at all, and that is the normal case, not a failure.
+//
+// A pull request description and a changelog entry are different documents for
+// different audiences. Never transcribe one into the other. Write the PR up in
+// full, then ask of each item on its own: would someone a month into training
+// on this app want to be stopped to read it? If nothing clears that bar, leave
+// this file alone.
+//
+// When something does clear it, add the entry at the TOP of CHANGELOG. That's
+// the only step — the app reads CHANGELOG[0] as the current version
+// automatically. Copy is sentence case, like the rest of the app.
 
 export interface ChangelogEntry {
   version: string;
@@ -16,18 +35,6 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Tapping a field no longer moves the screen. Signing in, setup, feedback, the barbell calculator, editing a machine or an exercise name \u2014 each of those was a single scrolling box, so a browser bringing the field you tapped into view scrolled the whole thing and took the heading with it. The title and the way out stay put now; only what sits under them can move',
       'The \u2026 menu on an exercise fits the window and scrolls. In a browser its last items \u2014 Skip exercise, Back to home, Send feedback \u2014 could sit below the bottom of the screen with no way to reach them',
       'The sign-in screen says which build you are running, for when something has been fixed but the phone is still holding the copy it had before',
-    ],
-  },
-  {
-    version: '2026-09-22.3',
-    title: "What's new",
-    bullets: [
-      'This screen waits until you have a plan loaded. Signing up and being handed release notes for an app you have never opened was the wrong way round \u2014 everything was new to you anyway',
-      'Setup keeps its question, its progress bar and its back arrow on screen with the keyboard up. They were being scrolled off the top on Safari the moment you typed; the question now holds the top of the screen and only the field and the button below it can move',
-      'A set row fits the phone again \u2014 the tick was being squeezed into the edge of the card, close enough to touch the outline around the set you are on',
-      'The rest screen keeps its rest times on one line rather than dropping 3m underneath, and \u221215, +15 and Skip rest sit clear of the bottom of the screen instead of level with the home bar',
-      'The gap under \u201CUpload plan\u201D matches the one under \u201CPerformance\u201D, so nothing shifts as you move between the two tabs before a plan is in',
-      'Start workout has lost its arrow \u2014 it was the only button in the app wearing one',
     ],
   },
   {
@@ -220,6 +227,31 @@ export const CHANGELOG: ChangelogEntry[] = [
 ];
 
 export const LATEST_CHANGELOG_ENTRY: ChangelogEntry = CHANGELOG[0];
+
+/** Every version this build knows about. */
+export const CHANGELOG_VERSIONS: string[] = CHANGELOG.map((c) => c.version);
+
+/**
+ * Entries withdrawn after they had already shipped, each mapped to the version
+ * a device that saw it should be treated as carrying instead — the entry that
+ * sat directly below it at the time.
+ *
+ * Deleting an entry is not enough on its own. Devices that dismissed it are
+ * still carrying its version, and the app has to know what that version was
+ * worth: not "unrecognised, start again", which would either replay notes they
+ * have already read or skip whatever has shipped since, but "they were up to
+ * date as far as the entry below it". Map it, and the ordinary rules do the
+ * rest — they stay quiet if nothing has happened since, and they get the next
+ * real release when it comes.
+ *
+ * Keep an entry here forever once it is added. A phone that has not been opened
+ * in a year still has the old version in localStorage.
+ */
+export const WITHDRAWN_VERSIONS: Readonly<Record<string, string>> = {
+  // Six cosmetic fixes and a note about this dialog's own gating rule. Nothing
+  // in it was worth stopping a user mid-session to read.
+  '2026-09-22.3': '2026-09-22.2',
+};
 
 export function getEntryForVersion(version: string): ChangelogEntry | null {
   return CHANGELOG.find((c) => c.version === version) ?? null;
