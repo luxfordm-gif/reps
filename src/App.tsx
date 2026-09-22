@@ -35,6 +35,7 @@ import {
 import { BottomNav, type Tab } from './components/BottomNav';
 import { ActiveWorkoutBar, type ActiveWorkoutInfo } from './components/ActiveWorkoutBar';
 import { InstallPrompt } from './components/InstallPrompt';
+import { ViewportProbe } from './components/ViewportProbe';
 import { Splash } from './components/Splash';
 import { clearHomeCache, loadHomeData } from './lib/homeCache';
 import { requestFlush } from './lib/offline/outbox';
@@ -569,6 +570,9 @@ function Root() {
         <FeedbackSheet screen={screenKey} onClose={() => setFeedbackOpen(false)} />
       )}
       <Splash visible={splashVisible} />
+      {/* Nothing unless the URL asks for it — see ViewportProbe. Mounted here
+          so it reaches every screen with a keyboard on it, not just setup. */}
+      <ViewportProbe />
     </>
   );
 

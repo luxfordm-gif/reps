@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BODY_PART_OPTIONS, type ExerciseDraft } from '../lib/planRepair';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
+import { SheetPanel } from './SheetPanel';
 
 // The two editor sheets for repairing an import on the upload review screen.
 // Both are plain forms: the person using them is fixing what the parser got
@@ -29,23 +30,23 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
       aria-modal="true"
       aria-label={title}
     >
-      <div
-        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
-        onClick={(e) => e.stopPropagation()}
+      <SheetPanel
+        className="w-full max-w-md rounded-t-card bg-paper-card shadow-card"
+        header={
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold tracking-tight text-ink">{title}</h2>
+            <button
+              onClick={onClose}
+              className="pressable -mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+              aria-label="Close"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        }
       >
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-bold tracking-tight text-ink">{title}</h2>
-          <button
-            onClick={onClose}
-            className="pressable -mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
-            aria-label="Close"
-          >
-            <CloseIcon />
-          </button>
-        </div>
         {children}
-      </div>
+      </SheetPanel>
     </div>
   );
 }

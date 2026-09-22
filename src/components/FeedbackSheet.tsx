@@ -10,6 +10,7 @@ import {
 } from '../lib/feedbackApi';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
+import { SheetPanel } from './SheetPanel';
 
 // The feedback sheet, reachable from the chat icon in the bottom bar.
 //
@@ -114,15 +115,10 @@ export function FeedbackSheet({ screen, onClose }: Props) {
       aria-modal="true"
       aria-label="Send feedback"
     >
-      <div
-        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {status === 'sent' ? (
-          <SentState outcome={outcome} />
-        ) : (
-          <>
+      <SheetPanel
+        className="w-full max-w-md rounded-t-card bg-paper-card shadow-card"
+        header={
+          status === 'sent' ? undefined : (
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-bold tracking-tight text-ink">Send feedback</h2>
               <button
@@ -133,7 +129,13 @@ export function FeedbackSheet({ screen, onClose }: Props) {
                 <CloseIcon />
               </button>
             </div>
-
+          )
+        }
+      >
+        {status === 'sent' ? (
+          <SentState outcome={outcome} />
+        ) : (
+          <>
             <div className="mt-4 flex flex-wrap gap-1.5">
               {FEEDBACK_KINDS.map((k) => (
                 <button
@@ -215,7 +217,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
             </button>
           </>
         )}
-      </div>
+      </SheetPanel>
     </div>
   );
 }

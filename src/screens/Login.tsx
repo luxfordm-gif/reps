@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { hasSignedInBefore } from '../lib/returning';
 import { Logo } from '../components/Logo';
+import { useScrollLock } from '../lib/useScrollLock';
+import { useVisualViewport } from '../lib/useVisualViewport';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 /** 'sent' is a destination, not a form: the only thing left to do is open the
@@ -28,6 +30,11 @@ export function Login() {
     const t = window.setTimeout(() => setResendIn((n) => n - 1), 1000);
     return () => window.clearTimeout(t);
   }, [resendIn]);
+
+  // Nothing behind this screen should move when the keyboard opens — see the
+  // surface below.
+  useScrollLock();
+  const viewport = useVisualViewport();
 
   /** Where a confirmation or reset link should land. */
   const linkTarget = () => `${window.location.origin}/`;
@@ -155,13 +162,22 @@ export function Login() {
   const showBack = step === 'password' || step === 'sent' || mode === 'forgot';
 
   return (
-    <div className="bg-paper" style={{ minHeight: '100dvh' }}>
-      <div
-        className="mx-auto flex max-w-md flex-col px-5"
-        style={{ minHeight: '100dvh' }}
-      >
+    // Sized to what is visible rather than to the screen, and pinned.
+    //
+    // At 100dvh the page was taller than the window the moment the keyboard
+    // came up, which gave the browser something to scroll — and it did,
+    // nudging everything up to "reveal" a field that was already in plain
+    // sight. Now there is nothing to scroll: the box is exactly the visible
+    // window, the page behind it is locked, and the form below the header
+    // scrolls inside it if a step ever needs more room than the keyboard
+    // leaves.
+    <div
+      className="fixed inset-x-0 overflow-hidden bg-paper"
+      style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
+    >
+      <div className="mx-auto flex h-full max-w-md flex-col px-5">
         <div
-          className="flex h-11 items-center"
+          className="flex h-11 shrink-0 items-center"
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
           {showBack && (
@@ -179,8 +195,9 @@ export function Login() {
             when the keyboard takes half the viewport, and the whole page
             lurches the moment the field is tapped. Up here the field is
             already above the keyboard and nothing moves. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div
-          className="flex flex-1 flex-col items-center justify-start pt-2"
+          className="flex min-h-full flex-col items-center justify-start pt-2"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)' }}
         >
           <Logo className="h-8 w-auto" />
@@ -303,6 +320,7 @@ export function Login() {
           <p className="mt-auto pt-8 text-center text-caption text-muted/70">
             {buildLabel()}
           </p>
+        </div>
         </div>
       </div>
     </div>
