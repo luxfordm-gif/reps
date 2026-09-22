@@ -2,7 +2,9 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   getInstallAdvice,
   markDismissed,
+  PLAN_GRACE_MS,
   promptToInstall,
+  readPlanReadyAt,
   subscribeInstall,
   type InstallAdvice,
 } from '../lib/installPrompt';
@@ -34,12 +36,23 @@ export function InstallPrompt() {
   // rather than copied into state on mount. Dismissing notifies the same
   // store, which is why there's no separate "dismissed" flag here.
   const advice = useSyncExternalStore(subscribeInstall, getInstallAdvice);
+  // The moment the plan landed, from the same store: a number, so an unchanged
+  // stamp compares equal and the timer below isn't torn down on every notify.
+  const planReadyAt = useSyncExternalStore(subscribeInstall, readPlanReadyAt);
   const [settled, setSettled] = useState(false);
 
+  // One timer for both waits: the three seconds Home needs to arrive, and
+  // whatever is left of the plan's grace period. `advice` is already null
+  // until the grace is up — this is what brings the banner in when the wait
+  // ends on a screen that is still open, rather than only on the next visit.
   useEffect(() => {
-    const t = window.setTimeout(() => setSettled(true), APPEAR_DELAY_MS);
+    // Nothing to wait for until a plan has landed; the stamp arriving through
+    // the store is what re-runs this and starts the clock.
+    if (planReadyAt == null) return;
+    const wait = Math.max(APPEAR_DELAY_MS, planReadyAt + PLAN_GRACE_MS - Date.now());
+    const t = window.setTimeout(() => setSettled(true), wait);
     return () => window.clearTimeout(t);
-  }, []);
+  }, [planReadyAt]);
 
   if (!settled || !advice) return null;
 

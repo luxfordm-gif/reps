@@ -4,6 +4,7 @@
 import {
   chooseInstallAdvice,
   detectIos,
+  PLAN_GRACE_MS,
   SNOOZE_MS,
 } from '../src/lib/installPrompt.ts';
 
@@ -49,7 +50,19 @@ eq('a real Mac is not iOS', detectIos(UA.macSafari, 'MacIntel', 0), null);
 eq('Android is not iOS', detectIos(UA.androidChrome, 'Linux armv8l', 5), null);
 
 console.log('\n=== what to say ===');
-const base = { installed: false, hasDeferredPrompt: false, ios: null, dismissedAt: null, now: 1_000_000_000 };
+// The banner has nothing to say until there's a plan and its grace period has
+// run out, so every "what to say" case starts from a plan that landed a while
+// ago; the gate itself is tested further down.
+const now = 1_000_000_000;
+const base = {
+  installed: false,
+  hasDeferredPrompt: false,
+  ios: null,
+  dismissedAt: null,
+  hasPlan: true,
+  planReadyAt: now - PLAN_GRACE_MS,
+  now,
+};
 
 eq(
   'a held prompt means a one-tap Install button',
@@ -101,6 +114,48 @@ eq(
 eq(
   'installed wins over everything, even a stale dismissal',
   chooseInstallAdvice({ ...base, installed: true, ios: 'safari', dismissedAt: 0 }),
+  null
+);
+
+console.log('\n=== not until there is a plan ===');
+eq(
+  'no plan yet — the upload screen is left alone',
+  chooseInstallAdvice({ ...base, hasPlan: false, planReadyAt: null, hasDeferredPrompt: true }),
+  null
+);
+eq(
+  'no plan, even if one was uploaded on this device before',
+  chooseInstallAdvice({ ...base, hasPlan: false, hasDeferredPrompt: true }),
+  null
+);
+eq(
+  'plan present but the stamp is missing — say nothing rather than guess',
+  chooseInstallAdvice({ ...base, planReadyAt: null, ios: 'safari' }),
+  null
+);
+eq(
+  'the plan has just landed — still reading it',
+  chooseInstallAdvice({ ...base, ios: 'safari', planReadyAt: base.now - 1000 }),
+  null
+);
+eq(
+  'a moment before the grace is up',
+  chooseInstallAdvice({ ...base, ios: 'safari', planReadyAt: base.now - (PLAN_GRACE_MS - 1) }),
+  null
+);
+eq(
+  'grace served — now it can ask',
+  chooseInstallAdvice({ ...base, ios: 'safari', planReadyAt: base.now - PLAN_GRACE_MS }),
+  'ios-safari'
+);
+eq(
+  'a plan from days ago asks straight away',
+  chooseInstallAdvice({ ...base, ios: 'safari', planReadyAt: base.now - 3 * 24 * 60 * 60 * 1000 }),
+  'ios-safari'
+);
+eq(
+  'a snooze still wins over a long-settled plan',
+  chooseInstallAdvice({ ...base, ios: 'safari', dismissedAt: base.now - 1000 }),
   null
 );
 
