@@ -4,6 +4,7 @@ import { PageHeader } from '../components/PageHeader';
 import { useThemeColor } from '../lib/useThemeColor';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
+import { SheetPanel } from '../components/SheetPanel';
 import {
   logSet,
   updateLoggedSet,
@@ -1904,6 +1905,11 @@ export function ExerciseLogger({
   );
 }
 
+/** Gap left between the bottom of the kebab menu and the bottom of the window. */
+const MENU_EDGE_GAP_PX = 12;
+/** Never squeeze it below this, however little room there is — it scrolls. */
+const MENU_MIN_HEIGHT_PX = 200;
+
 function ExerciseMenu({
   hasNext,
   onSkip,
@@ -1960,6 +1966,27 @@ function ExerciseMenu({
     fn();
   }
 
+  /**
+   * Height the menu to what is left of the window below it.
+   *
+   * A callback ref rather than state: it runs the moment the menu mounts,
+   * which is the only moment its position is in question, and writing the
+   * height straight onto the node keeps a measurement out of React's render.
+   * `visualViewport` rather than innerHeight so an open keyboard counts too.
+   */
+  const fitMenu = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const measure = () => {
+      const window_ = window.visualViewport?.height ?? window.innerHeight;
+      const room = window_ - el.getBoundingClientRect().top - MENU_EDGE_GAP_PX;
+      el.style.maxHeight = `${Math.max(MENU_MIN_HEIGHT_PX, Math.round(room))}px`;
+    };
+    measure();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', measure);
+    return () => vv?.removeEventListener('resize', measure);
+  }, []);
+
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -1977,7 +2004,15 @@ function ExerciseMenu({
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-11 z-40 w-56 overflow-hidden rounded-card border border-line bg-paper-card shadow-card">
+        // Capped to the room actually below it, and scrollable past that.
+        // At full height this menu is taller than a phone's browser window
+        // once the address bar is taking its share, and it was clipping
+        // rather than scrolling — so the last few items simply could not be
+        // reached. See fitMenu.
+        <div
+          ref={fitMenu}
+          className="absolute right-0 top-11 z-40 w-56 overflow-y-auto overflow-x-hidden overscroll-contain rounded-card border border-line bg-paper-card shadow-card"
+        >
           <div className="px-4 py-3">
             <div className="text-label font-semibold uppercase tracking-[0.12em] text-muted">
               Weight unit
@@ -2752,15 +2787,18 @@ function RenameExerciseModal({
       style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onCancel}
     >
-      <div
-        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-card bg-paper p-5 sm:rounded-card"
-        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
-        onClick={(e) => e.stopPropagation()}
+      <SheetPanel
+        inset={5}
+        className="w-full max-w-md rounded-t-card bg-paper sm:rounded-card"
+        header={
+          <>
+            <h2 className="text-base font-semibold text-ink">Edit exercise name</h2>
+            <p className="mt-1 text-xs text-muted">
+              Renames this exercise across your plan.
+            </p>
+          </>
+        }
       >
-        <h2 className="text-base font-semibold text-ink">Edit exercise name</h2>
-        <p className="mt-1 text-xs text-muted">
-          Renames this exercise across your plan.
-        </p>
         <input
           autoFocus
           value={name}
@@ -2792,7 +2830,7 @@ function RenameExerciseModal({
             Cancel
           </button>
         </div>
-      </div>
+      </SheetPanel>
     </div>
   );
 }

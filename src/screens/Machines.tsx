@@ -31,6 +31,7 @@ import {
 } from '../lib/duplicateExercises';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
+import { SheetPanel } from '../components/SheetPanel';
 
 type SortMode = 'alpha' | 'bodyPart';
 const UNITS: MachineUnit[] = ['kg', 'lb', 'pin'];
@@ -908,11 +909,10 @@ function MachineEditModal({
       style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onClose}
     >
-      <div
-        className="max-h-full w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
-        onClick={(e) => e.stopPropagation()}
+      <SheetPanel
+        className="w-full rounded-t-card bg-paper-card shadow-card sm:max-w-md sm:rounded-card"
+        header={<h2 className="text-lg font-bold tracking-tight text-ink">Edit machine</h2>}
       >
-        <h2 className="text-lg font-bold tracking-tight text-ink">Edit machine</h2>
         <div className="mt-4 space-y-5">
           <Field label="Name">
             <input
@@ -1039,7 +1039,7 @@ function MachineEditModal({
             Delete machine
           </button>
         </div>
-      </div>
+      </SheetPanel>
     </div>
   );
 }

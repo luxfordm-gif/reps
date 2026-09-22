@@ -19,6 +19,7 @@ import {
 import { haptics } from '../lib/haptics';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
+import { SheetPanel } from './SheetPanel';
 
 type Props = {
   open: boolean;
@@ -225,7 +226,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
       role="dialog"
     >
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
-      <div
+      <SheetPanel
         // A fixed rise, not its own height: this sheet grows as the plates
         // render and re-measures against the visual viewport when the keyboard
         // comes up, so a percentage travel is chasing a moving target.
@@ -235,32 +236,34 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         // fifth of a second has not arrived, it has simply appeared. Going out,
         // the decision is already made and the screen behind it is what's
         // wanted, so it gets out of the way at nearly twice the speed.
-        className={`absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-card bg-paper shadow-card transition-transform ${
+        inset="none"
+        className={`absolute inset-x-0 bottom-0 rounded-t-card bg-paper shadow-card transition-transform ${
           visible
             ? 'translate-y-0 duration-[300ms] ease-sheet'
             : 'translate-y-10 duration-pop ease-snap'
         }`}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-        onClick={(e) => e.stopPropagation()}
+        header={
+          <>
+            <div className="flex justify-center pt-2">
+              <div className="h-1 w-10 rounded-pill bg-line" />
+            </div>
+
+            <div className="relative grid grid-cols-[40px_1fr_40px] items-center px-3 py-3">
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="pressable flex h-9 w-9 items-center justify-center rounded-full text-ink active:opacity-70"
+              >
+                <CloseIcon />
+              </button>
+              <h2 className="text-center text-base font-semibold text-ink">Barbell calculator</h2>
+              <span />
+            </div>
+
+            <div className="border-t border-line/60" />
+          </>
+        }
       >
-        <div className="flex justify-center pt-2">
-          <div className="h-1 w-10 rounded-pill bg-line" />
-        </div>
-
-        <div className="relative grid grid-cols-[40px_1fr_40px] items-center px-3 py-3">
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="pressable flex h-9 w-9 items-center justify-center rounded-full text-ink active:opacity-70"
-          >
-            <CloseIcon />
-          </button>
-          <h2 className="text-center text-base font-semibold text-ink">Barbell calculator</h2>
-          <span />
-        </div>
-
-        <div className="border-t border-line/60" />
-
         <div className="px-4 pt-3">
           <div className="text-label font-semibold uppercase tracking-wider text-muted">
             Select barbell
@@ -399,7 +402,10 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
           </div>
         </div>
 
-        <div className="sticky bottom-0 mt-3 bg-paper px-4 pb-4 pt-2">
+        <div
+          className="sticky bottom-0 mt-3 bg-paper px-4 pt-2"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+        >
           <button
             onClick={handleConfirm}
             className="pressable w-full rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
@@ -407,7 +413,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
             Confirm weight
           </button>
         </div>
-      </div>
+      </SheetPanel>
     </div>
   );
 }

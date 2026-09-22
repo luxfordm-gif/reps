@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-22.4',
+    title: "What's new",
+    bullets: [
+      'Tapping a field no longer moves the screen. Signing in, setup, feedback, the barbell calculator, editing a machine or an exercise name \u2014 each of those was a single scrolling box, so a browser bringing the field you tapped into view scrolled the whole thing and took the heading with it. The title and the way out stay put now; only what sits under them can move',
+      'The \u2026 menu on an exercise fits the window and scrolls. In a browser its last items \u2014 Skip exercise, Back to home, Send feedback \u2014 could sit below the bottom of the screen with no way to reach them',
+      'The sign-in screen says which build you are running, for when something has been fixed but the phone is still holding the copy it had before',
+    ],
+  },
+  {
     version: '2026-09-22.3',
     title: "What's new",
     bullets: [
