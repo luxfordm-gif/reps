@@ -114,16 +114,26 @@ export function FeedbackSheet({ screen, onClose }: Props) {
       aria-modal="true"
       aria-label="Send feedback"
     >
+      {/* The title and the way out sit outside the scrolling part. With the
+          whole sheet as one scrollable box, opening the keyboard made it the
+          nearest thing the browser could scroll to reveal the textarea — so it
+          did, and "Send feedback" and the kind chips went off the top of the
+          screen while the page underneath stayed put. Only the body moves
+          now. */}
       <div
-        className="max-h-full w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+        className="flex max-h-full w-full max-w-md flex-col rounded-t-card bg-paper-card shadow-card"
         onClick={(e) => e.stopPropagation()}
       >
         {status === 'sent' ? (
-          <SentState outcome={outcome} />
+          <div
+            className="px-6 pt-6"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+          >
+            <SentState outcome={outcome} />
+          </div>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex shrink-0 items-center justify-between gap-3 px-6 pt-6">
               <h2 className="text-lg font-bold tracking-tight text-ink">Send feedback</h2>
               <button
                 onClick={onClose}
@@ -134,6 +144,10 @@ export function FeedbackSheet({ screen, onClose }: Props) {
               </button>
             </div>
 
+            <div
+              className="min-h-0 flex-1 overflow-y-auto px-6"
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+            >
             <div className="mt-4 flex flex-wrap gap-1.5">
               {FEEDBACK_KINDS.map((k) => (
                 <button
@@ -213,6 +227,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
             >
               {status === 'sending' ? 'Sending…' : 'Send feedback'}
             </button>
+            </div>
           </>
         )}
       </div>

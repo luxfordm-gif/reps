@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import {
   type Profile,
   type ProfilePatch,
@@ -327,62 +327,7 @@ function OnboardingSurface({ children }: { children: React.ReactNode }) {
       className="fixed inset-x-0 z-30 overflow-hidden bg-paper"
       style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
     >
-      <ViewportProbe />
       <KeyboardOpenContext.Provider value={keyboardOpen}>{children}</KeyboardOpenContext.Provider>
-    </div>
-  );
-}
-
-/**
- * What the browser is actually doing with the viewport, printed on the screen.
- *
- * Off unless the URL carries `?vv=1`, and deliberately not behind a build flag:
- * this exists to be read off a phone that has a keyboard up, which is the one
- * place none of our tooling can reach. A screenshot of it answers, in order,
- * whether the page was scrolled (sy), whether the browser panned the visual
- * viewport instead (off), whether the keyboard shrank it (vv against ih), and
- * where our own box ended up (top) — which is the difference between a fix
- * that belongs in the layout and one that belongs in useVisualViewport.
- *
- * It sits at the very top of the surface, so a shot where it is missing says
- * as much as one where it isn't: the surface itself has gone off the screen.
- */
-function ViewportProbe() {
-  const [on] = useState(
-    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('vv') === '1'
-  );
-  const [text, setText] = useState('');
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!on) return;
-    let frame = 0;
-    const tick = () => {
-      const vv = window.visualViewport;
-      const box = ref.current?.getBoundingClientRect();
-      setText(
-        [
-          `ih${Math.round(window.innerHeight)}`,
-          `vv${vv ? Math.round(vv.height) : '-'}`,
-          `off${vv ? Math.round(vv.offsetTop) : '-'}`,
-          `sy${Math.round(window.scrollY)}`,
-          `top${box ? Math.round(box.top) : '-'}`,
-          `act${document.activeElement?.tagName?.toLowerCase() ?? '-'}`,
-        ].join(' ')
-      );
-      frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
-  }, [on]);
-
-  if (!on) return null;
-  return (
-    <div
-      ref={ref}
-      className="pointer-events-none absolute inset-x-0 top-0 z-50 bg-ink/85 px-2 py-1 text-center font-mono text-[11px] leading-none text-white"
-    >
-      {text}
     </div>
   );
 }
