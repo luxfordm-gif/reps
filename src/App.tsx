@@ -48,6 +48,29 @@ type Modal =
   | 'onboarding'
   | 'machines';
 
+// Onboarding has been offered on this device. Setting up is worth asking about
+// once, on a fresh install — after that it's the user's business, and Profile →
+// Personal details is where it gets finished. The flag is local rather than on
+// the profile row so that a failed write (offline, RLS hiccup) can't turn the
+// flow into something that reappears on every launch.
+const ONBOARDING_OFFERED_KEY = 'reps.onboardingOffered';
+
+function onboardingOffered(): boolean {
+  try {
+    return window.localStorage.getItem(ONBOARDING_OFFERED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markOnboardingOffered(): void {
+  try {
+    window.localStorage.setItem(ONBOARDING_OFFERED_KEY, '1');
+  } catch {
+    // Private mode with storage disabled — worst case we offer again.
+  }
+}
+
 /**
  * After a workout: give the flush a moment to land, then confirm the session
  * really is on the server and cache today's sets as next week's "last time" —
@@ -131,10 +154,12 @@ function Root() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
 
-  // Fetch profile when the user signs in. If they have no profile row yet, or
-  // they started onboarding but didn't finish, auto-open the flow — unless
-  // they've already dismissed it once in this session. A failed fetch must
-  // not block sign-in, so we swallow errors and just leave profile=null.
+  // Fetch profile when the user signs in. Brand-new accounts — no profile row,
+  // and no offer made on this device yet — get shown the setup flow once. An
+  // unfinished profile is never chased again after that: nothing in the app
+  // needs it, and Profile → Personal details picks it up whenever the user
+  // wants. A failed fetch must not block sign-in, so we swallow errors and
+  // just leave profile=null.
   useEffect(() => {
     if (!session) {
       setProfile(null);
@@ -146,7 +171,8 @@ function Root() {
       .then((p) => {
         if (cancelled) return;
         setProfile(p);
-        if (!onboardingDismissedThisSession && (!p || !p.onboarding_completed)) {
+        if (!onboardingDismissedThisSession && !p && !onboardingOffered()) {
+          markOnboardingOffered();
           setModal('onboarding');
         }
       })
@@ -248,6 +274,15 @@ function Root() {
     [],
   );
 
+  // A plan has just been imported — from the upload modal, or from the upload
+  // screen Home shows in place of itself until there is a plan.
+  function handlePlanSaved() {
+    clearHomeCache();
+    setRefreshKey((k) => k + 1);
+    setModal(null);
+    setTab('home');
+  }
+
   function changeTab(next: Tab) {
     // Arriving at Home puts its in-progress card back at the top of the page,
     // so the docked bar steps aside until a scroll says otherwise.
@@ -284,17 +319,7 @@ function Root() {
   } else if (!session) {
     body = <Login />;
   } else if (modal === 'upload') {
-    body = (
-      <UploadPlan
-        onCancel={() => setModal(null)}
-        onSaved={() => {
-          clearHomeCache();
-          setRefreshKey((k) => k + 1);
-          setModal(null);
-          setTab('home');
-        }}
-      />
-    );
+    body = <UploadPlan onCancel={() => setModal(null)} onSaved={handlePlanSaved} />;
   } else if (modal === 'bodyWeight') {
     body = <BodyWeight onBack={() => setModal(null)} />;
   } else if (modal === 'steps') {
@@ -441,7 +466,7 @@ function Root() {
         screen = (
           <Home
             key={refreshKey}
-            onUploadPlan={() => setModal('upload')}
+            onPlanSaved={handlePlanSaved}
             onLogBodyWeight={() => setModal('bodyWeight')}
             onLogSteps={() => setModal('steps')}
             onTapDay={(day, sibling) => {
@@ -449,7 +474,6 @@ function Root() {
               setActiveDaySibling(sibling ?? null);
             }}
             profile={profile}
-            onResumeOnboarding={() => setModal('onboarding')}
             onResumeWorkout={handleResumeWorkout}
             onActiveWorkoutChange={setActiveWorkout}
             onActiveCardVisibilityChange={setActiveCardVisible}

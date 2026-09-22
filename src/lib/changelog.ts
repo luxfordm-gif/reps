@@ -10,6 +10,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-22.1',
+    title: "What's new",
+    bullets: [
+      'Setting up your profile is asked about once, on a fresh install, and never again \u2014 the yellow strip on Home has gone, and Profile \u2192 Personal details is where you finish it off whenever you feel like it',
+      'Skip now skips the question you\u2019re on rather than the whole of setup, so skipping your weight lands you on the next question instead of back on Home. The cross in the corner is the way out, and it keeps everything you\u2019ve filled in',
+      'Setup holds still with the keyboard up: the question stays on screen and the page no longer scrolls the heading away as you type',
+      'With no plan loaded, Reps opens on Upload plan itself instead of a card asking you to go there',
+      'Build your own plan has come off the welcome screen until it\u2019s something you can actually use',
+    ],
+  },
+  {
     version: '2026-09-22',
     title: "What's new",
     bullets: [

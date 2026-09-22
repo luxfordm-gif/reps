@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrainingDayCard } from '../components/TrainingDayCard';
+import { UploadPlan } from './UploadPlan';
 import type { ActiveWorkoutInfo } from '../components/ActiveWorkoutBar';
 import { WeeklyProgress } from '../components/WeeklyProgress';
 import { weeksOnPlan, type FullPlan } from '../lib/plansApi';
@@ -28,14 +29,15 @@ import { WaterIcon, StepsIcon } from '../components/Tile';
 type Day = FullPlan['training_days'][number];
 
 interface Props {
-  onUploadPlan: () => void;
+  /** A plan has just been imported from the upload screen Home shows when
+   *  there isn't one yet — App drops its cache and remounts Home. */
+  onPlanSaved: () => void;
   onLogBodyWeight: () => void;
   onLogSteps: () => void;
   // Opens a training day. `sibling` is the other week's version of the same day
   // type, when the plan rotates — DayView offers a switch to it.
   onTapDay: (day: Day, sibling?: Day | null) => void;
   profile?: Profile | null;
-  onResumeOnboarding?: () => void;
   onResumeWorkout?: (params: {
     day: Day;
     exerciseIdx: number;
@@ -60,7 +62,6 @@ interface Props {
   onActiveCardVisibilityChange?: (visible: boolean) => void;
 }
 
-const ONBOARDING_BANNER_DISMISSED_KEY = 'reps.onboardingBannerDismissed';
 
 const ACCENTS: Record<string, string> = {
   Push: 'bg-[#FFE9D6]',
@@ -160,30 +161,18 @@ function greeting() {
 }
 
 export function Home({
-  onUploadPlan,
+  onPlanSaved,
   onLogBodyWeight,
   onLogSteps,
   onTapDay,
   onResumeWorkout,
   profile,
-  onResumeOnboarding,
   onActiveWorkoutChange,
   onActiveCardVisibilityChange,
 }: Props) {
-  const [bannerDismissed, setBannerDismissed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(ONBOARDING_BANNER_DISMISSED_KEY) === '1';
-  });
-
-  function dismissBanner() {
-    setBannerDismissed(true);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(ONBOARDING_BANNER_DISMISSED_KEY, '1');
-    }
-  }
-
-  const showOnboardingBanner =
-    !!profile && !profile.onboarding_completed && !bannerDismissed && !!onResumeOnboarding;
+  // Nothing here nags about half-finished setup. An unfinished profile costs
+  // the app nothing it can't do without, and Profile → Personal details is
+  // where someone goes to fill the rest in, when they want to.
   // Null until they've told us, and null is a perfectly good greeting.
   const firstName = greetingName(profile?.display_name);
   const offline = !useNetStatus().reachable;
@@ -361,57 +350,33 @@ export function Home({
   }
 
   if (!plan) {
+    // No plan yet: the upload screen *is* the home screen. A card that says
+    // "upload your plan" in front of the screen that uploads your plan is one
+    // tap asking whether you meant it — there's nothing else this user can do
+    // here yet. No back arrow, for the same reason: this is the bottom of the
+    // stack, and the tab bar is still there to get to the rest of the app.
+    if (!offline) {
+      return <UploadPlan onSaved={onPlanSaved} />;
+    }
+    // Offline there is nothing to upload to, so say what's happened instead.
     return (
-      <div className="pb-nav min-h-screen bg-paper">
+      <div className="pb-nav flex min-h-screen flex-col justify-center bg-paper">
         <div
-          className="mx-auto max-w-md px-5"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
+          className="mx-auto w-full max-w-md px-5"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
-          {showOnboardingBanner && (
-            <OnboardingBanner onResume={() => onResumeOnboarding?.()} onDismiss={dismissBanner} />
-          )}
-          <div
-            className={`${showOnboardingBanner ? 'mt-5' : 'mt-12'} rounded-card bg-paper-card p-8 text-center shadow-card`}
-          >
+          <div className="rounded-card bg-paper-card p-8 text-center shadow-card">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-panel bg-surface-strong">
               <UploadCloudIcon />
             </div>
             <h2 className="mt-5 text-2xl font-bold tracking-tight text-ink">
-              {offline ? "Can't reach your plan" : 'Welcome to Reps.'}
+              Can't reach your plan
             </h2>
             <p className="mt-2 text-sm text-muted">
-              {offline
-                ? "You're offline and this phone hasn't got a copy of your plan yet. Open Reps once with signal and it'll be here next time, connection or not."
-                : "Drop in your first training plan PDF and we'll turn it into trackable training days."}
+              You're offline and this phone hasn't got a copy of your plan yet. Open Reps once
+              with signal and it'll be here next time, connection or not.
             </p>
-            {!offline && (
-              <button
-                onClick={onUploadPlan}
-                className="pressable mt-6 w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80"
-              >
-                Upload your plan
-              </button>
-            )}
           </div>
-          {!offline && (
-            <div className="mt-4 rounded-card bg-paper-card p-8 text-center shadow-card">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-panel bg-surface-strong">
-                <PencilIcon />
-              </div>
-              <h2 className="mt-5 text-2xl font-bold tracking-tight text-ink">
-                Build your own plan.
-              </h2>
-              <p className="mt-2 text-sm text-muted">
-                Put a plan together day by day, without a PDF to upload.
-              </p>
-              <button
-                disabled
-                className="mt-6 w-full cursor-not-allowed rounded-pill bg-surface-strong py-4 text-base font-semibold text-muted"
-              >
-                Coming soon
-              </button>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -490,10 +455,6 @@ export function Home({
           paddingTop: `calc(env(safe-area-inset-top, 0px) + ${active ? 24 : 40}px)`,
         }}
       >
-        {showOnboardingBanner && (
-          <OnboardingBanner onResume={() => onResumeOnboarding?.()} onDismiss={dismissBanner} />
-        )}
-
         {active && (
           <div ref={activeCardRef}>
             <ActiveWorkoutBanner
@@ -513,9 +474,9 @@ export function Home({
           </div>
         )}
 
-        <SyncStatus className={active || showOnboardingBanner ? 'mt-5' : ''} />
+        <SyncStatus className={active ? 'mt-5' : ''} />
 
-        <div className={active || showOnboardingBanner ? 'mt-5' : ''}>
+        <div className={active ? 'mt-5' : ''}>
           <Greeting name={firstName} />
           <p className="mt-1.5 text-base text-muted">Ready to crush your goals today?</p>
         </div>
@@ -623,55 +584,6 @@ export function Home({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function OnboardingBanner({
-  onResume,
-  onDismiss,
-}: {
-  onResume: () => void;
-  onDismiss: () => void;
-}) {
-  return (
-    <div className="mt-4 flex items-center gap-5 rounded-card bg-[#FFF6D6] py-4 pl-5 pr-4 shadow-card">
-      <button
-        onClick={onResume}
-        className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left active:opacity-80"
-      >
-        <div className="min-w-0">
-          <div className="text-label font-semibold uppercase tracking-[0.18em] text-[#7A5A00]">
-            Get set up
-          </div>
-          <div className="mt-0.5 text-base font-bold tracking-tight text-ink">
-            Finish setting up your profile
-          </div>
-        </div>
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0 text-ink">
-          <path
-            d="M7 4l5 5-5 5"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-      <button
-        onClick={onDismiss}
-        aria-label="Dismiss"
-        className="pressable flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#7A5A00] active:bg-black/10"
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path
-            d="M4 4l8 8M12 4l-8 8"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
     </div>
   );
 }
@@ -1124,20 +1036,6 @@ function ScaleIcon() {
         strokeWidth="2.401"
         strokeLinejoin="round"
         transform="translate(1.5041,1.4000) scale(0.208219)"
-      />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="text-ink">
-      <path
-        d="M21 7l4 4M22.5 5.5a2.1 2.1 0 013 3L12 22l-5 1 1-5 14.5-12.5z M8 27h16"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
