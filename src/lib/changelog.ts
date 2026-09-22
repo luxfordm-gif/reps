@@ -10,6 +10,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-22',
+    title: "What's new",
+    bullets: [
+      'Start workout stays on screen while you read through the day — it sits at the bottom now and follows you down the plan, instead of waiting at the top where a long day meant scrolling back up to find it',
+      'The plan fades away behind it rather than being cut off, and Continue workout, the sets you have logged so far and Discard workout all travel with it',
+      'Exercises are numbered inside each body part, so the order you do them in reads at a glance',
+      'The day screen says what it works — "A focused session for chest, shoulders and triceps" — with the number of body parts beside it',
+      'Coach notes carry a small page icon, so an exercise your coach has written something about stands out in the list',
+    ],
+  },
+  {
     version: '2026-09-19',
     title: "What's new",
     bullets: [
