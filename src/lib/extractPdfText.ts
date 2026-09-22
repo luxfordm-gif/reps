@@ -14,11 +14,18 @@
 // the build the PDF corpus tests already run under Node — so what we test is now
 // what we ship.
 //
+// That build can't cover everything, though. getTextContent reads a page with
+// `for await (const value of readableStream)`, and a ReadableStream only became
+// async-iterable in Safari 17.4 — which is a property of the browser's stream,
+// not of the language, so no amount of transpiling supplies it. We add it
+// ourselves before the reader loads; see ./streamAsyncIterator.
+//
 // It's also ~1.4MB, and this is the only screen that needs it, so it loads on
 // demand rather than riding in the app bundle.
 
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { reconstructRows, type PositionedText } from './reconstructPdfRows';
+import { installStreamAsyncIterator } from './streamAsyncIterator';
 
 type Pdfjs = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
@@ -26,6 +33,9 @@ let loading: Promise<Pdfjs> | null = null;
 
 function loadPdfjs(): Promise<Pdfjs> {
   if (!loading) {
+    // Before the reader, not after: pdf.js reaches for the stream's async
+    // iterator on the first page it reads, and an older Safari hasn't got one.
+    installStreamAsyncIterator();
     loading = import('pdfjs-dist/legacy/build/pdf.mjs')
       .then((lib) => {
         lib.GlobalWorkerOptions.workerSrc = workerUrl;
