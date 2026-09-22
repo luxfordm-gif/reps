@@ -52,7 +52,13 @@ function parseTargetReps(repRange: string): number | null {
 }
 
 interface Props {
-  onCancel: () => void;
+  /**
+   * Leaves the screen. Omitted when Upload *is* the screen — a user with no
+   * plan yet lands straight on it from Home, and there's nothing behind it to
+   * go back to. Without it the header loses its back arrow and the page leaves
+   * room for the tab bar instead.
+   */
+  onCancel?: () => void;
   onSaved: () => void;
 }
 
@@ -451,9 +457,23 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
     return n;
   }, [matches]);
 
+  const standalone = !onCancel;
+  // The tab bar floats over the bottom of the screen when Upload is the home
+  // screen, so everything down there — the page's own tail, and the save bar —
+  // has to leave room for it. 5.75rem is what the bar occupies: its pill plus
+  // the padding it floats in.
+  const navRoom = standalone ? '5.75rem' : '0rem';
   return (
-    <div className={`min-h-screen bg-paper ${parsed ? 'pb-32' : 'pb-12'}`}>
-      <div className="mx-auto max-w-md px-5 pt-3">
+    <div
+      className={`min-h-screen bg-paper ${parsed ? 'pb-32' : standalone ? 'pb-nav' : 'pb-12'}`}
+      style={parsed && standalone ? { paddingBottom: `calc(8rem + ${navRoom})` } : undefined}
+    >
+      <div
+        className="mx-auto max-w-md px-5 pt-3"
+        // With a back arrow, PageHeader's sticky bar carries the status-bar
+        // inset. Without one there is no bar, so the page owes it itself.
+        style={standalone ? { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' } : undefined}
+      >
         <PageHeader title="Upload plan" onBack={onCancel} />
 
         <p className="mt-6 text-base text-muted">
@@ -701,7 +721,9 @@ export function UploadPlan({ onCancel, onSaved }: Props) {
       {parsed && (
         <div
           className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 px-5 pt-4 backdrop-blur"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+          style={{
+            paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 1rem + ${navRoom})`,
+          }}
         >
           <div className="mx-auto max-w-md">
             {/* The lines that couldn't be read are shown where they were found,

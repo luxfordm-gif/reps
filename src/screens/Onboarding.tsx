@@ -9,6 +9,8 @@ import {
   markOnboardingComplete,
 } from '../lib/profileApi';
 import { DateOfBirthInput } from '../components/DateOfBirthInput';
+import { useScrollLock } from '../lib/useScrollLock';
+import { useVisualViewport } from '../lib/useVisualViewport';
 import { iconForGoal } from '../lib/goalIcons';
 import { logBodyWeight } from '../lib/bodyWeightApi';
 import { cleanDisplayName, MAX_DISPLAY_NAME } from '../lib/displayName';
@@ -144,7 +146,21 @@ export function Onboarding({ initial, onClose }: Props) {
     }
   }
 
-  async function handleSkip() {
+  /**
+   * Skip is per question, not per flow: it leaves this one blank and moves on
+   * to the next. Leaving setup altogether is the close button's job — it used
+   * to be this one's, which is why answering six questions and skipping the
+   * seventh dropped you back on the home screen.
+   */
+  function handleSkipStep() {
+    setError(null);
+    const next = ORDER[stepIdx + 1];
+    if (next) setStep(next);
+  }
+
+  /** Out of setup entirely. Whatever's been filled in is saved, but the flow
+   *  isn't marked complete — Profile → Personal details finishes it off. */
+  async function handleExit() {
     setError(null);
     setBusy(true);
     try {
@@ -171,16 +187,17 @@ export function Onboarding({ initial, onClose }: Props) {
         error={error}
         motivationalLine={motivationalLine}
         onFinish={handleFinish}
-        onSkip={handleSkip}
+        onExit={handleExit}
       />
     );
   }
 
   return (
-    <div className="bg-paper" style={{ minHeight: '100dvh' }}>
+    <OnboardingSurface>
       <StepShell
         onBack={stepIdx > 0 ? handleBack : undefined}
-        onSkip={!isLast ? handleSkip : undefined}
+        onSkip={!isLast ? handleSkipStep : undefined}
+        onExit={handleExit}
         progress={(stepIdx + 1) / ORDER.length}
       >
         {step === 'name' && (
@@ -251,20 +268,47 @@ export function Onboarding({ initial, onClose }: Props) {
           />
         )}
       </StepShell>
-    </div>
+    </OnboardingSurface>
   );
 }
 
 // ---------- Chrome ----------
 
+/**
+ * The window onto setup, sized to what the user can actually see.
+ *
+ * Every step is one screenful with its button pinned to the bottom, which is
+ * the shape iOS Safari breaks when the keyboard opens: the layout viewport
+ * doesn't shrink, so the footer ends up behind the keyboard and Safari scrolls
+ * the document up to reveal the field being typed into — taking the heading off
+ * the top of the screen with it. Pinning the page leaves Safari nothing to
+ * scroll, and sizing this box to the visual viewport puts the step in what the
+ * keyboard has left rather than under it. What doesn't fit scrolls in here,
+ * where the heading stays put and the Continue button is a swipe away.
+ */
+function OnboardingSurface({ children }: { children: React.ReactNode }) {
+  useScrollLock();
+  const viewport = useVisualViewport();
+  return (
+    <div
+      className="fixed inset-x-0 z-30 overflow-y-auto overscroll-contain bg-paper"
+      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function StepShell({
   onBack,
   onSkip,
+  onExit,
   progress,
   children,
 }: {
   onBack?: () => void;
   onSkip?: () => void;
+  onExit?: () => void;
   progress: number;
   children: React.ReactNode;
 }) {
@@ -272,7 +316,9 @@ function StepShell({
     <div
       className="mx-auto flex max-w-md flex-col px-5"
       style={{
-        minHeight: '100dvh',
+        // 100% of the surface above, which is the visible viewport — not 100dvh,
+        // which on iOS still counts the strip the keyboard is covering.
+        minHeight: '100%',
         paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
       }}
     >
@@ -291,16 +337,28 @@ function StepShell({
         ) : (
           <div className="h-11 w-11" />
         )}
-        {onSkip ? (
-          <button
-            onClick={onSkip}
-            className="px-2 py-1 text-sm font-semibold text-muted active:text-ink"
-          >
-            Skip
-          </button>
-        ) : (
-          <div className="h-11 w-11" />
-        )}
+        <div className="flex items-center">
+          {onSkip && (
+            <button
+              onClick={onSkip}
+              aria-label="Skip this question"
+              className="px-2 py-1 text-sm font-semibold text-muted active:text-ink"
+            >
+              Skip
+            </button>
+          )}
+          {onExit ? (
+            <button
+              onClick={onExit}
+              aria-label="Finish setup later"
+              className="pressable -mr-2 flex h-11 w-11 items-center justify-center rounded-full text-muted active:bg-surface-strong active:text-ink"
+            >
+              <CloseIcon />
+            </button>
+          ) : (
+            <div className="h-11 w-11" />
+          )}
+        </div>
       </div>
       <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-line">
         <div
@@ -842,20 +900,20 @@ function ReadyScreen({
   error,
   motivationalLine,
   onFinish,
-  onSkip,
+  onExit,
 }: {
   busy: boolean;
   error: string | null;
   motivationalLine: string;
   onFinish: () => void;
-  onSkip: () => void;
+  onExit: () => void;
 }) {
   return (
-    <div className="bg-paper" style={{ minHeight: '100dvh' }}>
+    <OnboardingSurface>
       <div
         className="mx-auto flex max-w-md flex-col px-5"
         style={{
-          minHeight: '100dvh',
+          minHeight: '100%',
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
           paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
         }}
@@ -881,15 +939,15 @@ function ReadyScreen({
             {busy ? 'Please wait…' : 'Get started'}
           </button>
           <button
-            onClick={onSkip}
+            onClick={onExit}
             disabled={busy}
             className="mt-2 w-full py-2 text-sm font-semibold text-muted active:text-ink disabled:opacity-50"
           >
-            Skip for now
+            I'll finish this later
           </button>
         </div>
       </div>
-    </div>
+    </OnboardingSurface>
   );
 }
 
@@ -1038,6 +1096,19 @@ function BackIcon() {
         strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M5 5l10 10M15 5L5 15"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
       />
     </svg>
   );
