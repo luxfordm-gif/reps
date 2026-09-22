@@ -3,6 +3,13 @@ import { useEffect, useState } from 'react';
 /** The part of the page the user can actually see, in CSS pixels. */
 export interface ViewportBox {
   height: number;
+  /**
+   * How much of the window is covered by something the page can't draw in —
+   * in practice the on-screen keyboard. Lets a sheet tighten its own spacing
+   * while the keyboard is up, rather than leaving the step too tall for what
+   * is left and making the user scroll for the button.
+   */
+  keyboardInset: number;
 }
 
 // `position: fixed` is measured against the layout viewport, which doesn't
@@ -49,5 +56,6 @@ function read(): ViewportBox | null {
   // A pinch-zoomed visual viewport is shorter than the screen without the
   // keyboard being anywhere near it; a sheet has no business shrinking for
   // that, and never wants to be taller than the window either.
-  return { height: Math.min(vv.height, window.innerHeight) };
+  const height = Math.min(vv.height, window.innerHeight);
+  return { height, keyboardInset: Math.max(0, window.innerHeight - height) };
 }

@@ -594,7 +594,7 @@ export function DayView({
                 </div>
               )}
               <button
-                className="pressable pointer-events-auto relative w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+                className="pressable pointer-events-auto w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
                 disabled={loadingSession}
                 onClick={() => {
                   haptics.commit();
@@ -609,9 +609,6 @@ export function DayView({
                 }}
               >
                 {loadingSession ? 'Loading…' : inProgress ? 'Continue workout' : 'Start workout'}
-                <span className="absolute right-6 top-1/2 -translate-y-1/2" aria-hidden>
-                  <ArrowRight />
-                </span>
               </button>
             </div>
           </div>
@@ -811,20 +808,6 @@ function Chevron({ rotate = 0, small = false }: { rotate?: number; small?: boole
     >
       <path
         d="M7 4l5 5-5 5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ArrowRight() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path
-        d="M3.5 9h11M10 4.5L14.5 9 10 13.5"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"

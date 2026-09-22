@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { EndWorkoutDialog } from './components/EndWorkoutDialog';
 import { LATEST_CHANGELOG_ENTRY } from './lib/changelog';
+import {
+  decideWhatsNew,
+  forgetSeenVersion,
+  readSeenVersion,
+  writeSeenVersion,
+  type PlanPresence,
+} from './lib/whatsNew';
 import { AuthProvider, useAuth } from './lib/auth';
 import { isSupabaseConfigured } from './lib/supabase';
 import { Home } from './screens/Home';
@@ -141,6 +148,9 @@ function Root() {
     null
   );
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  // Whether this user has a plan, as Home found out. "unknown" until Home has
+  // actually loaded one way or the other — see PlanPresence.
+  const [planPresence, setPlanPresence] = useState<PlanPresence>('unknown');
   const [endWorkoutOpen, setEndWorkoutOpen] = useState(false);
   // The workout in progress, as Home found it. Held up here so the bar over
   // the tab bar can show it on every tab — a running session used to exist
@@ -167,6 +177,9 @@ function Root() {
     if (!session) {
       setProfile(null);
       setOnboardingDismissedThisSession(false);
+      // Someone else may sign in on this phone; what Home last knew about a
+      // plan isn't about them.
+      setPlanPresence('unknown');
       return;
     }
     let cancelled = false;
@@ -190,22 +203,35 @@ function Root() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  // Release notes, once the user is someone they can be about — see
+  // lib/whatsNew. Signing up is not that moment: everything is new to you on
+  // the day you arrive, and the dialog was landing on top of the upload screen
+  // before the first PDF was even in.
   useEffect(() => {
-    if (!session) return;
-    if (typeof window === 'undefined') return;
-    const seen = window.localStorage.getItem('reps.lastSeenVersion');
-    if (seen === LATEST_CHANGELOG_ENTRY.version) return;
-    if (seen === null) {
-      // First load on this device — baseline silently so we only pop the
-      // modal for *real* updates, not the initial install.
-      window.localStorage.setItem(
-        'reps.lastSeenVersion',
-        LATEST_CHANGELOG_ENTRY.version
-      );
+    if (!session) {
+      setShowWhatsNew(false);
       return;
     }
-    setShowWhatsNew(true);
-  }, [session]);
+    switch (
+      decideWhatsNew({
+        planPresence,
+        seen: readSeenVersion(),
+        latest: LATEST_CHANGELOG_ENTRY.version,
+      })
+    ) {
+      case 'forget':
+        forgetSeenVersion();
+        break;
+      case 'baseline':
+        writeSeenVersion(LATEST_CHANGELOG_ENTRY.version);
+        break;
+      case 'show':
+        setShowWhatsNew(true);
+        break;
+      default:
+        break;
+    }
+  }, [session, planPresence]);
 
   const screenKey = loading
     ? 'loading'
@@ -229,9 +255,7 @@ function Root() {
   }, [screenKey]);
 
   function dismissWhatsNew() {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('reps.lastSeenVersion', LATEST_CHANGELOG_ENTRY.version);
-    }
+    writeSeenVersion(LATEST_CHANGELOG_ENTRY.version);
     setShowWhatsNew(false);
   }
 
@@ -484,6 +508,7 @@ function Root() {
             profile={profile}
             onResumeWorkout={handleResumeWorkout}
             onUploadReviewingChange={setUploadReviewing}
+            onPlanPresenceChange={setPlanPresence}
             onActiveWorkoutChange={setActiveWorkout}
             onActiveCardVisibilityChange={setActiveCardVisible}
           />

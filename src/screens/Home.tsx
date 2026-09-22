@@ -25,6 +25,7 @@ import { greetingName } from '../lib/displayName';
 import { useElapsedLabel } from '../lib/elapsed';
 import { haptics } from '../lib/haptics';
 import { notePlanState } from '../lib/installPrompt';
+import type { PlanPresence } from '../lib/whatsNew';
 import { WaterIcon, StepsIcon } from '../components/Tile';
 
 type Day = FullPlan['training_days'][number];
@@ -57,6 +58,13 @@ interface Props {
   /** Passed to the upload screen Home stands in for while there's no plan —
    *  see UploadPlan's own prop. */
   onUploadReviewingChange?: (reviewing: boolean) => void;
+  /**
+   * Whether this user has a plan. Home is the screen that finds out, and App
+   * holds on to the answer — the release-notes dialog waits for it. Reported
+   * as "unknown" until there's a real answer: a plan that hasn't loaded yet,
+   * or one this offline phone can't reach, is not the same as not having one.
+   */
+  onPlanPresenceChange?: (presence: PlanPresence) => void;
   onActiveWorkoutChange?: (info: ActiveWorkoutInfo | null) => void;
   /**
    * Whether the in-progress card is still on screen. The docked bar is the
@@ -172,6 +180,7 @@ export function Home({
   onResumeWorkout,
   profile,
   onUploadReviewingChange,
+  onPlanPresenceChange,
   onActiveWorkoutChange,
   onActiveCardVisibilityChange,
 }: Props) {
@@ -267,6 +276,12 @@ export function Home({
   useEffect(() => {
     notePlanState(plan != null);
   }, [plan]);
+
+  useEffect(() => {
+    if (!onPlanPresenceChange) return;
+    const settled = !loading && !(offline && plan == null);
+    onPlanPresenceChange(!settled ? 'unknown' : plan != null ? 'plan' : 'none');
+  }, [plan, loading, offline, onPlanPresenceChange]);
 
   // The day the open session belongs to, and the exercise to drop back into:
   // the last one a set was logged on, or the first if nothing has been logged

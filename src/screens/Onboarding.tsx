@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import {
   type Profile,
   type ProfilePatch,
@@ -288,16 +288,31 @@ export function Onboarding({ initial, onClose }: Props) {
 // ---------- Chrome ----------
 
 /**
+ * True while the on-screen keyboard is covering part of the window. Steps use
+ * it to give back the spacing they can afford to lose, so the whole question
+ * still fits in what the keyboard has left.
+ */
+const KeyboardOpenContext = createContext(false);
+
+/** Below this a shrunken viewport is a browser toolbar, not a keyboard. */
+const KEYBOARD_INSET_PX = 120;
+
+/**
  * The window onto setup, sized to what the user can actually see.
  *
  * Every step is one screenful with its button pinned to the bottom, which is
  * the shape iOS Safari breaks when the keyboard opens: the layout viewport
  * doesn't shrink, so the footer ends up behind the keyboard and Safari scrolls
- * the document up to reveal the field being typed into — taking the heading off
- * the top of the screen with it. Pinning the page leaves Safari nothing to
- * scroll, and sizing this box to the visual viewport puts the step in what the
- * keyboard has left rather than under it. What doesn't fit scrolls in here,
- * where the heading stays put and the Continue button is a swipe away.
+ * whatever it can to reveal the field being typed into. Pinning the page
+ * leaves it nothing to scroll there, and sizing this box to the visual
+ * viewport puts the step in what the keyboard has left rather than under it.
+ *
+ * This box itself never scrolls either — that was the hole in the last fix.
+ * Sized to the visual viewport it is short enough for a tall step to overflow,
+ * which made it the nearest scrollable thing to the field, so Safari scrolled
+ * it and carried the heading, the progress bar and the back arrow off the top
+ * of the screen. Anything that has to scroll now scrolls inside StepShell,
+ * under a header that can't move.
  *
  * The box is only ever resized, never moved: see useVisualViewport for why
  * offsetting it by the visual viewport's own offset moved the heading down the
@@ -306,12 +321,13 @@ export function Onboarding({ initial, onClose }: Props) {
 function OnboardingSurface({ children }: { children: React.ReactNode }) {
   useScrollLock();
   const viewport = useVisualViewport();
+  const keyboardOpen = (viewport?.keyboardInset ?? 0) > KEYBOARD_INSET_PX;
   return (
     <div
-      className="fixed inset-x-0 z-30 overflow-y-auto overscroll-contain bg-paper"
+      className="fixed inset-x-0 z-30 overflow-hidden bg-paper"
       style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
     >
-      {children}
+      <KeyboardOpenContext.Provider value={keyboardOpen}>{children}</KeyboardOpenContext.Provider>
     </div>
   );
 }
@@ -330,17 +346,11 @@ function StepShell({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className="mx-auto flex max-w-md flex-col px-5"
-      style={{
-        // 100% of the surface above, which is the visible viewport — not 100dvh,
-        // which on iOS still counts the strip the keyboard is covering.
-        minHeight: '100%',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
-      }}
-    >
+    // 100% of the surface above, which is the visible viewport — not 100dvh,
+    // which on iOS still counts the strip the keyboard is covering.
+    <div className="mx-auto flex h-full max-w-md flex-col px-5">
       <div
-        className="flex h-11 items-center justify-between"
+        className="flex h-11 shrink-0 items-center justify-between"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         {onBack ? (
@@ -377,13 +387,25 @@ function StepShell({
           )}
         </div>
       </div>
-      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-line">
+      <div className="mt-1 h-1 w-full shrink-0 overflow-hidden rounded-full bg-line">
         <div
           className="h-full rounded-full bg-ink transition-[width] duration-sheet ease-snap"
           style={{ width: `${Math.round(progress * 100)}%` }}
         />
       </div>
-      <div className="flex flex-1 flex-col pt-6">{children}</div>
+      {/* The only thing on the screen that scrolls. The back arrow and the
+          progress bar sit above it and can't be scrolled away, and the step's
+          own heading holds the top of it — so a step too tall for the room the
+          keyboard leaves gives up its card and its button, in that order,
+          rather than its title. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div
+          className="flex min-h-full flex-col pt-6"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)' }}
+        >
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
@@ -411,8 +433,18 @@ function StepShell({
  * moves the card again, which is the thing this is here to stop.
  */
 function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
+  // With the keyboard up there is no card below to hold still — the step is
+  // being typed into, not stepped through — and the 43 spare pixels are the
+  // difference between the question fitting and the user having to scroll for
+  // the field. Sticky so that if it still doesn't fit, what scrolls away is
+  // the bottom of the step and never the question being asked.
+  const keyboardOpen = useContext(KeyboardOpenContext);
   return (
-    <div className="flex min-h-[115px] flex-col justify-end">
+    <div
+      className={`sticky top-0 z-10 flex shrink-0 flex-col justify-end bg-paper ${
+        keyboardOpen ? 'pb-1' : 'min-h-[115px]'
+      }`}
+    >
       <h1 className="text-display font-bold leading-tight tracking-tight text-ink">{title}</h1>
       <p className="mt-1.5 text-base text-muted">{subtitle}</p>
     </div>

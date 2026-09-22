@@ -10,6 +10,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-22.3',
+    title: "What's new",
+    bullets: [
+      'This screen waits until you have a plan loaded. Signing up and being handed release notes for an app you have never opened was the wrong way round \u2014 everything was new to you anyway',
+      'Setup keeps its question, its progress bar and its back arrow on screen with the keyboard up. They were being scrolled off the top on Safari the moment you typed; the question now holds the top of the screen and only the field and the button below it can move',
+      'A set row fits the phone again \u2014 the tick was being squeezed into the edge of the card, close enough to touch the outline around the set you are on',
+      'The rest screen keeps its rest times on one line rather than dropping 3m underneath, and \u221215, +15 and Skip rest sit clear of the bottom of the screen instead of level with the home bar',
+      'The gap under \u201CUpload plan\u201D matches the one under \u201CPerformance\u201D, so nothing shifts as you move between the two tabs before a plan is in',
+      'Start workout has lost its arrow \u2014 it was the only button in the app wearing one',
+    ],
+  },
+  {
     version: '2026-09-22.2',
     title: "What's new",
     bullets: [

@@ -3118,25 +3118,32 @@ function SetGroup({
         return (
           <div key={idx}>
             {showBackOffHeader && (
-              <div className="px-5 pt-2.5 text-label font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="px-4 pt-2.5 text-label font-semibold uppercase tracking-[0.14em] text-muted">
                 Back off · {row.repRangeLabel}
               </div>
             )}
+            {/* Label, weight, reps, calculator and tick, and all of it has to
+                fit the narrowest phone we support. It didn't: at 390px the row
+                wanted about twenty pixels more than the card had, so the tick
+                was pushed into the right-hand padding and ended up all but
+                touching the active set's outline while the left edge kept its
+                full gap. Everything here is sized so the row still has room to
+                spare at that width. */}
             <div
-              className={`relative flex items-center gap-3 px-5 py-3 transition-colors ${
+              className={`relative flex items-center gap-2.5 px-4 py-3 transition-colors max-[360px]:gap-2 max-[360px]:px-3 ${
                 !isMain ? 'bg-surface' : ''
               } ${
                 isActive && rows.length > 1 ? 'ring-1 ring-inset ring-ink rounded-panel' : ''
               } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
             >
-              <div className="w-12 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
+              <div className="w-11 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
                 {isMain ? `Set ${setIndex}` : 'Drop'}
               </div>
             {!weightless && multiPoint && (
               <>
                 {/* The row still reads "weight × reps" — the weight is just the
                     total of the points, and tapping it opens the breakdown. */}
-                <div className="relative min-w-[76px] max-w-[112px] flex-1">
+                <div className="relative min-w-[60px] max-w-[112px] flex-1">
                   <button
                     type="button"
                     onClick={() =>
@@ -3166,7 +3173,7 @@ function SetGroup({
             )}
             {!weightless && !multiPoint && (
               <>
-                <div className="relative min-w-[76px] max-w-[112px] flex-1">
+                <div className="relative min-w-[60px] max-w-[112px] flex-1">
                   <input
                     type="number"
                     inputMode="decimal"
@@ -3217,7 +3224,7 @@ function SetGroup({
               }}
               placeholder={timed ? 'secs' : 'reps'}
               className={`${
-                weightless ? 'min-w-[76px] flex-1' : 'w-16 shrink-0'
+                weightless ? 'min-w-[60px] flex-1' : 'w-14 min-w-[44px]'
               } rounded-control border border-line bg-paper px-3 py-2 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-pressed ${
                 row.completed
                   ? 'text-ink/60'
@@ -3226,7 +3233,7 @@ function SetGroup({
                     : 'text-ink'
               }`}
             />
-            <div className="ml-auto flex shrink-0 items-center gap-3">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               {row.completed || weightless || multiPoint ? (
                 // Keeps the calculator's slot so the tick sits in the same
                 // column as every other row's. On a profile machine the
@@ -3273,7 +3280,7 @@ function SetGroup({
             </div>
             {multiPoint && pointsOpen && (
               <div
-                className={`bg-surface px-5 pb-3 pt-2.5 ${
+                className={`bg-surface px-4 pb-3 pt-2.5 ${
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
@@ -3296,7 +3303,7 @@ function SetGroup({
                         >
                           {point + 1}
                         </span>
-                        <div className="relative min-w-[76px] flex-1">
+                        <div className="relative min-w-[60px] flex-1">
                           <input
                             type="number"
                             inputMode="decimal"
@@ -3354,7 +3361,7 @@ function SetGroup({
             )}
             {curved && (
               <div
-                className={`flex items-center gap-2.5 bg-surface px-5 py-2 ${
+                className={`flex items-center gap-2.5 bg-surface px-4 py-2 ${
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
@@ -3400,7 +3407,7 @@ function SetGroup({
               <button
                 type="button"
                 onClick={() => setPointsOverride((prev) => ({ ...prev, [idx]: true }))}
-                className={`flex w-full items-center gap-1.5 bg-surface px-5 py-1.5 text-left text-caption font-semibold text-muted active:bg-pressed ${
+                className={`flex w-full items-center gap-1.5 bg-surface px-4 py-1.5 text-left text-caption font-semibold text-muted active:bg-pressed ${
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
@@ -3652,14 +3659,17 @@ function RestOverlay({
             <div className="text-label font-semibold uppercase tracking-[0.18em] text-white/50">
               Default rest time
             </div>
-            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+            {/* Six choices on one line at 390px: None, 30s, 60s, 90s, 2m, 3m.
+                At px-3.5 and gap-2 they came to a few pixels more than the
+                screen and 3m dropped onto a line of its own. */}
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
               {restChoices(restSeconds).map((s) => {
                 const active = s === restSeconds;
                 return (
                   <button
                     key={s}
                     onClick={() => onSetRestSeconds(s)}
-                    className={`pressable rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                    className={`pressable whitespace-nowrap rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors max-[380px]:px-2.5 ${
                       active
                         ? 'bg-white text-ink'
                         : 'border border-white/30 text-white/80 active:bg-white/10'
@@ -3675,7 +3685,9 @@ function RestOverlay({
 
         <div className="flex-1" />
 
-        <div className="flex items-start justify-around pb-[max(env(safe-area-inset-bottom),20px)] pt-6">
+        {/* Clear of the home indicator rather than level with it: the inset
+            alone put the labels under a thumb resting at the bottom edge. */}
+        <div className="flex items-start justify-around pb-[calc(env(safe-area-inset-bottom,0px)+1.75rem)] pt-6">
           <RoundAction label="Subtract 15" onClick={onSubtract}>
             <span className="text-xl font-bold leading-none">−15</span>
           </RoundAction>
