@@ -294,10 +294,29 @@ export function Login() {
               </button>
             )}
           </div>
+
+          {/* Which build this phone is running. A fix reported as "still
+              broken" is most often a phone still holding the build before it
+              — the app is installable and cached, so it outlives a refresh —
+              and this is the one screen you can read the answer off without
+              an account. See __BUILD_STAMP__ in vite.config.ts. */}
+          <p className="mt-auto pt-8 text-center text-caption text-muted/70">
+            {buildLabel()}
+          </p>
         </div>
       </div>
     </div>
   );
+}
+
+/** The build stamp as a date and time, or "dev" outside a build. */
+function buildLabel(): string {
+  const raw = typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '';
+  if (!raw) return 'dev build';
+  const at = new Date(raw);
+  if (Number.isNaN(at.getTime())) return raw;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `Build ${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 /** What the screen says at each step. The landing step greets; the steps after
