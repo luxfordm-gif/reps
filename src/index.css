@@ -247,3 +247,20 @@ h1, h2, h3, h4 {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* iOS Safari zooms the page in when you focus a form field whose text is
+   smaller than 16px, and leaves it zoomed afterwards — one tap on the body
+   part picker and the rest of the app is cropped and scrolling sideways for
+   the rest of the session. There's no way to opt out of that short of
+   disabling pinch-zoom on the whole document, which is worse, so the small
+   type on form controls gets a 16px floor where the pointer is a finger.
+   Reading sizes are untouched; so is any control the design deliberately sets
+   larger. A new field sized with something outside this list (an arbitrary
+   `text-[13px]`, say) needs adding here, or it will zoom. */
+@media (pointer: coarse) {
+  input.text-label, input.text-caption, input.text-xs, input.text-sm,
+  select.text-label, select.text-caption, select.text-xs, select.text-sm,
+  textarea.text-label, textarea.text-caption, textarea.text-xs, textarea.text-sm {
+    font-size: 16px;
+  }
+}

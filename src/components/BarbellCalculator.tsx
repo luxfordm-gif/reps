@@ -220,7 +220,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
       className={`fixed inset-x-0 z-50 transition-opacity ease-snap ${
         visible ? 'opacity-100 duration-pop' : 'pointer-events-none opacity-0 duration-press'
       }`}
-      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
+      style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       aria-modal="true"
       role="dialog"
     >
