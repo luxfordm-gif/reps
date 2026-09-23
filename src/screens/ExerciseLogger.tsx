@@ -1436,12 +1436,12 @@ export function ExerciseLogger({
             href={googleImagesUrl(displayName)}
             target="_blank"
             rel="noopener noreferrer"
-            className="block break-words text-2xl font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
+            className="block break-words text-3xl font-bold leading-tight tracking-title text-ink underline-offset-2 active:underline"
             style={{ textWrap: 'balance' } as React.CSSProperties}
           >
             <ExerciseName
               name={displayName}
-              brandClassName="mt-0.5 text-base font-semibold tracking-normal"
+              brandClassName="mt-1 text-base font-semibold tracking-normal"
             />
           </a>
           {/* Body part and unit used to sit here. The unit is inside every
@@ -1500,7 +1500,7 @@ export function ExerciseLogger({
           />
         )}
 
-        <div className="mt-5 grid grid-cols-3 gap-2">
+        <div className="mt-7 grid grid-cols-3 gap-2">
           <Stat label="Target sets" value={String(targetSets)} />
           <Stat label="Rep range" value={exercise.rep_range} />
           <Stat

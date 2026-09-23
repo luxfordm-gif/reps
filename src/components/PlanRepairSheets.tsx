@@ -5,7 +5,7 @@ import { useVisualViewport } from '../lib/useVisualViewport';
 import { SheetPanel } from './SheetPanel';
 import { editedName, splitBrand } from '../lib/exerciseBrand';
 import { rememberNewBrand } from '../lib/brandsApi';
-import { BRAND_LIST_ID, BrandSuggestions } from './ExerciseNameFields';
+import { BrandChips } from './ExerciseNameFields';
 
 // The two editor sheets for repairing an import on the upload review screen.
 // Both are plain forms: the person using them is fixing what the parser got
@@ -157,9 +157,12 @@ export function ExerciseEditorSheet({
             placeholder="e.g. Prime"
             className={inputClass}
             autoCapitalize="words"
-            list={BRAND_LIST_ID}
           />
-          <BrandSuggestions />
+          <BrandChips
+            className="mt-2"
+            value={nameParts.brand}
+            onPick={(b) => setNamePart('brand', b)}
+          />
         </label>
 
         <label className="block">

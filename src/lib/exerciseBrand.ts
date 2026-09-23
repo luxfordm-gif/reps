@@ -8,7 +8,7 @@
 // put back on the front of the name.
 
 import { normalizeExerciseName } from './normalizeExerciseName';
-import { MACHINE_MAKERS } from './machineCatalogue';
+import { MACHINE_MAKERS, brandSuggestions } from './machineCatalogue';
 
 interface BrandPattern {
   /** Lower-cased, as it's looked for in a name. */
@@ -213,4 +213,27 @@ export function editedName(initialName: string, movement: string, brand: string 
 /** The identity key for a movement on a brand of machine. */
 export function exerciseKey(movement: string, brand: string | null | undefined): string {
   return normalizeExerciseName(composeName(movement, brand));
+}
+
+/**
+ * Brands to offer while one is being typed: makers and their lines from the
+ * catalogue, plus brands typed before. A word starting with what's typed
+ * ranks above a match further inside ("cy" finds Cybex before anything else),
+ * and nothing is offered once the field already says exactly one of them.
+ */
+export function matchBrands(query: string, limit = 5): string[] {
+  const q = query.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!q) return [];
+  const all = [...new Set([...brandSuggestions(), ...customBrands])];
+  if (all.some((b) => b.toLowerCase() === q)) return [];
+  const starts: string[] = [];
+  const contains: string[] = [];
+  for (const b of all) {
+    const lower = b.toLowerCase();
+    if (lower.startsWith(q) || lower.includes(' ' + q)) starts.push(b);
+    else if (lower.includes(q)) contains.push(b);
+  }
+  // Shorter first within each group, so the maker comes before its lines.
+  const byLength = (a: string, b: string) => a.length - b.length || a.localeCompare(b);
+  return [...starts.sort(byLength), ...contains.sort(byLength)].slice(0, limit);
 }

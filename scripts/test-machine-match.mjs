@@ -11,6 +11,7 @@ import {
   composeName,
   editedName,
   exerciseKey,
+  matchBrands,
   rememberBrands,
   resetCustomBrands,
   splitBrand,
@@ -161,6 +162,15 @@ console.log('\n=== a machine brand, split from the movement ===');
     brand: 'Kraftwerk',
   });
   resetCustomBrands();
+}
+
+console.log('\n=== brand suggestions while typing ===');
+{
+  check('nothing typed, nothing offered', matchBrands(''), []);
+  check('the maker comes before its lines', matchBrands('cyb').slice(0, 2), ['Cybex', 'Cybex OG']);
+  check('a second word matches too', matchBrands('strength').includes('Hammer Strength'), true);
+  check('no more than five', matchBrands('a').length <= 5, true);
+  check('nothing once the field says one exactly', matchBrands('prime'), []);
 }
 
 console.log('\n=== the machine catalogue ===');

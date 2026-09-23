@@ -1,5 +1,4 @@
-import { customBrandList } from '../lib/exerciseBrand';
-import { brandSuggestions } from '../lib/machineCatalogue';
+import { matchBrands } from '../lib/exerciseBrand';
 
 const INPUT =
   'w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none';
@@ -40,25 +39,43 @@ export default function ExerciseNameFields({
         placeholder="Brand (optional), e.g. Prime"
         aria-label="Brand (optional)"
         autoCapitalize="words"
-        list={BRAND_LIST_ID}
         className={INPUT}
       />
-      <BrandSuggestions />
+      <BrandChips value={brand} onPick={onBrandChange} />
     </div>
   );
 }
 
-export const BRAND_LIST_ID = 'reps-machine-brands';
-
-/** The makers and lines a brand field offers as you type, plus any brand typed
- *  before. Render one beside any input with list={BRAND_LIST_ID}. */
-export function BrandSuggestions() {
-  const options = [...new Set([...brandSuggestions(), ...customBrandList()])];
+/**
+ * Brands matching what's been typed, as pills to tap. Drawn by the app rather
+ * than left to the browser's own suggestion list, which shows as a dropdown on
+ * Chrome, in the keyboard bar on an iPhone, and not at all on some browsers.
+ */
+export function BrandChips({
+  value,
+  onPick,
+  className = '',
+}: {
+  value: string;
+  onPick: (brand: string) => void;
+  className?: string;
+}) {
+  const matches = matchBrands(value);
+  if (matches.length === 0) return null;
   return (
-    <datalist id={BRAND_LIST_ID}>
-      {options.map((b) => (
-        <option key={b} value={b} />
+    <div className={`flex flex-wrap gap-1.5 ${className}`} aria-label="Suggested brands">
+      {matches.map((b) => (
+        <button
+          key={b}
+          type="button"
+          // Keep focus in the field so the keyboard doesn't drop and come back.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onPick(b)}
+          className="pressable rounded-pill border border-line bg-paper-card px-3 py-1.5 text-xs font-semibold text-ink active:bg-pressed"
+        >
+          {b}
+        </button>
       ))}
-    </datalist>
+    </div>
   );
 }
