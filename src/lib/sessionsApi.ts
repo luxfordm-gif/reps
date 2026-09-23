@@ -431,6 +431,12 @@ export interface RecapBestSet {
   reps: number;
   /** Medal when today's top set ranks 1st/2nd/3rd amongst the user's all-time distinct top weights for the exercise. */
   medal: RecapMedal | null;
+  /**
+   * The heaviest this movement had ever been lifted before today, so a real
+   * new best can be told from a matched one — a gold medal is both. Null when
+   * today is the first time it's been logged; undefined when unknown (offline).
+   */
+  previousBestKg?: number | null;
 }
 
 export interface SessionRecap {
@@ -438,8 +444,12 @@ export interface SessionRecap {
   totalWeight: number;
   durationMinutes: number | null;
   bestSets: RecapBestSet[];
-  /** Total weight from the last completed session for the same training day, if any. */
-  previousTotalWeight: number | null;
+  /**
+   * Total weight from the last completed session for the same training day.
+   * Null when there isn't one; undefined when it isn't known — offline, where
+   * the history needed to answer isn't on the device.
+   */
+  previousTotalWeight?: number | null;
   /** Unique body parts trained, in order of first appearance in the session. */
   bodyParts: string[];
 }
@@ -492,7 +502,7 @@ function localSessionRecap(userId: string | null, sessionId: string): SessionRec
       .map(([exercise, v]) => ({ exercise, weight: v.weight, reps: v.reps, medal: null }))
       .sort((a, b) => b.weight - a.weight)
       .slice(0, 5),
-    previousTotalWeight: null,
+    previousTotalWeight: undefined,
     bodyParts,
   };
 }
@@ -599,17 +609,24 @@ async function serverSessionRecap(sessionId: string): Promise<SessionRecap> {
   // weights for that exercise. Today's logged sets are already in the DB so
   // a new PR naturally ranks first.
   const medalByExercise = new Map<string, RecapMedal | null>();
+  const previousBestByName = new Map<string, number>();
+  let historyKnown = false;
   const normalizedNames = bestEntries.filter((e) => e.weight > 0).map((e) => e.normalizedName);
   if (thisSess?.user_id && normalizedNames.length > 0) {
-    const { data: hist } = await supabase
+    const { data: hist, error: histErr } = await supabase
       .from('logged_sets')
-      .select('exercise_normalized_name, weight')
+      .select('exercise_normalized_name, weight, session_id')
       .eq('user_id', thisSess.user_id)
       .in('exercise_normalized_name', normalizedNames)
       .not('weight', 'is', null);
     const distinctByName = new Map<string, Set<number>>();
-    for (const r of (hist as { exercise_normalized_name: string; weight: number }[]) ?? []) {
+    type HistRow = { exercise_normalized_name: string; weight: number; session_id: string };
+    for (const r of (hist as HistRow[]) ?? []) {
       if (r.weight == null) continue;
+      if (r.session_id !== sessionId) {
+        const before = previousBestByName.get(r.exercise_normalized_name) ?? null;
+        if (before == null || r.weight > before) previousBestByName.set(r.exercise_normalized_name, r.weight);
+      }
       const key = Math.round(r.weight * 10) / 10;
       let set = distinctByName.get(r.exercise_normalized_name);
       if (!set) {
@@ -618,6 +635,8 @@ async function serverSessionRecap(sessionId: string): Promise<SessionRecap> {
       }
       set.add(key);
     }
+    // A failed lookup must not read as "never lifted before".
+    historyKnown = !histErr;
     for (const e of bestEntries) {
       if (e.weight <= 0) {
         medalByExercise.set(e.exercise, null);
@@ -637,6 +656,7 @@ async function serverSessionRecap(sessionId: string): Promise<SessionRecap> {
     weight: e.weight,
     reps: e.reps,
     medal: medalByExercise.get(e.exercise) ?? null,
+    previousBestKg: historyKnown ? (previousBestByName.get(e.normalizedName) ?? null) : undefined,
   }));
 
   return {
@@ -787,6 +807,10 @@ export interface CompletedSessionSummary {
   day_name: string;
   total_exercises: number;
   recorded_exercises: number;
+  /** The plan the day belonged to, so a week is only compared with weeks on the same plan. */
+  plan_id: string | null;
+  /** Which rotation week the day belongs to; null for a day that runs every week. */
+  week_index: number | null;
 }
 
 export async function listCompletedSessions(): Promise<CompletedSessionSummary[]> {
@@ -794,7 +818,9 @@ export async function listCompletedSessions(): Promise<CompletedSessionSummary[]
   if (!userId) return [];
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, started_at, completed_at, training_days(name, plan_exercises(id))')
+    .select(
+      'id, started_at, completed_at, training_days(name, plan_id, week_index, plan_exercises(id))'
+    )
     .eq('user_id', userId)
     .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false });
@@ -803,10 +829,13 @@ export async function listCompletedSessions(): Promise<CompletedSessionSummary[]
     id: string;
     started_at: string;
     completed_at: string;
-    training_days:
-      | { name: string; plan_exercises: { id: string }[] }
-      | { name: string; plan_exercises: { id: string }[] }[]
-      | null;
+    training_days: SessionDay | SessionDay[] | null;
+  };
+  type SessionDay = {
+    name: string;
+    plan_id: string | null;
+    week_index: number | null;
+    plan_exercises: { id: string }[];
   };
   const rows = (data as Row[]) ?? [];
   const sessionIds = rows.map((r) => r.id);
@@ -839,6 +868,8 @@ export async function listCompletedSessions(): Promise<CompletedSessionSummary[]
       day_name: td?.name ?? 'Workout',
       total_exercises: total,
       recorded_exercises: recorded,
+      plan_id: td?.plan_id ?? null,
+      week_index: td?.week_index ?? null,
     };
   });
 }

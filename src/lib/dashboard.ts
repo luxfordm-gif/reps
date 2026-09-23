@@ -684,6 +684,8 @@ export interface PeriodTotals {
   workouts: number;
   sets: number;
   exercises: number;
+  /** Weight × reps over every set with both, in kg. */
+  volumeKg: number;
 }
 
 /** One lift, this period against the one being compared with. */
@@ -730,19 +732,21 @@ interface Period {
   bests: Map<string, Best>;
   sets: number;
   exercises: Set<string>;
+  volumeKg: number;
 }
 
 /** Everything a comparison needs to know about one span of time. */
 function summarize(sets: StrengthSet[], from: Date, to: Date): Period {
   const fromMs = from.getTime();
   const toMs = to.getTime();
-  const period: Period = { from, to, bests: new Map(), sets: 0, exercises: new Set() };
+  const period: Period = { from, to, bests: new Map(), sets: 0, exercises: new Set(), volumeKg: 0 };
   for (const s of sets) {
     const t = new Date(s.completedAt).getTime();
     if (t < fromMs || t >= toMs) continue;
     period.sets += 1;
     period.exercises.add(s.normalizedName);
     if (s.weight == null || s.reps == null) continue;
+    period.volumeKg += s.weight * s.reps;
     const e = estimate1RM(s.weight, s.reps);
     const prev = period.bests.get(s.normalizedName);
     if (!prev || e > prev.e1rm) {
@@ -784,6 +788,7 @@ function compare(
     workouts: workouts(p),
     sets: p.sets,
     exercises: p.exercises.size,
+    volumeKg: Math.round(p.volumeKg),
   });
 
   const movers: ExerciseMove[] = [];
@@ -835,6 +840,79 @@ export function compareWeeks(
     return summarize(sets, from, addWeeks(from, 1));
   };
   return compare(sessions, weekOf(now), weekOf(addWeeks(now, -Math.max(1, weeksBack))));
+}
+
+export interface ComparisonWeek {
+  /** Calendar weeks between the week described and the one it's measured against. */
+  weeksBack: number;
+  /** The rotation week both ran, or null for a plan that doesn't rotate. */
+  weekIndex: number | null;
+}
+
+/** How far back to look for a week to compare with, before giving up. */
+const MAX_COMPARISON_WEEKS = 8;
+
+/**
+ * Which earlier week a week should be measured against.
+ *
+ * On a plan that rotates, last week was the other half of the rotation — a
+ * different set of days — so it's the wrong yardstick. The right one is the
+ * last week that ran the same rotation week. That's found from what was
+ * trained rather than by counting back two weeks, because Reps moves you on
+ * to the next rotation week when you've done this one, not when the calendar
+ * says: miss a week and "two weeks ago" is the other half again.
+ *
+ * Only weeks on the same plan count, since a new plan starts its numbers
+ * afresh. Null when there's nothing to compare with — the first week on a
+ * plan, or the first time through a rotation week.
+ */
+export interface PlanSession {
+  completed_at: string;
+  plan_id: string | null;
+  week_index: number | null;
+}
+
+function sessionsByWeek(sessions: PlanSession[], planId: string | null): Map<string, (number | null)[]> {
+  const byWeek = new Map<string, (number | null)[]>();
+  for (const s of sessions) {
+    if (planId != null && s.plan_id !== planId) continue;
+    const k = weekStartISO(new Date(s.completed_at));
+    const list = byWeek.get(k) ?? [];
+    list.push(s.week_index);
+    byWeek.set(k, list);
+  }
+  return byWeek;
+}
+
+/** The rotation week most of a week's sessions ran; null if none were on a rotation. */
+function rotationIn(weekIndexes: (number | null)[] | undefined): number | null {
+  const counts = new Map<number, number>();
+  for (const w of weekIndexes ?? []) if (w != null) counts.set(w, (counts.get(w) ?? 0) + 1);
+  let best: number | null = null;
+  for (const [w, n] of counts) if (best == null || n > (counts.get(best) ?? 0)) best = w;
+  return best;
+}
+
+/** Which rotation week the calendar week containing `weekOf` ran on this plan. */
+export function rotationWeekOf(sessions: PlanSession[], planId: string | null, weekOf: Date): number | null {
+  return rotationIn(sessionsByWeek(sessions, planId).get(weekStartISO(weekOf)));
+}
+
+export function comparisonWeek(
+  sessions: PlanSession[],
+  planId: string | null,
+  weekOf: Date,
+): ComparisonWeek | null {
+  const byWeek = sessionsByWeek(sessions, planId);
+  const rotationOf = (key: string) => rotationIn(byWeek.get(key));
+
+  const target = rotationOf(weekStartISO(weekOf));
+  for (let back = 1; back <= MAX_COMPARISON_WEEKS; back++) {
+    const key = weekStartISO(addWeeks(weekOf, -back));
+    if (!byWeek.has(key)) continue;
+    if (target == null || rotationOf(key) === target) return { weeksBack: back, weekIndex: target };
+  }
+  return null;
 }
 
 /**
