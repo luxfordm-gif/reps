@@ -122,18 +122,23 @@ export interface SplitName {
 }
 
 /**
- * Splits a brand off the start or end of an exercise name. The brand has to be
- * whole words and something has to be left over, so "Prime" on its own stays a
- * name. The movement is returned starting with a capital, as names are shown.
+ * Splits a brand out of an exercise name. The brand has to be whole words and
+ * something has to be left over, so "Prime" on its own stays a name. The
+ * movement is returned starting with a capital, as names are shown.
  *
- *   "Prime pec deck fly"       → { movement: "Pec deck fly", brand: "Prime" }
- *   "Reverse pec deck prime"   → { movement: "Reverse pec deck", brand: "Prime" }
- *   "Rope hammer curl"         → { movement: "Rope hammer curl", brand: null }
+ *   "Prime pec deck fly"                   → { movement: "Pec deck fly", brand: "Prime" }
+ *   "Reverse pec deck prime"               → { movement: "Reverse pec deck", brand: "Prime" }
+ *   "Single arm hammer strength pulldown"  → { movement: "Single arm pulldown", brand: "Hammer Strength" }
+ *   "Rope hammer curl"                     → { movement: "Rope hammer curl", brand: null }
+ *
+ * A brand at either end is looked for first; one in the middle only when no
+ * brand is at an end. Makers marked startOnly count only at the front.
  */
 export function splitBrand(name: string): SplitName {
   const trimmed = name.trim().replace(/\s+/g, ' ');
   const lower = trimmed.toLowerCase();
-  for (const p of allPatterns()) {
+  const patterns = allPatterns();
+  for (const p of patterns) {
     const b = p.text;
     if (!b || lower.length <= b.length + 1) continue;
     if (lower.startsWith(b + ' ')) {
@@ -145,6 +150,14 @@ export function splitBrand(name: string): SplitName {
         brand: p.spelling,
       };
     }
+  }
+  for (const p of patterns) {
+    if (!p.text || p.startOnly) continue;
+    const at = lower.indexOf(' ' + p.text + ' ');
+    if (at < 0) continue;
+    const before = trimmed.slice(0, at);
+    const after = trimmed.slice(at + p.text.length + 2);
+    return { movement: capitalise(`${before} ${after}`.trim()), brand: p.spelling };
   }
   return { movement: trimmed, brand: null };
 }

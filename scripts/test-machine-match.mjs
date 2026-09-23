@@ -187,6 +187,16 @@ console.log('\n=== the machine catalogue ===');
     brand: 'Arsenal Strength Reloaded',
   });
   check('a cardio name is the exercise, not a brand', splitBrand('Assault bike').brand, null);
+  check('a brand in the middle of the name', splitBrand('Single arm hammer strength pulldown'), {
+    movement: 'Single arm pulldown',
+    brand: 'Hammer Strength',
+  });
+  check('with its line', splitBrand('Seated cybex eagle leg curl'), {
+    movement: 'Seated leg curl',
+    brand: 'Cybex Eagle',
+  });
+  check('a front-only maker is not taken from the middle', splitBrand('Hip flex stretch').brand, null);
+  check('"hammer" in the middle is still a curl', splitBrand('Cable hammer curl').brand, null);
   check('a pendulum squat is a movement', splitBrand('Pendulum squat').brand, null);
 }
 {
