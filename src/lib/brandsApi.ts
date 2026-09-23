@@ -2,7 +2,7 @@ import { supabase, currentUserId } from './supabase';
 import { cleanBrand, customBrandList, rememberBrands } from './exerciseBrand';
 
 // Brands the user has typed that aren't on the known list. They're kept on the
-// profile so a name like "Newtech chest press" splits on every device, not just
+// profile so a name like "Kraftwerk chest press" splits on every device, not just
 // the one it was typed on. All of it is best effort: a brand that doesn't sync
 // still lands in the name, which is what the machine's identity rests on.
 
