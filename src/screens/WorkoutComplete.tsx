@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getSessionRecap, type SessionRecap, type RecapMedal } from '../lib/sessionsApi';
 import { getActivePlan } from '../lib/plansApi';
 import { baseDayName, buildDaySlots, siblingVariant } from '../lib/daySlots';
-import { getLiftWeightUnit } from '../lib/units';
+import { fromKgFor, getLiftWeightUnit } from '../lib/units';
+import { sessionLine } from '../lib/summary';
 import { NotesAccordion } from '../components/NotesAccordion';
 import { SyncStatus } from '../components/SyncStatus';
 import { Tile, TileUnit, BarsIcon, BoltIcon, DumbbellIcon } from '../components/Tile';
@@ -65,7 +66,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
             totalWeight: 0,
             durationMinutes: null,
             bestSets: [],
-            previousTotalWeight: null,
+            previousTotalWeight: undefined,
             bodyParts: [],
           });
       });
@@ -96,6 +97,29 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
   const bestSets = recap ? recap.bestSets : [];
   const medalCount = bestSets.filter((s) => s.medal != null).length;
 
+  // One or two plain sentences on what today was, from facts the recap already
+  // has (lib/summary). Seeded by the session, so it reads the same each time
+  // this screen is opened for it.
+  const line = useMemo(() => {
+    if (!recap) return null;
+    return sessionLine(
+      {
+        dayName: baseDayName(dayName),
+        setsLogged: recap.setsLogged,
+        durationMinutes: recap.durationMinutes,
+        totalKg: recap.totalWeight,
+        previousTotalKg: recap.previousTotalWeight,
+        bests: recap.bestSets.map((s) => ({
+          exercise: s.exercise,
+          kg: s.weight,
+          reps: s.reps,
+          previousBestKg: s.previousBestKg,
+        })),
+      },
+      { seed: sessionId, weight: (kg) => `${fmtWeight(fromKgFor(kg, unit))} ${unit}` }
+    );
+  }, [recap, dayName, sessionId, unit]);
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-paper">
       <CelebrationConfetti />
@@ -120,6 +144,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
               </>
             )}
           </p>
+          {line && <p className="mt-3 text-base leading-snug text-ink-soft">{line}</p>}
         </Rise>
 
         <SyncStatus className="mt-5" />
@@ -282,7 +307,10 @@ function setsHint(recap: SessionRecap): string | undefined {
  * Volume against the last time you ran this day. A tile hint has room for
  * about twenty characters before it truncates, so this stays terse.
  */
-function volumeHint(recap: SessionRecap, dayName: string): string {
+function volumeHint(recap: SessionRecap, dayName: string): string | undefined {
+  // Offline there's no history to compare with, which isn't the same as there
+  // being none: saying "first session" then was simply wrong.
+  if (recap.previousTotalWeight === undefined) return undefined;
   if (recap.previousTotalWeight == null || recap.previousTotalWeight <= 0) {
     return `first ${baseDayName(dayName)} session`;
   }

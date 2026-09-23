@@ -34,6 +34,7 @@ import { listWaterSince, type WaterDay } from '../lib/waterApi';
 import { listSteps, formatSteps, type StepRow } from '../lib/stepsApi';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import { buildDaySlots } from '../lib/daySlots';
+import { buildWeekFacts, comparisonLabel, weekLine, type WeekFacts } from '../lib/summary';
 import {
   getThisWeekSummary,
   listCompletedSessions,
@@ -51,6 +52,7 @@ import {
   computeWorkoutsPerWeek,
   compareWeeks,
   compareWindow,
+  comparisonWeek,
   countSessionsByExercise,
   summarizeBodyWeight,
   type WeekStreak,
@@ -201,9 +203,24 @@ export function Performance() {
       (plan?.training_days ?? []).filter((d) => d.reference_only).map((d) => d.name),
     );
     const gymSessions = sessions.filter((s) => !referenceNames.has(s.day_name));
+    const streak = computeWeekStreak(gymSessions, weeklyTarget);
     return {
       weeklyTarget,
-      streak: computeWeekStreak(gymSessions, weeklyTarget),
+      streak,
+      week: buildWeekFacts({
+        sets: perf.sets,
+        sessions: gymSessions,
+        planId: plan?.id ?? null,
+        target: weeklyTarget,
+        streak: streak.current,
+      }),
+      // On a rotating plan, the week to measure this one against is the last
+      // one that ran the same rotation week — not last week, which was the
+      // other half of the plan. Null on a plan that doesn't rotate.
+      rotationMatch: (() => {
+        const m = comparisonWeek(gymSessions, plan?.id ?? null, new Date());
+        return m && m.weekIndex != null ? m : null;
+      })(),
       water: dailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
       steps: dailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
       volume: computeWeeklyVolume(perf.sets),
@@ -226,8 +243,9 @@ export function Performance() {
     if (!data) return null;
     const { sets } = data.perf;
     if (period === 'season') return compareWindow(sets, data.sessions, 28);
-    return compareWeeks(sets, data.sessions, period === 'fortnight' ? 2 : 1);
-  }, [data, period]);
+    if (period === 'fortnight') return compareWeeks(sets, data.sessions, 2);
+    return compareWeeks(sets, data.sessions, derived?.rotationMatch?.weeksBack ?? 1);
+  }, [data, derived, period]);
 
   // What the library's "Top increased" order sorts on. Built from the movers
   // the tab has already computed rather than by the board walking every set
@@ -323,6 +341,7 @@ export function Performance() {
                 target={derived.weeklyTarget}
                 streak={derived.streak}
               />
+              {derived.week && <WeekCard facts={derived.week} unit={liftUnit} />}
             </Block>
 
             {data.perf.bodyWeights.length > 0 && (
@@ -404,6 +423,7 @@ export function Performance() {
                   leadSeries={leadSeries}
                   period={period}
                   onPeriod={setPeriod}
+                  rotationWeek={derived.rotationMatch?.weekIndex ?? null}
                   unit={liftUnit}
                   canOpen={(n) => derived.recordNames.has(n)}
                   onOpen={(n) => openRecord(n)}
@@ -481,6 +501,39 @@ function PlanHero({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The week in a sentence or two, under the plan card.
+ *
+ * The figures around it on this tab each answer one question; this is the one
+ * place that says how they add up, the way Strava puts a line on an activity.
+ * It's written from templates over the same facts (lib/summary), so it can
+ * only say what the numbers do, and it reads the same with no signal.
+ */
+function WeekCard({ facts, unit }: { facts: WeekFacts; unit: MachineUnit }) {
+  const line = weekLine(facts, {
+    // Stable for a given week and count, so it doesn't reshuffle on every visit
+    // but does move on once another workout is in.
+    seed: `${facts.weekStart}:${facts.workouts}`,
+    weight: (kg) => {
+      const v = Math.round(fromKgFor(kg, unit) * 10) / 10;
+      return `${Number.isInteger(v) ? v : v.toFixed(1)} ${unit}`;
+    },
+  });
+  if (!line) return null;
+  const against = comparisonLabel(facts);
+  return (
+    <div className="mt-3 rounded-card bg-paper-card p-5 shadow-card">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-base font-semibold text-ink">
+          {facts.which === 'this' ? 'This week' : 'Last week'}
+        </div>
+        {against && <div className="shrink-0 text-caption text-muted">{against}</div>}
+      </div>
+      <p className="mt-1.5 text-sm leading-snug text-ink-soft">{line}</p>
     </div>
   );
 }
@@ -763,6 +816,7 @@ function MoversCard({
   leadSeries,
   period,
   onPeriod,
+  rotationWeek,
   unit,
   canOpen,
   onOpen,
@@ -773,6 +827,8 @@ function MoversCard({
   leadSeries: number[];
   period: MoverPeriod;
   onPeriod: (p: MoverPeriod) => void;
+  /** On a rotating plan, the rotation week "1w" compares like for like. */
+  rotationWeek: number | null;
   unit: MachineUnit;
   canOpen: (normalizedName: string) => boolean;
   onOpen: (normalizedName: string) => void;
@@ -780,7 +836,14 @@ function MoversCard({
 }) {
   const { movers, previous } = comparison;
   const [lead, ...rest] = movers;
-  const prose = PERIODS.find((p) => p.key === period)?.prose ?? 'last week';
+  // On a rotating plan the first pill is this rotation week against the last
+  // time it ran, and says so; the calendar-week pill would be the other half.
+  const periods = PERIODS.map((p) =>
+    p.key === 'week' && rotationWeek != null
+      ? { ...p, pill: `Wk ${rotationWeek}`, prose: `the last time you ran week ${rotationWeek}` }
+      : p
+  );
+  const prose = periods.find((p) => p.key === period)?.prose ?? 'last week';
 
   return (
     <div>
@@ -788,7 +851,7 @@ function MoversCard({
         title="Strength trends"
         controls={
           <div className="flex rounded-pill bg-surface-strong p-0.5">
-            {PERIODS.map((p) => (
+            {periods.map((p) => (
               <button
                 key={p.key}
                 type="button"

@@ -60,7 +60,7 @@ console.log('\n=== a withdrawn entry is worth the one below it ===');
   // which swallows a real release that shipped after it \u2014 2026-09-22.4 carries
   // the fix for menu items that could not be reached at all.
   check('but a real release since is still shown', decide('plan', WITHDRAWN), 'show');
-  check('  (and that release is the current one)', LATEST, '2026-09-22.4');
+  check('  (and that release is still on the changelog)', CHANGELOG_VERSIONS.includes('2026-09-22.4'), true);
 
   // Once dismissed, the mark is a version that exists and the rules are ordinary again.
   check('after dismissing it they are up to date', decide('plan', LATEST), 'nothing');

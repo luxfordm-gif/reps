@@ -29,6 +29,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-23.1',
+    title: "What's new",
+    bullets: [
+      'The end of a workout says what changed in a sentence: a new best, and how the volume compares with the last time you did that day',
+      'Performance has a This week card that sums the week up. On a plan that rotates, it compares with the last time you ran the same week rather than last week, which was the other half of the plan, and Strength trends does the same',
+      'Finishing a workout with no signal no longer calls it your first session of that day',
+    ],
+  },
+  {
     version: '2026-09-22.4',
     title: "What's new",
     bullets: [

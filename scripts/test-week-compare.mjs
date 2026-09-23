@@ -6,6 +6,8 @@ import {
   computeWeeklyVolume as computeWeeklyVolumeAt,
   weekVsAveragePct,
   countSessionsByExercise,
+  comparisonWeek,
+  rotationWeekOf,
 } from '../src/lib/dashboard.ts';
 
 let failures = 0;
@@ -192,6 +194,38 @@ console.log('\n=== how often a movement has been trained ===');
   const morning = set('bench', 100, 5, 2);
   const evening = { ...set('bench', 100, 5, 2), completedAt: new Date(new Date(morning.completedAt).setHours(21)).toISOString() };
   eq('twice in a day is one day', countSessionsByExercise([morning, evening]).get('bench'), 1);
+}
+
+console.log('\n=== a rotating plan is compared with the same rotation week ===');
+{
+  // This week is Mon 14th (0–3 days ago); last week 4–10; two back 11–17;
+  // three back 18–24.
+  const on = (daysAgo, week, plan = 'ppl') => ({ completed_at: at(daysAgo), plan_id: plan, week_index: week });
+
+  const alternating = [on(1, 2), on(2, 2), on(5, 1), on(6, 1), on(12, 2), on(13, 2)];
+  eq('week 2 is measured against the last week 2, not last week', comparisonWeek(alternating, 'ppl', NOW), { weeksBack: 2, weekIndex: 2 });
+  eq('and knows which rotation week this is', rotationWeekOf(alternating, 'ppl', NOW), 2);
+
+  // Reps moves the rotation on by what's been done, so a missed week shifts it.
+  const missed = [on(1, 2), on(12, 1), on(19, 2)];
+  eq('a missed week is looked past, not counted as the other half', comparisonWeek(missed, 'ppl', NOW), { weeksBack: 3, weekIndex: 2 });
+
+  eq('the first time through a rotation week has nothing to compare with', comparisonWeek([on(1, 2), on(5, 1)], 'ppl', NOW), null);
+
+  const oldPlan = [on(1, 2), on(5, 2, 'old'), on(12, 2)];
+  eq('a week on another plan doesn’t count', comparisonWeek(oldPlan, 'ppl', NOW), { weeksBack: 2, weekIndex: 2 });
+
+  // Home days run every week (week_index null), so they don't decide the rotation.
+  const withHome = [on(1, 2), on(2, null), on(5, 1), on(6, null), on(12, 2)];
+  eq('an every-week day doesn’t change which week it is', comparisonWeek(withHome, 'ppl', NOW), { weeksBack: 2, weekIndex: 2 });
+
+  const flat = [on(1, null), on(12, null)];
+  eq('a plan that doesn’t rotate takes the last week trained', comparisonWeek(flat, 'ppl', NOW), { weeksBack: 2, weekIndex: null });
+  eq('and has no rotation week', rotationWeekOf(flat, 'ppl', NOW), null);
+}
+{
+  const cmp = compareWeeks([set('bench', 100, 5, 1), set('bench', 50, 10, 1), set('bench', 90, 5, 5)], [], 1);
+  eq('each week carries its volume', [cmp.current.volumeKg, cmp.previous.volumeKg], [1000, 450]);
 }
 
 console.log(failures === 0 ? '\nAll passed.' : `\n${failures} failed.`);
