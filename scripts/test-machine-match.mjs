@@ -17,6 +17,7 @@ import {
 } from '../src/lib/exerciseBrand.ts';
 import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
 import { FORMAT_A_TEXT } from './fixtures/plans/trainer-formats.mjs';
+import { filterExercisesByQuery } from '../src/lib/exerciseSearch.ts';
 
 let failures = 0;
 function check(label, actual, expected) {
@@ -211,6 +212,22 @@ console.log('\n=== the better-used machine wins a tie ===');
   const m = computeMatch(row('Cable fly seated'), tied);
   check('kind', m.kind, 'fuzzy');
   check('candidate', m.candidate?.name, 'Cable fly low');
+}
+
+console.log('\n=== searching the list of machines ===');
+{
+  const names = HISTORY.map((m) => m.name);
+  const search = (q) => filterExercisesByQuery(names, q, (n) => n);
+  check('an empty search keeps the whole list', search('   ').length, names.length);
+  check('matches part of a name, any case', search('BENCH'), ['Barbell bench press']);
+  check('every word counts, in any order', search('press incline'), ['Incline dumbbell press']);
+  check('a shared word finds each machine', search('press'), [
+    'Barbell bench press',
+    'Incline dumbbell press',
+    'Leg press',
+  ]);
+  check('extra spaces are ignored', search('  leg   press '), ['Leg press']);
+  check('nothing matches, nothing shown', search('squat'), []);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);

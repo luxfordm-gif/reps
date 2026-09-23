@@ -28,6 +28,7 @@ import {
   type PlanExerciseRow,
 } from '../lib/plansApi';
 import { listMachines, type MachineRow } from '../lib/machinesApi';
+import { filterExercisesByQuery } from '../lib/exerciseSearch';
 import {
   listAlternativesForExercise,
   addAlternative,
@@ -2420,6 +2421,91 @@ function AlternativeSheet({
   );
 }
 
+// The machines both the add-alternative and swap sheets pick from, with a
+// search above to narrow the list by name. The list keeps its height while
+// filtering so the sheet doesn't jump under the user's thumb. When nothing
+// matches, what they typed can go straight into the new-exercise field below.
+function MachinePickerList({
+  machines,
+  disabled = false,
+  onPick,
+  onUseAsNew,
+}: {
+  machines: MachineRow[] | null;
+  disabled?: boolean;
+  onPick: (m: MachineRow) => void;
+  onUseAsNew: (name: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const trimmedQuery = query.trim();
+  const shown =
+    machines && filterExercisesByQuery(machines, query, (m) => m.displayName);
+
+  return (
+    <>
+      {machines !== null && machines.length > 0 && (
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search exercises"
+          aria-label="Search exercises"
+          autoComplete="off"
+          autoCorrect="off"
+          enterKeyHint="search"
+          className="mt-4 w-full rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+        />
+      )}
+      <div
+        className={`${
+          machines !== null && machines.length > 0 ? 'mt-3' : 'mt-4'
+        } h-[42vh] min-h-0 overflow-y-auto`}
+      >
+        {machines === null || shown === null ? (
+          <div className="py-6 text-center text-sm text-muted">Loading…</div>
+        ) : machines.length === 0 ? (
+          <div className="py-2 text-center text-xs text-muted">
+            No other machines for this body part yet — add a new exercise
+            below.
+          </div>
+        ) : shown.length === 0 ? (
+          <div className="py-2 text-center text-xs text-muted">
+            <p>Nothing matches “{trimmedQuery}”.</p>
+            <button
+              onClick={() => onUseAsNew(trimmedQuery)}
+              disabled={disabled}
+              className="pressable mt-3 rounded-pill border border-line bg-paper-card px-4 py-2 text-sm font-semibold text-ink active:bg-pressed disabled:opacity-40"
+            >
+              Add it as a new exercise
+            </button>
+          </div>
+        ) : (
+          <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
+            {shown.map((m) => (
+              <li key={m.normalizedName}>
+                <button
+                  onClick={() => onPick(m)}
+                  disabled={disabled}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed disabled:opacity-50"
+                >
+                  <span className="text-sm font-semibold text-ink">
+                    <ExerciseName name={m.displayName} variant="inline" />
+                  </span>
+                  {m.setCount > 0 && (
+                    <span className="text-label font-semibold uppercase tracking-wider text-muted">
+                      history
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
 // Adds a new alternative to the slot. Reuses the SwapMachineModal "choose"
 // stage — pick an existing tracked machine (pulls its history) or type a new
 // movement (starts at zero) — but adding is always a persisted plan-slot
@@ -2482,6 +2568,14 @@ function AddAlternativeModal({
 
   const trimmedNew = newMovement.trim() ? composeName(newMovement, newBrand) : '';
 
+  // A search that found nothing goes into the new-exercise fields, with any
+  // brand in it moved to the brand field.
+  function fillNewFrom(typed: string) {
+    const { movement, brand } = splitBrand(typed);
+    setNewMovement(movement);
+    setNewBrand(brand ?? '');
+  }
+
   function chooseNew() {
     if (!trimmedNew) return;
     rememberNewBrand(newBrand);
@@ -2505,37 +2599,12 @@ function AddAlternativeModal({
           always defaults back to the original.
         </p>
 
-        <div className="mt-4 h-[42vh] min-h-0 overflow-y-auto">
-          {machines === null ? (
-            <div className="py-6 text-center text-sm text-muted">Loading…</div>
-          ) : machines.length === 0 ? (
-            <div className="py-2 text-center text-xs text-muted">
-              No other machines for this body part yet — add a new exercise
-              below.
-            </div>
-          ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
-              {machines.map((m) => (
-                <li key={m.normalizedName}>
-                  <button
-                    onClick={() => submit(m.displayName, m.normalizedName)}
-                    disabled={submitting}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed disabled:opacity-50"
-                  >
-                    <span className="text-sm font-semibold text-ink">
-                      <ExerciseName name={m.displayName} variant="inline" />
-                    </span>
-                    {m.setCount > 0 && (
-                      <span className="text-label font-semibold uppercase tracking-wider text-muted">
-                        history
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <MachinePickerList
+          machines={machines}
+          disabled={submitting}
+          onPick={(m) => submit(m.displayName, m.normalizedName)}
+          onUseAsNew={fillNewFrom}
+        />
 
         <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
           Add a new exercise
@@ -2628,6 +2697,14 @@ function SwapMachineModal({
 
   const trimmedNew = newMovement.trim() ? composeName(newMovement, newBrand) : '';
 
+  // A search that found nothing goes into the new-exercise fields, with any
+  // brand in it moved to the brand field.
+  function fillNewFrom(typed: string) {
+    const { movement, brand } = splitBrand(typed);
+    setNewMovement(movement);
+    setNewBrand(brand ?? '');
+  }
+
   function chooseExisting(m: MachineRow) {
     setPending({
       name: m.displayName,
@@ -2666,36 +2743,11 @@ function SwapMachineModal({
               or add a brand-new exercise.
             </p>
 
-            <div className="mt-4 h-[42vh] min-h-0 overflow-y-auto">
-              {machines === null ? (
-                <div className="py-6 text-center text-sm text-muted">Loading…</div>
-              ) : machines.length === 0 ? (
-                <div className="py-2 text-center text-xs text-muted">
-                  No other machines for this body part yet — add a new exercise
-                  below.
-                </div>
-              ) : (
-                <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
-                  {machines.map((m) => (
-                    <li key={m.normalizedName}>
-                      <button
-                        onClick={() => chooseExisting(m)}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed"
-                      >
-                        <span className="text-sm font-semibold text-ink">
-                          {m.displayName}
-                        </span>
-                        {m.setCount > 0 && (
-                          <span className="text-label font-semibold uppercase tracking-wider text-muted">
-                            history
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <MachinePickerList
+              machines={machines}
+              onPick={chooseExisting}
+              onUseAsNew={fillNewFrom}
+            />
 
             <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
               Add a new exercise
@@ -3187,10 +3239,19 @@ function SetGroup({
               className={`relative flex items-center gap-2.5 px-4 py-3 transition-colors max-[360px]:gap-2 max-[360px]:px-3 ${
                 !isMain ? 'bg-surface' : ''
               } ${
-                isActive && rows.length > 1 ? 'ring-1 ring-inset ring-ink rounded-panel' : ''
+                // The group's outline already says which set is up; inside it,
+                // a second box around one row fought with it. A short bar on
+                // the left edge picks out the row without drawing another box.
+                isActive && rows.length > 1
+                  ? 'before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full before:bg-ink'
+                  : ''
               } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
             >
-              <div className="w-11 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
+              <div
+                className={`w-11 shrink-0 text-xs font-semibold uppercase tracking-wider ${
+                  isActive && rows.length > 1 ? 'text-ink' : 'text-muted'
+                }`}
+              >
                 {isMain ? `Set ${setIndex}` : 'Drop'}
               </div>
             {!weightless && multiPoint && (
