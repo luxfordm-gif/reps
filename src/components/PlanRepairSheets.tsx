@@ -56,7 +56,7 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
 
 const inputClass =
   'mt-1 w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none';
-const labelClass = 'block text-caption font-semibold uppercase tracking-[0.12em] text-muted';
+const labelClass = 'block text-caption font-semibold uppercase tracking-eyebrow text-muted';
 
 // --- Exercise --------------------------------------------------------------------
 
@@ -250,7 +250,7 @@ export function ExerciseEditorSheet({
         <button
           type="submit"
           disabled={!canSave}
-          className="pressable mt-2 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+          className="pressable mt-2 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
         >
           Save
         </button>
@@ -364,7 +364,7 @@ export function DayEditorSheet({
         <button
           type="submit"
           disabled={!canSave}
-          className="pressable mt-2 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+          className="pressable mt-2 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
         >
           Save
         </button>

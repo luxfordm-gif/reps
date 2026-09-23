@@ -658,7 +658,7 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
             <div className="mt-8">
               <label
                 htmlFor="plan-name"
-                className="block text-xs font-semibold uppercase tracking-[0.12em] text-muted"
+                className="block text-xs font-semibold uppercase tracking-eyebrow text-muted"
               >
                 Plan name
               </label>
@@ -675,7 +675,7 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
             </div>
 
             <div className="mt-6 rounded-card bg-paper-card p-5 shadow-card">
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                 Detected
               </div>
               <div className="mt-1 text-2xl font-bold tracking-tight text-ink">
@@ -719,7 +719,7 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
                 <div key={`${day.name}#${dayIdx}`} className="rounded-card bg-paper-card shadow-card">
                   <div className="flex items-start justify-between gap-3 border-b border-line/60 px-5 py-3">
                     <div className="min-w-0">
-                      <div className="text-label font-semibold uppercase tracking-[0.14em] text-muted">
+                      <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
                         Day {dayIdx + 1}
                         {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
                         {day.weekIndex == null && rotates && ' · Every week'}
@@ -783,7 +783,7 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
 
               {orphanLines.length > 0 && (
                 <div className="rounded-card border border-warn-line bg-warn-soft p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-warn">
+                  <div className="text-xs font-semibold uppercase tracking-eyebrow text-warn">
                     {orphanLines.length} {orphanLines.length === 1 ? 'line' : 'lines'} not under any day
                   </div>
                   <p className="mt-1 text-xs text-warn">
@@ -968,7 +968,7 @@ function UnreadLineCard({
 }) {
   const body = (
     <>
-      <div className="text-label font-semibold uppercase tracking-wider text-warn">
+      <div className="text-label font-semibold uppercase tracking-eyebrow text-warn">
         Couldn't read this line
       </div>
       <div className="mt-1 break-words font-mono text-caption text-ink/80">{text}</div>
@@ -1057,7 +1057,7 @@ function WeeklyAlternativeCard({
 
   return (
     <div className="mt-3 rounded-control bg-ink/5 px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-label font-semibold uppercase tracking-wider text-muted">
+      <div className="flex items-center gap-1.5 text-label font-semibold uppercase tracking-eyebrow text-muted">
         <RotateGlyph />
         Alternates weekly with
       </div>
@@ -1350,7 +1350,7 @@ function ExerciseReviewRow({
               </span>
             ))}
             {s.tag && (
-              <span className="ml-1 rounded-pill bg-ink/10 px-1.5 text-label font-semibold uppercase tracking-wider text-ink">
+              <span className="ml-1 rounded-pill bg-ink/10 px-1.5 text-label font-semibold uppercase tracking-eyebrow text-ink">
                 {s.tag}
               </span>
             )}
@@ -1398,7 +1398,7 @@ function ExerciseReviewRow({
               }}
               className="block w-full rounded-control bg-paper px-3 py-2 text-left text-xs text-muted active:bg-pressed"
             >
-              <span className="font-semibold uppercase tracking-wider">Coach notes</span>
+              <span className="font-semibold uppercase tracking-eyebrow">Coach notes</span>
               <div className="mt-1 whitespace-pre-wrap text-ink/80">
                 {exercise.notes || 'Tap to add notes'}
               </div>

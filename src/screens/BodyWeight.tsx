@@ -28,6 +28,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { SyncStatus } from '../components/SyncStatus';
 import { haptics } from '../lib/haptics';
 import { isReachable } from '../lib/offline/net';
+import { SectionLabel } from '../components/SectionLabel';
 
 interface Props {
   onBack: () => void;
@@ -226,7 +227,7 @@ export function BodyWeight({ onBack }: Props) {
 
         <div className="mt-6 rounded-card bg-paper-card p-5 shadow-card">
           <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
               New entry
             </div>
             <UnitToggle unit={unit} onChange={changeUnit} />
@@ -278,7 +279,7 @@ export function BodyWeight({ onBack }: Props) {
                   placeholder="14"
                   className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
                 />
-                <div className="mt-1 text-xs font-medium uppercase tracking-wider text-muted">
+                <div className="mt-1 text-xs font-semibold uppercase tracking-eyebrow text-muted">
                   Stones
                 </div>
               </div>
@@ -295,7 +296,7 @@ export function BodyWeight({ onBack }: Props) {
                   placeholder="5"
                   className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
                 />
-                <div className="mt-1 text-xs font-medium uppercase tracking-wider text-muted">
+                <div className="mt-1 text-xs font-semibold uppercase tracking-eyebrow text-muted">
                   Pounds
                 </div>
               </div>
@@ -494,7 +495,7 @@ function SaveButton({
           height="18"
           viewBox="0 0 18 18"
           fill="none"
-          className="animate-pop-in text-[#34C759]"
+          className="animate-pop-in text-good-bright"
           aria-hidden="true"
         >
           <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5" />
@@ -609,21 +610,13 @@ function UnitToggle({
         <button
           key={u}
           onClick={() => onChange(u)}
-          className={`rounded-pill px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-colors ${
+          className={`rounded-pill px-3 py-1.5 text-xs font-semibold uppercase tracking-eyebrow transition-colors ${
             unit === u ? 'bg-ink text-white' : 'text-muted'
           }`}
         >
           {u}
         </button>
       ))}
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-      {children}
     </div>
   );
 }

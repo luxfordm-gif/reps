@@ -5,7 +5,7 @@ export function AppHeader({ subtitle }: { subtitle?: string }) {
     <div className="mt-2 flex h-11 items-center justify-between">
       <Logo className="h-[1.8rem] w-auto" />
       {subtitle && (
-        <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+        <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
           {subtitle}
         </div>
       )}

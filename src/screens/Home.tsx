@@ -27,6 +27,7 @@ import { haptics } from '../lib/haptics';
 import { notePlanState } from '../lib/installPrompt';
 import type { PlanPresence } from '../lib/whatsNew';
 import { WaterIcon, StepsIcon } from '../components/Tile';
+import { SectionLabel } from '../components/SectionLabel';
 
 type Day = FullPlan['training_days'][number];
 
@@ -107,7 +108,7 @@ function accentFor(dayName: string): string {
 function Greeting({ name }: { name: string | null }) {
   const hello = greeting();
   return (
-    <h1 className="text-display font-bold leading-tight tracking-[-0.02em] text-ink">
+    <h1 className="text-display font-bold leading-tight tracking-title text-ink">
       {name == null ? (
         `${hello}.`
       ) : (
@@ -588,7 +589,7 @@ export function Home({
             )}
           </div>
           {waterError && (
-            <div className="mt-2 rounded-card bg-[#FFEDED] px-3 py-2 text-xs text-[#B42318]">
+            <div className="mt-2 rounded-card bg-danger-soft px-3 py-2 text-xs text-danger">
               Couldn't save water: {waterError}
             </div>
           )}
@@ -647,12 +648,6 @@ function ActiveWorkoutBanner({
         onClick={onResume}
       />
     </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{children}</div>
   );
 }
 

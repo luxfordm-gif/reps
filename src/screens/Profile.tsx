@@ -165,7 +165,7 @@ export function Profile({
             <div className="min-h-[70px]">
             {plan ? (
               <>
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                   Week {weeksOnPlan(plan.activated_at)}
                 </div>
                 <div className="mt-1 text-xl font-bold tracking-tight text-ink">
@@ -532,7 +532,7 @@ function PrefRow<T extends string>({
           <button
             key={u}
             onClick={() => onChange(u)}
-            className={`rounded-pill px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+            className={`rounded-pill px-3 py-1.5 text-xs font-semibold uppercase tracking-eyebrow ${
               value === u ? 'bg-ink text-white' : 'text-muted'
             }`}
           >
@@ -771,7 +771,7 @@ function downloadFile(filename: string, content: string) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mt-7">
-      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+      <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
         {title}
       </div>
       <div className="mt-3">{children}</div>
@@ -1009,7 +1009,7 @@ function DetailRow({
           <div className="text-sm font-semibold text-ink">{label}</div>
           <button
             onClick={onCancel}
-            className="text-xs font-semibold uppercase tracking-wider text-muted active:text-ink"
+            className="text-xs font-semibold uppercase tracking-eyebrow text-muted active:text-ink"
           >
             Cancel
           </button>
@@ -1262,7 +1262,7 @@ function WeightEditor({
             value={kgInput}
             onChange={(e) => setKgInput(e.target.value)}
             placeholder="72.0"
-            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
           <div className="pb-2 text-sm font-medium text-muted">kg</div>
         </div>
@@ -1275,7 +1275,7 @@ function WeightEditor({
             value={stInput}
             onChange={(e) => setStInput(e.target.value)}
             placeholder="11"
-            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
           <input
             type="number"
@@ -1284,7 +1284,7 @@ function WeightEditor({
             value={lbInput}
             onChange={(e) => setLbInput(e.target.value)}
             placeholder="5"
-            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
         </div>
       )}
@@ -1352,7 +1352,7 @@ function HeightEditor({
             value={cmInput}
             onChange={(e) => setCmInput(e.target.value)}
             placeholder="178"
-            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
           <div className="pb-2 text-sm font-medium text-muted">cm</div>
         </div>
@@ -1365,7 +1365,7 @@ function HeightEditor({
             value={ftInput}
             onChange={(e) => setFtInput(e.target.value)}
             placeholder="5"
-            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
           <input
             type="number"
@@ -1374,7 +1374,7 @@ function HeightEditor({
             value={inInput}
             onChange={(e) => setInInput(e.target.value)}
             placeholder="10"
-            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3 text-xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
           />
         </div>
       )}
@@ -1406,7 +1406,7 @@ function InlinePillToggle<T extends string>({
         <button
           key={u}
           onClick={() => onChange(u)}
-          className={`rounded-pill px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-colors ${
+          className={`rounded-pill px-3 py-1.5 text-xs font-semibold uppercase tracking-eyebrow transition-colors ${
             value === u ? 'bg-ink text-white' : 'text-muted'
           }`}
         >

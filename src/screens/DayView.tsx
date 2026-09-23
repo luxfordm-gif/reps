@@ -368,7 +368,7 @@ export function DayView({
 
         {siblingDay && day.week_index != null && onSwitchToSibling && (
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-label font-semibold uppercase tracking-[0.18em] text-muted">
+            <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
               Rotation
             </span>
             <div className="flex rounded-pill bg-surface-strong p-0.5">
@@ -380,7 +380,7 @@ export function DayView({
                     <button
                       key={variant.id}
                       onClick={active ? undefined : onSwitchToSibling}
-                      className={`pressable rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 ${
+                      className={`pressable rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors duration-150 ${
                         active ? 'bg-ink text-white shadow-card' : 'text-muted'
                       }`}
                     >
@@ -411,7 +411,7 @@ export function DayView({
 
         {referenceOnly && (
           <div className="mt-6 rounded-card bg-paper-card px-5 py-4 shadow-card">
-            <div className="text-label font-semibold uppercase tracking-[0.18em] text-muted">
+            <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
               Reference
             </div>
             <div className="mt-1 text-sm text-ink">
@@ -457,7 +457,7 @@ export function DayView({
 
         <div className="mt-6 flex items-baseline justify-between gap-3">
           <h2 className="text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
-          <span className="shrink-0 text-label font-semibold uppercase tracking-[0.18em] text-muted">
+          <span className="shrink-0 text-label font-semibold uppercase tracking-eyebrow text-muted">
             {groups.length} {groups.length === 1 ? 'group' : 'groups'}
           </span>
         </div>
@@ -684,7 +684,7 @@ function ExerciseRow({
               // rather than two competing labels.
               <span
                 key={badge}
-                className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-wider ${
+                className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow ${
                   i === 0 ? 'bg-ink text-white' : 'bg-ink/10 text-ink'
                 }`}
               >

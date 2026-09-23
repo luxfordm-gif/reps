@@ -228,7 +228,7 @@ export function RecordsBoard({ records, onSelect, improvement, sessions }: Props
                     className="flex w-full items-center gap-2 rounded-panel px-1 py-2.5 text-left active:bg-surface"
                   >
                     <Chevron open={open} />
-                    <span className="flex-1 truncate text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                    <span className="flex-1 truncate text-xs font-semibold uppercase tracking-eyebrow text-muted">
                       {section.bodyPart}
                     </span>
                     <span className="text-xs font-semibold text-muted tabular-nums">
@@ -236,7 +236,7 @@ export function RecordsBoard({ records, onSelect, improvement, sessions }: Props
                     </span>
                   </button>
                 ) : (
-                  <div className="px-1 py-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                  <div className="px-1 py-2.5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
                     {section.bodyPart}
                   </div>
                 )}
@@ -330,13 +330,13 @@ function FilterSheet({
       aria-label="Sort and filter"
     >
       <div
-        className="sheet-in max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6"
+        className="sheet-in max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Sort and filter</h2>
 
-        <div className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        <div className="mt-5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
           Order
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -356,7 +356,7 @@ function FilterSheet({
 
         {bodyParts.length > 1 && (
           <>
-            <div className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            <div className="mt-6 text-xs font-semibold uppercase tracking-eyebrow text-muted">
               Body part
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -450,7 +450,7 @@ function RecordRow({ record, isNew }: { record: LiftRecord; isNew: boolean }) {
             <ExerciseName name={record.displayName} variant="inline" />
           </span>
           {isNew && (
-            <span className="shrink-0 rounded-pill bg-ink px-1.5 py-0.5 text-label font-bold uppercase tracking-wider text-white">
+            <span className="shrink-0 rounded-pill bg-ink px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow text-white">
               New
             </span>
           )}

@@ -445,7 +445,7 @@ function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
         keyboardOpen ? 'pb-1' : 'min-h-[115px]'
       }`}
     >
-      <h1 className="text-display font-bold leading-tight tracking-tight text-ink">{title}</h1>
+      <h1 className="text-display font-bold leading-tight tracking-title text-ink">{title}</h1>
       <p className="mt-1.5 text-base text-muted">{subtitle}</p>
     </div>
   );
@@ -553,7 +553,7 @@ function StepName({
       <StepHeading title="What should we call you?" subtitle="It's how the app greets you." />
       <div className="mt-8 rounded-card bg-paper-card p-5 shadow-card">
         <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-eyebrow text-muted">
             First name
           </span>
           <input
@@ -602,7 +602,7 @@ function StepBirthday({
     <>
       <StepHeading title="When is your birthday?" subtitle="We use this to tune your plan." />
       <div className="mt-8 rounded-card bg-paper-card p-5 shadow-card">
-        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-eyebrow text-muted">
           Date of birth
         </span>
         <DateOfBirthInput
@@ -673,7 +673,7 @@ function StepWeight({
       <StepHeading title="What is your weight?" subtitle="You can update it any time." />
       <div className="mt-8 rounded-card bg-paper-card p-5 shadow-card">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
             Your weight
           </div>
           <PillToggle
@@ -779,7 +779,7 @@ function StepHeight({
       <StepHeading title="What is your height?" subtitle="We use it to track your progress." />
       <div className="mt-8 rounded-card bg-paper-card p-5 shadow-card">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
             Your height
           </div>
           <PillToggle
@@ -984,7 +984,7 @@ function ReadyScreen({
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#E8F5E9]">
             <CheckIcon />
           </div>
-          <h1 className="mt-6 text-display font-bold leading-tight tracking-tight text-ink">
+          <h1 className="mt-6 text-display font-bold leading-tight tracking-title text-ink">
             {skipped ? "You're all set." : "You're ready."}
           </h1>
           <p className="mt-2 text-base text-muted">{motivationalLine}</p>
@@ -1125,7 +1125,7 @@ function NumberCell({
         placeholder={placeholder}
         className="w-full rounded-panel border border-line bg-paper-card px-4 py-3.5 text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
       />
-      <div className="mt-1 text-xs font-medium uppercase tracking-wider text-muted">{caption}</div>
+      <div className="mt-1 text-xs font-semibold uppercase tracking-eyebrow text-muted">{caption}</div>
     </div>
   );
 }
@@ -1147,7 +1147,7 @@ function PillToggle<T extends string>({
         <button
           key={u}
           onClick={() => onChange(u)}
-          className={`rounded-pill px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-colors ${
+          className={`rounded-pill px-3 py-1.5 text-xs font-semibold uppercase tracking-eyebrow transition-colors ${
             value === u ? 'bg-ink text-white' : 'text-muted'
           }`}
         >
