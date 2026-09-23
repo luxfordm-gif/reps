@@ -35,7 +35,7 @@ import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
 import { SheetPanel } from '../components/SheetPanel';
 import ExerciseName from '../components/ExerciseName';
-import { BRAND_LIST_ID, BrandSuggestions } from '../components/ExerciseNameFields';
+import { BrandChips } from '../components/ExerciseNameFields';
 import { editedName, splitBrand } from '../lib/exerciseBrand';
 import { rememberNewBrand } from '../lib/brandsApi';
 
@@ -395,7 +395,7 @@ export function Machines({ onBack }: Props) {
               className="flex w-full items-center gap-2 rounded-panel px-1 py-2.5 text-left active:bg-surface"
             >
               <DupChevron open={duplicatesOpen} />
-              <span className="flex-1 truncate text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              <span className="flex-1 truncate text-xs font-semibold uppercase tracking-eyebrow text-muted">
                 Possible duplicates
               </span>
               <span className="text-xs font-semibold text-muted tabular-nums">
@@ -656,14 +656,14 @@ function DuplicateRow({
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-pill border border-line px-3.5 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
+          className="rounded-pill border border-line px-3 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
         >
           Ignore
         </button>
         <button
           type="button"
           onClick={onMerge}
-          className="rounded-pill bg-ink px-3.5 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
+          className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
         >
           Merge
         </button>
@@ -703,13 +703,13 @@ function MachineFilterSheet({
       aria-label="Sort and filter machines"
     >
       <div
-        className="sheet-in max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6"
+        className="sheet-in max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Sort and filter</h2>
 
-        <div className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        <div className="mt-5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
           Order
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -723,7 +723,7 @@ function MachineFilterSheet({
 
         {bodyParts.length > 1 && (
           <>
-            <div className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            <div className="mt-6 text-xs font-semibold uppercase tracking-eyebrow text-muted">
               Body part
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -797,8 +797,8 @@ function SortPill({
   return (
     <button
       onClick={onClick}
-      className={`rounded-pill px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
-        active ? 'bg-ink text-white' : 'text-muted'
+      className={`rounded-pill px-3 py-1.5 text-xs font-semibold ${
+        active ? 'bg-ink text-white' : 'border border-line bg-paper-card text-muted'
       }`}
     >
       {children}
@@ -856,7 +856,7 @@ function Row({
                 {machine.bodyPart}
               </span>
             )}
-            <span className="rounded-pill bg-surface-strong px-2 py-0.5 font-semibold uppercase tracking-wider">
+            <span className="rounded-pill bg-surface-strong px-2 py-0.5 font-semibold uppercase tracking-eyebrow">
               {machine.unit}
             </span>
             <span>
@@ -983,10 +983,16 @@ function MachineEditModal({
               }}
               placeholder="e.g. Prime"
               autoCapitalize="words"
-              list={BRAND_LIST_ID}
               className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink placeholder:font-normal placeholder:text-muted focus:border-ink focus:outline-none"
             />
-            <BrandSuggestions />
+            <BrandChips
+              className="mt-2"
+              value={brand}
+              onPick={(b) => {
+                setBrand(b);
+                setNameChoice(null);
+              }}
+            />
           </Field>
 
           <Field label="Body part">
@@ -1013,7 +1019,7 @@ function MachineEditModal({
                     setUnit(u);
                     setUnitChoice(null);
                   }}
-                  className={`flex-1 rounded-pill px-3 py-1.5 text-xs font-semibold uppercase tracking-wider ${
+                  className={`flex-1 rounded-pill px-3 py-1.5 text-xs font-semibold uppercase tracking-eyebrow ${
                     unit === u ? 'bg-ink text-white' : 'text-muted'
                   }`}
                 >
@@ -1111,7 +1117,7 @@ function MachineEditModal({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-eyebrow text-muted">
         {label}
       </div>
       {children}
@@ -1130,7 +1136,7 @@ function Prompt({
 }) {
   return (
     <div className="rounded-panel border border-line bg-paper p-3">
-      <div className="text-caption font-semibold uppercase tracking-[0.12em] text-muted">
+      <div className="text-caption font-semibold uppercase tracking-eyebrow text-muted">
         {label}
       </div>
       <div className="mt-1 text-sm font-semibold text-ink">{question}</div>
@@ -1230,7 +1236,7 @@ function MergeMachinesModal({
       onClick={onCancel}
     >
       <div
-        className="sheet-in max-h-[92vh] w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
+        className="sheet-in max-h-[85vh] w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Merge machines</h2>

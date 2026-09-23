@@ -26,6 +26,7 @@ import { SyncStatus } from '../components/SyncStatus';
 import { patchHomeCache } from '../lib/homeCache';
 import { haptics } from '../lib/haptics';
 import { isReachable } from '../lib/offline/net';
+import { SectionLabel } from '../components/SectionLabel';
 
 interface Props {
   onBack: () => void;
@@ -191,7 +192,7 @@ export function Steps({ onBack }: Props) {
         {todayEntry && <GoalBar value={todaySteps} goal={goal} />}
 
         <div className="mt-6 rounded-card bg-paper-card p-5 shadow-card">
-          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
             {rows.some((r) => r.recorded_on === date) ? 'Update entry' : 'New entry'}
           </div>
 
@@ -429,7 +430,7 @@ function SaveButton({
           height="18"
           viewBox="0 0 18 18"
           fill="none"
-          className="animate-pop-in text-[#34C759]"
+          className="animate-pop-in text-good-bright"
           aria-hidden="true"
         >
           <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5" />
@@ -520,13 +521,5 @@ function ChevronRight({ rotate = 0 }: { rotate?: number }) {
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-      {children}
-    </div>
   );
 }

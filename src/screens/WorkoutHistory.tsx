@@ -419,7 +419,7 @@ function EditableSetRow({
   return (
     <div>
       <div className="flex items-center gap-2.5">
-        <div className="w-20 text-xs font-semibold uppercase tracking-wider text-muted">{label}</div>
+        <div className="w-20 text-xs font-semibold uppercase tracking-eyebrow text-muted">{label}</div>
         <input
           type="number"
           inputMode="decimal"

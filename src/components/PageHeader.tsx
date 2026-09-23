@@ -70,7 +70,7 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
         {large && (
           <h1
             ref={largeTitleRef}
-            className="text-display font-bold leading-tight tracking-[-0.02em] text-ink"
+            className="text-display font-bold leading-tight tracking-title text-ink"
           >
             {title}
           </h1>
@@ -84,7 +84,7 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
         >
           <div className="relative flex h-11 items-center justify-center px-5">
             <div
-              className={`text-nav font-semibold leading-none tracking-[-0.02em] text-ink transition-opacity duration-pop ease-snap ${
+              className={`text-nav font-semibold leading-none tracking-title text-ink transition-opacity duration-pop ease-snap ${
                 collapsed ? 'opacity-100' : 'opacity-0'
               }`}
             >
@@ -125,7 +125,7 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
             </button>
           )}
           <div
-            className={`text-nav font-semibold leading-none tracking-[-0.02em] text-ink transition-opacity duration-pop ease-snap ${
+            className={`text-nav font-semibold leading-none tracking-title text-ink transition-opacity duration-pop ease-snap ${
               collapsed ? 'opacity-100' : 'opacity-0'
             }`}
           >
@@ -138,7 +138,7 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
       {large && (
         <h1
           ref={largeTitleRef}
-          className="mt-1 text-display font-bold leading-tight tracking-[-0.02em] text-ink"
+          className="mt-1 text-display font-bold leading-tight tracking-title text-ink"
         >
           {title}
         </h1>

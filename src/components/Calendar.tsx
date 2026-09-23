@@ -105,7 +105,7 @@ export function Calendar({ value, onChange, maxISO }: Props) {
         {DOW.map((d, i) => (
           <div
             key={i}
-            className="flex h-6 items-center justify-center text-label font-semibold uppercase tracking-wider text-muted"
+            className="flex h-6 items-center justify-center text-label font-semibold uppercase tracking-eyebrow text-muted"
           >
             {d}
           </div>

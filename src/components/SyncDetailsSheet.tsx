@@ -56,7 +56,7 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="sheet-in max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
+        className="sheet-in max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -68,7 +68,7 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
 
         <ul className="mt-4 space-y-3">
           {entries.map((entry) => (
-            <li key={entry.id} className="rounded-card border border-line px-4 py-3">
+            <li key={entry.id} className="rounded-panel border border-line px-4 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-ink">

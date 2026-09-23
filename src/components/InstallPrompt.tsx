@@ -116,7 +116,7 @@ export function InstallBanner({ advice, onInstall, onDismiss }: BannerProps) {
       {advice === 'prompt' && (
         <button
           onClick={onInstall}
-          className="pressable mt-3.5 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white active:opacity-80"
+          className="pressable mt-3.5 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
         >
           Install
         </button>

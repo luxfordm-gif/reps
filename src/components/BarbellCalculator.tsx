@@ -225,7 +225,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
       aria-modal="true"
       role="dialog"
     >
-      <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-ink/50 backdrop-blur-sm" onClick={onClose} />
       <SheetPanel
         // A fixed rise, not its own height: this sheet grows as the plates
         // render and re-measures against the visual viewport when the keyboard
@@ -256,7 +256,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
               >
                 <CloseIcon />
               </button>
-              <h2 className="text-center text-base font-semibold text-ink">Barbell calculator</h2>
+              <h2 className="text-center text-lg font-bold tracking-tight text-ink">Barbell calculator</h2>
               <span />
             </div>
 
@@ -265,7 +265,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         }
       >
         <div className="px-4 pt-3">
-          <div className="text-label font-semibold uppercase tracking-wider text-muted">
+          <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
             Select barbell
           </div>
           <div className="mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
@@ -327,7 +327,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         <div className="border-t border-line/60 mt-3" />
 
         <div className="px-4 pt-5">
-          <div className="text-label font-semibold uppercase tracking-wider text-muted">
+          <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
             Build your load (one side)
           </div>
           <div className="mt-1 text-xs text-muted">
@@ -367,7 +367,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
               aria-label="Add custom plate"
             >
               <PlusIcon />
-              <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted">
+              <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-eyebrow text-muted">
                 Other
               </span>
             </button>
@@ -375,7 +375,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         </div>
 
         <div className="px-4 pt-5">
-          <div className="text-label font-semibold uppercase tracking-wider text-muted">
+          <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
             Tap to choose what to log
           </div>
           <div className={`mt-2 grid gap-2 ${barId === 'none' ? 'grid-cols-2' : 'grid-cols-3'}`}>
@@ -408,7 +408,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         >
           <button
             onClick={handleConfirm}
-            className="pressable w-full rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
+            className="pressable w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
           >
             Confirm weight
           </button>
@@ -443,7 +443,7 @@ function TotalButton({
         </div>
       )}
       <div
-        className={`text-label font-semibold uppercase tracking-wider ${
+        className={`text-label font-semibold uppercase tracking-eyebrow ${
           active ? 'text-white/80' : 'text-muted'
         }`}
       >

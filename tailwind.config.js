@@ -51,7 +51,16 @@ export default {
         good: {
           DEFAULT: '#166534',
           soft: '#F0FDF4',
+          // iOS's system green: the tick on a goal met, the "all synced" dot.
+          bright: '#34C759',
         },
+      },
+      // Uppercase eyebrows — section labels, stat labels, badges — are tracked
+      // one way everywhere. They had drifted to four values for the same job.
+      letterSpacing: {
+        eyebrow: '0.12em',
+        // Screen titles, large and compact.
+        title: '-0.02em',
       },
       // Type by role rather than by size. The sizes Tailwind already names —
       // xs (12) through 2xl (24) — carry the body of the app; these are the

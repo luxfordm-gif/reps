@@ -5,7 +5,7 @@ import { useVisualViewport } from '../lib/useVisualViewport';
 import { SheetPanel } from './SheetPanel';
 import { editedName, splitBrand } from '../lib/exerciseBrand';
 import { rememberNewBrand } from '../lib/brandsApi';
-import { BRAND_LIST_ID, BrandSuggestions } from './ExerciseNameFields';
+import { BrandChips } from './ExerciseNameFields';
 
 // The two editor sheets for repairing an import on the upload review screen.
 // Both are plain forms: the person using them is fixing what the parser got
@@ -56,7 +56,7 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
 
 const inputClass =
   'mt-1 w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none';
-const labelClass = 'block text-caption font-semibold uppercase tracking-[0.12em] text-muted';
+const labelClass = 'block text-caption font-semibold uppercase tracking-eyebrow text-muted';
 
 // --- Exercise --------------------------------------------------------------------
 
@@ -157,9 +157,12 @@ export function ExerciseEditorSheet({
             placeholder="e.g. Prime"
             className={inputClass}
             autoCapitalize="words"
-            list={BRAND_LIST_ID}
           />
-          <BrandSuggestions />
+          <BrandChips
+            className="mt-2"
+            value={nameParts.brand}
+            onPick={(b) => setNamePart('brand', b)}
+          />
         </label>
 
         <label className="block">
@@ -250,7 +253,7 @@ export function ExerciseEditorSheet({
         <button
           type="submit"
           disabled={!canSave}
-          className="pressable mt-2 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+          className="pressable mt-2 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
         >
           Save
         </button>
@@ -364,7 +367,7 @@ export function DayEditorSheet({
         <button
           type="submit"
           disabled={!canSave}
-          className="pressable mt-2 w-full rounded-pill bg-ink py-3.5 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
+          className="pressable mt-2 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40"
         >
           Save
         </button>
