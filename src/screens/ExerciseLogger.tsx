@@ -1441,7 +1441,7 @@ export function ExerciseLogger({
           >
             <ExerciseName
               name={displayName}
-              brandClassName="mt-1.5 text-lg font-semibold tracking-normal"
+              brandClassName="mt-0.5 text-base font-semibold tracking-normal"
             />
           </a>
           {/* Body part and unit used to sit here. The unit is inside every
