@@ -85,5 +85,18 @@ console.log('\n=== an established user is left alone ===');
   check('then the plan arrives', decide('plan', '2026-09-18'), 'show');
 }
 
+console.log('\n=== the current entry is short ===');
+{
+  // It stops someone mid-session, so it says what's better and nothing else.
+  // Three bullets at most, one plain sentence each. See CLAUDE.md.
+  const MAX_BULLETS = 3;
+  const MAX_CHARS = 80;
+  const { bullets } = LATEST_CHANGELOG_ENTRY;
+  check(`no more than ${MAX_BULLETS} bullets`, bullets.length <= MAX_BULLETS, true);
+  for (const b of bullets) {
+    check(`under ${MAX_CHARS} characters: "${b}"`, b.length <= MAX_CHARS, true);
+  }
+}
+
 console.log(failures === 0 ? '\nAll good.\n' : `\n${failures} failing.\n`);
 process.exit(failures === 0 ? 0 : 1);

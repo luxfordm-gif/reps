@@ -1,21 +1,25 @@
 // The "What's new" dialog interrupts someone who is already using Reps — very
 // often standing in a gym, mid-session. An entry here has to be worth that.
 //
-// An entry earns its place when a release contains something a user would want
-// to be stopped for: a new capability, a change in behaviour they will notice
-// and act on, or a bug that was costing them something real. That is the whole
-// test, and most releases do not pass it.
+// It is about improvements, never bugs. An entry earns its place when a release
+// makes the app better: a new capability, a change in how something works that
+// the user will notice, or a layout that is noticeably better on their phone.
+// Bug fixes never go in, however they're phrased — they belong in the PR.
 //
-// What never earns an entry: spacing, alignment, a control made to fit a narrow
-// phone, an arrow taken off a button — and changes to this dialog itself, which
-// nobody asked to be told about. A release made only of those ships with no new
-// entry at all, and that is the normal case, not a failure.
+// And it is short: at most three bullets, each one plain sentence of about ten
+// words saying what's better. No explanations, no lists of screens.
+// scripts/test-whats-new.mjs holds the top entry to that.
+//
+// What never earns an entry: bug fixes, spacing, alignment, an arrow taken off
+// a button, debugging aids like a build number — and changes to this dialog
+// itself. A release made only of those ships with no new entry at all, and
+// that is the normal case, not a failure.
 //
 // A pull request description and a changelog entry are different documents for
 // different audiences. Never transcribe one into the other. Write the PR up in
-// full, then ask of each item on its own: would someone a month into training
-// on this app want to be stopped to read it? If nothing clears that bar, leave
-// this file alone.
+// full, then ask of each item on its own: is this an improvement someone a
+// month into training on this app would want to be stopped for? If nothing
+// clears that bar, leave this file alone.
 //
 // When something does clear it, add the entry at the TOP of CHANGELOG. That's
 // the only step — the app reads CHANGELOG[0] as the current version
@@ -32,9 +36,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '2026-09-22.4',
     title: "What's new",
     bullets: [
-      'Tapping a field no longer moves the screen. Signing in, setup, feedback, the barbell calculator, editing a machine or an exercise name \u2014 each of those was a single scrolling box, so a browser bringing the field you tapped into view scrolled the whole thing and took the heading with it. The title and the way out stay put now; only what sits under them can move',
-      'The \u2026 menu on an exercise fits the window and scrolls. In a browser its last items \u2014 Skip exercise, Back to home, Send feedback \u2014 could sit below the bottom of the screen with no way to reach them',
-      'The sign-in screen says which build you are running, for when something has been fixed but the phone is still holding the copy it had before',
+      'Screens hold still while you type, with the heading kept in view',
+      'The exercise menu fits smaller screens',
     ],
   },
   {
