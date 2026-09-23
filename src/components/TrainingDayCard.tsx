@@ -40,7 +40,7 @@ export function TrainingDayCard({
     : 'bg-paper-card text-ink shadow-card';
 
   const badge = isNext ? (
-    <span className="absolute -top-2 left-5 rounded-pill bg-white px-2.5 py-0.5 text-label font-semibold uppercase tracking-[0.12em] text-ink shadow-card">
+    <span className="absolute -top-2 left-5 rounded-pill bg-white px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow text-ink shadow-card">
       {badgeLabel}
     </span>
   ) : null;
@@ -81,7 +81,7 @@ export function TrainingDayCard({
           <span className="text-xl font-bold tracking-tight">{name}</span>
           {tag && (
             <span
-              className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-[0.12em] ${
+              className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow ${
                 isNext ? 'bg-white/15 text-white/90' : 'bg-line text-muted'
               }`}
             >

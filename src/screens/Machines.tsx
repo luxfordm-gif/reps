@@ -23,15 +23,21 @@ import {
 import type { MachineUnit } from '../lib/units';
 import { clearHomeCache } from '../lib/homeCache';
 import { getActivePlan } from '../lib/plansApi';
+import { listAlternativeNames } from '../lib/alternativesApi';
 import {
   findDuplicateGroups,
   loadDismissedPairs,
   dismissPairs,
+  duplicatePairKey,
   type DuplicateGroup,
 } from '../lib/duplicateExercises';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
 import { SheetPanel } from '../components/SheetPanel';
+import ExerciseName from '../components/ExerciseName';
+import { BrandChips } from '../components/ExerciseNameFields';
+import { editedName, splitBrand } from '../lib/exerciseBrand';
+import { rememberNewBrand } from '../lib/brandsApi';
 
 type SortMode = 'alpha' | 'bodyPart';
 const UNITS: MachineUnit[] = ['kg', 'lb', 'pin'];
@@ -43,6 +49,26 @@ interface Props {
 /** Which slice of the list you are looking at. */
 type Scope = 'all' | 'plan';
 
+// Remembered on this device, so someone who only wants their current plan's
+// machines doesn't have to ask for it every visit.
+const SCOPE_KEY = 'reps.machines.scope';
+
+function readScope(): Scope {
+  try {
+    return window.localStorage.getItem(SCOPE_KEY) === 'plan' ? 'plan' : 'all';
+  } catch {
+    return 'all';
+  }
+}
+
+function writeScope(scope: Scope): void {
+  try {
+    window.localStorage.setItem(SCOPE_KEY, scope);
+  } catch {
+    // Private mode: the choice holds for this visit.
+  }
+}
+
 /** The "no body part chosen" sentinel, kept out of the real names. */
 const ALL_PARTS = '__all__';
 
@@ -51,7 +77,11 @@ export function Machines({ onBack }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>('alpha');
   const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<Scope>('all');
+  const [scope, setScopeState] = useState<Scope>(readScope);
+  function setScope(next: Scope) {
+    setScopeState(next);
+    writeScope(next);
+  }
   const [bodyPart, setBodyPart] = useState<string>(ALL_PARTS);
   const [sheetOpen, setSheetOpen] = useState(false);
   /** Normalized names the active plan actually uses. Null until it loads. */
@@ -86,12 +116,22 @@ export function Machines({ onBack }: Props) {
       .then((plan) => {
         if (cancelled) return;
         const names = new Set<string>();
+        const ids: string[] = [];
         for (const day of plan?.training_days ?? []) {
           for (const ex of day.plan_exercises ?? []) {
             if (ex.normalized_name) names.add(ex.normalized_name);
+            ids.push(ex.id);
           }
         }
         setPlanNames(names);
+        // A machine you swap to when the planned one is taken is in the plan
+        // too. Best effort: without it the list just shows the planned ones.
+        listAlternativeNames(ids)
+          .then((alts) => {
+            if (cancelled || alts.length === 0) return;
+            setPlanNames(new Set([...names, ...alts]));
+          })
+          .catch(() => {});
       })
       .catch(() => {
         // The filter is an extra; the list stands without it.
@@ -120,7 +160,8 @@ export function Machines({ onBack }: Props) {
     });
   }, [machines, query, scope, bodyPart, planNames]);
 
-  const filtersOn = scope !== 'all' || bodyPart !== ALL_PARTS;
+  const filtersOn = bodyPart !== ALL_PARTS;
+  const canScope = planNames != null && planNames.size > 0;
 
   // Suggested over the whole list, never the filtered one: scoping to the
   // current plan hides the older half of most pairs, which is exactly the
@@ -279,7 +320,11 @@ export function Machines({ onBack }: Props) {
         />
 
         <p className="mt-1 text-sm text-muted">
-          {machines ? `${machines.length} machines` : 'Every machine you\u2019ve planned or logged'}
+          {machines
+            ? filtered && filtered.length !== machines.length && scope === 'plan'
+              ? `${filtered.length} of ${machines.length} machines`
+              : `${machines.length} machines`
+            : 'Every machine you\u2019ve planned or logged'}
           {' \u00b7 '}Select to merge duplicates
         </p>
 
@@ -308,11 +353,33 @@ export function Machines({ onBack }: Props) {
           </button>
         </div>
 
+        {canScope && (
+          // Out on the screen rather than in the sheet: hiding what an old
+          // plan left behind is the view most people want most of the time.
+          <div className="mt-2 flex rounded-pill bg-line p-0.5" role="group" aria-label="Show">
+            {(
+              [
+                ['plan', 'In my plan'],
+                ['all', 'All machines'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setScope(value)}
+                aria-pressed={scope === value}
+                className={`flex-1 rounded-pill px-3 py-1.5 text-xs font-semibold ${
+                  scope === value ? 'bg-paper-card text-ink shadow-card' : 'text-muted'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {filtersOn && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {scope === 'plan' && (
-              <FilterChip onClear={() => setScope('all')}>Current plan</FilterChip>
-            )}
             {bodyPart !== ALL_PARTS && (
               <FilterChip onClear={() => setBodyPart(ALL_PARTS)}>{bodyPart}</FilterChip>
             )}
@@ -328,7 +395,7 @@ export function Machines({ onBack }: Props) {
               className="flex w-full items-center gap-2 rounded-panel px-1 py-2.5 text-left active:bg-surface"
             >
               <DupChevron open={duplicatesOpen} />
-              <span className="flex-1 truncate text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              <span className="flex-1 truncate text-xs font-semibold uppercase tracking-eyebrow text-muted">
                 Possible duplicates
               </span>
               <span className="text-xs font-semibold text-muted tabular-nums">
@@ -420,9 +487,6 @@ export function Machines({ onBack }: Props) {
           <MachineFilterSheet
             sort={sort}
             onSort={setSort}
-            scope={scope}
-            onScope={setScope}
-            planCount={planNames?.size ?? null}
             bodyPart={bodyPart}
             bodyParts={bodyParts}
             onBodyPart={setBodyPart}
@@ -483,12 +547,17 @@ export function Machines({ onBack }: Props) {
         <MergeMachinesModal
           machines={merging}
           onCancel={() => setMerging(null)}
-          onConfirm={(survivor) =>
-            handleMerge(
-              survivor,
-              merging.filter((m) => m.normalizedName !== survivor.normalizedName)
-            )
-          }
+          onConfirm={(survivor, losers, keptApart) => {
+            // Asked and answered: a machine kept out of this merge isn't
+            // suggested alongside the ones it was kept apart from again.
+            if (keptApart.length > 0) {
+              const keys = keptApart.flatMap((k) =>
+                [survivor, ...losers].map((m) => duplicatePairKey(k.normalizedName, m.normalizedName)),
+              );
+              setDismissed(dismissPairs(keys));
+            }
+            handleMerge(survivor, losers);
+          }}
           busy={busy}
         />
       )}
@@ -571,7 +640,7 @@ function DuplicateRow({
             keeping. Which name survives is chosen in the merge sheet. */}
         {[group.survivor, ...group.losers].map((machine) => (
           <div key={machine.normalizedName} className="text-sm leading-snug text-ink">
-            {machine.displayName}
+            <ExerciseName name={machine.displayName} variant="inline" />
           </div>
         ))}
         {/* Counts sit on one subordinate line rather than beside each name:
@@ -587,14 +656,14 @@ function DuplicateRow({
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-pill border border-line px-3.5 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
+          className="rounded-pill border border-line px-3 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
         >
           Ignore
         </button>
         <button
           type="button"
           onClick={onMerge}
-          className="rounded-pill bg-ink px-3.5 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
+          className="rounded-pill bg-ink px-3 py-1.5 text-xs font-semibold text-white active:bg-ink-soft"
         >
           Merge
         </button>
@@ -613,9 +682,6 @@ function DuplicateRow({
 function MachineFilterSheet({
   sort,
   onSort,
-  scope,
-  onScope,
-  planCount,
   bodyPart,
   bodyParts,
   onBodyPart,
@@ -623,10 +689,6 @@ function MachineFilterSheet({
 }: {
   sort: SortMode;
   onSort: (s: SortMode) => void;
-  scope: Scope;
-  onScope: (s: Scope) => void;
-  /** How many machines the active plan uses, or null if there isn't one. */
-  planCount: number | null;
   bodyPart: string;
   bodyParts: string[];
   onBodyPart: (b: string) => void;
@@ -641,30 +703,13 @@ function MachineFilterSheet({
       aria-label="Sort and filter machines"
     >
       <div
-        className="sheet-in max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6"
+        className="sheet-in max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Sort and filter</h2>
 
-        <div className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-          Show
-        </div>
-        {/* Everything, or only what the plan you're on calls for. Duplicates
-            collect in the gap between the two: an old plan's wording for a
-            machine the current plan names differently. */}
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <SortPill active={scope === 'all'} onClick={() => { onScope('all'); onClose(); }}>
-            Everything
-          </SortPill>
-          {planCount != null && planCount > 0 && (
-            <SortPill active={scope === 'plan'} onClick={() => { onScope('plan'); onClose(); }}>
-              Current plan
-            </SortPill>
-          )}
-        </div>
-
-        <div className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        <div className="mt-5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
           Order
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -678,7 +723,7 @@ function MachineFilterSheet({
 
         {bodyParts.length > 1 && (
           <>
-            <div className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            <div className="mt-6 text-xs font-semibold uppercase tracking-eyebrow text-muted">
               Body part
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -752,8 +797,8 @@ function SortPill({
   return (
     <button
       onClick={onClick}
-      className={`rounded-pill px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
-        active ? 'bg-ink text-white' : 'text-muted'
+      className={`rounded-pill px-3 py-1.5 text-xs font-semibold ${
+        active ? 'bg-ink text-white' : 'border border-line bg-paper-card text-muted'
       }`}
     >
       {children}
@@ -803,7 +848,7 @@ function Row({
         )}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-ink">
-            {machine.displayName}
+            <ExerciseName name={machine.displayName} variant="inline" />
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted">
             {machine.bodyPart && (
@@ -811,7 +856,7 @@ function Row({
                 {machine.bodyPart}
               </span>
             )}
-            <span className="rounded-pill bg-surface-strong px-2 py-0.5 font-semibold uppercase tracking-wider">
+            <span className="rounded-pill bg-surface-strong px-2 py-0.5 font-semibold uppercase tracking-eyebrow">
               {machine.unit}
             </span>
             <span>
@@ -866,7 +911,10 @@ function MachineEditModal({
   onDelete: () => void;
   busy: boolean;
 }) {
-  const [name, setName] = useState(machine.displayName);
+  const [initialParts] = useState(() => splitBrand(machine.displayName));
+  const [movement, setMovement] = useState(initialParts.movement);
+  const [brand, setBrand] = useState(initialParts.brand ?? '');
+  const name = editedName(machine.displayName, movement, brand);
   const [bodyPart, setBodyPart] = useState<string | null>(machine.bodyPart);
   const [unit, setUnit] = useState<MachineUnit>(machine.unit);
   const [nameChoice, setNameChoice] = useState<'inPlace' | 'fork' | null>(null);
@@ -878,7 +926,7 @@ function MachineEditModal({
   useScrollLock();
   const viewport = useVisualViewport();
 
-  const nameChanged = name.trim() && name.trim() !== machine.displayName;
+  const nameChanged = name.trim() && name.trim() !== machine.displayName.trim();
   const bodyPartChanged = (bodyPart ?? null) !== (machine.bodyPart ?? null);
   const unitChanged = unit !== machine.unit;
 
@@ -888,6 +936,7 @@ function MachineEditModal({
 
   function save() {
     if (!name.trim()) return;
+    rememberNewBrand(brand);
     const patch: SavePatch = {
       bodyPartChanged,
       bodyPart,
@@ -916,12 +965,33 @@ function MachineEditModal({
         <div className="mt-4 space-y-5">
           <Field label="Name">
             <input
-              value={name}
+              value={movement}
               onChange={(e) => {
-                setName(e.target.value);
+                setMovement(e.target.value);
                 setNameChoice(null);
               }}
               className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+            />
+          </Field>
+
+          <Field label="Brand (optional)">
+            <input
+              value={brand}
+              onChange={(e) => {
+                setBrand(e.target.value);
+                setNameChoice(null);
+              }}
+              placeholder="e.g. Prime"
+              autoCapitalize="words"
+              className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink placeholder:font-normal placeholder:text-muted focus:border-ink focus:outline-none"
+            />
+            <BrandChips
+              className="mt-2"
+              value={brand}
+              onPick={(b) => {
+                setBrand(b);
+                setNameChoice(null);
+              }}
             />
           </Field>
 
@@ -949,7 +1019,7 @@ function MachineEditModal({
                     setUnit(u);
                     setUnitChoice(null);
                   }}
-                  className={`flex-1 rounded-pill px-3 py-1.5 text-xs font-semibold uppercase tracking-wider ${
+                  className={`flex-1 rounded-pill px-3 py-1.5 text-xs font-semibold uppercase tracking-eyebrow ${
                     unit === u ? 'bg-ink text-white' : 'text-muted'
                   }`}
                 >
@@ -1047,7 +1117,7 @@ function MachineEditModal({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-eyebrow text-muted">
         {label}
       </div>
       {children}
@@ -1066,7 +1136,7 @@ function Prompt({
 }) {
   return (
     <div className="rounded-panel border border-line bg-paper p-3">
-      <div className="text-caption font-semibold uppercase tracking-[0.12em] text-muted">
+      <div className="text-caption font-semibold uppercase tracking-eyebrow text-muted">
         {label}
       </div>
       <div className="mt-1 text-sm font-semibold text-ink">{question}</div>
@@ -1118,18 +1188,45 @@ function MergeMachinesModal({
 }: {
   machines: MachineRow[];
   onCancel: () => void;
-  onConfirm: (survivor: MachineRow) => void;
+  onConfirm: (survivor: MachineRow, losers: MachineRow[], keptApart: MachineRow[]) => void;
   busy: boolean;
 }) {
   const [survivorName, setSurvivorName] = useState<string>(
     machines[0]?.normalizedName ?? ''
   );
+  // Machines in a suggested group that are really a different machine — "Prime
+  // pec deck fly" beside two spellings of the plain pec deck. They stay as they
+  // are while the rest merge.
+  const [apart, setApart] = useState<Set<string>>(new Set());
 
   // No fields to type in here, so the page just needs holding still.
   useScrollLock();
   const survivor =
     machines.find((m) => m.normalizedName === survivorName) ?? machines[0];
-  const losers = machines.filter((m) => m.normalizedName !== survivor.normalizedName);
+  const others = machines.filter((m) => m.normalizedName !== survivor.normalizedName);
+  const losers = others.filter((m) => !apart.has(m.normalizedName));
+  const keptApart = others.filter((m) => apart.has(m.normalizedName));
+  // With only two, keeping one apart leaves nothing to merge.
+  const canKeepApart = machines.length > 2;
+
+  function chooseSurvivor(name: string) {
+    setSurvivorName(name);
+    setApart((a) => {
+      if (!a.has(name)) return a;
+      const next = new Set(a);
+      next.delete(name);
+      return next;
+    });
+  }
+
+  function toggleApart(name: string) {
+    setApart((a) => {
+      const next = new Set(a);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
   const movedSets = losers.reduce((acc, r) => acc + r.setCount, 0);
   const movedPlans = losers.reduce((acc, r) => acc + r.planRefCount, 0);
 
@@ -1139,25 +1236,47 @@ function MergeMachinesModal({
       onClick={onCancel}
     >
       <div
-        className="sheet-in max-h-[92vh] w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
+        className="sheet-in max-h-[85vh] w-full overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card sm:max-w-md sm:rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold tracking-tight text-ink">Merge machines</h2>
         <p className="mt-1 text-sm text-muted">
           Pick which one keeps its name. All history and plan references from the
           others will be moved over.
+          {canKeepApart && ' Keep separate leaves a machine out of the merge.'}
         </p>
 
         <div className="mt-4 space-y-2">
-          {machines.map((m) => (
-            <ChoiceRow
-              key={m.normalizedName}
-              selected={m.normalizedName === survivor.normalizedName}
-              title={m.displayName}
-              subtitle={`${m.bodyPart ?? 'Unset'} · ${m.unit} · ${m.setCount} sets · ${m.planRefCount} plan refs`}
-              onClick={() => setSurvivorName(m.normalizedName)}
-            />
-          ))}
+          {machines.map((m) => {
+            const isSurvivor = m.normalizedName === survivor.normalizedName;
+            const isApart = apart.has(m.normalizedName);
+            return (
+              <div key={m.normalizedName} className={`flex items-stretch gap-2 ${isApart ? 'opacity-50' : ''}`}>
+                <div className="min-w-0 flex-1">
+                  <ChoiceRow
+                    selected={isSurvivor}
+                    title={m.displayName}
+                    subtitle={
+                      isApart
+                        ? 'Stays a separate machine'
+                        : `${m.bodyPart ?? 'Unset'} · ${m.unit} · ${m.setCount} sets · ${m.planRefCount} plan refs`
+                    }
+                    onClick={() => chooseSurvivor(m.normalizedName)}
+                  />
+                </div>
+                {canKeepApart && !isSurvivor && (
+                  <button
+                    type="button"
+                    onClick={() => toggleApart(m.normalizedName)}
+                    aria-pressed={isApart}
+                    className="pressable shrink-0 rounded-control border border-line bg-paper-card px-3 text-xs font-semibold text-ink active:bg-pressed"
+                  >
+                    {isApart ? 'Include' : 'Keep separate'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div className="mt-4 rounded-control bg-paper p-3 text-xs text-muted">
@@ -1173,6 +1292,15 @@ function MergeMachinesModal({
               <strong className="text-ink">{survivor.displayName}</strong>.{' '}
               {losers.length} machine{losers.length === 1 ? '' : 's'} will be
               deleted.
+              {keptApart.length > 0 && (
+                <>
+                  {' '}
+                  <strong className="text-ink">
+                    {keptApart.map((m) => m.displayName).join(', ')}
+                  </strong>{' '}
+                  stays as it is.
+                </>
+              )}
             </>
           )}
         </div>
@@ -1185,7 +1313,7 @@ function MergeMachinesModal({
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(survivor)}
+            onClick={() => onConfirm(survivor, losers, keptApart)}
             disabled={busy || losers.length === 0}
             className="pressable flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80 disabled:opacity-40"
           >

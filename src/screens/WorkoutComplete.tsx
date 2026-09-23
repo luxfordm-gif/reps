@@ -176,7 +176,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
             {bestSets.length > 0 && (
               <Rise index={2}>
                 <div className="mt-7">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                  <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                     Top sets
                   </div>
                   <ul className="mt-2 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
@@ -258,7 +258,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
         <div className="bg-paper px-5 pt-2 pb-[max(env(safe-area-inset-bottom),24px)]">
           <button
             onClick={onDone}
-            className="pressable pointer-events-auto mx-auto block w-full max-w-md rounded-pill bg-ink py-4 text-sm font-semibold text-white active:opacity-80"
+            className="pressable pointer-events-auto mx-auto block w-full max-w-md rounded-pill bg-ink py-4 text-base font-semibold text-white active:opacity-80"
           >
             Back to home
           </button>
@@ -410,7 +410,7 @@ function MedalBadge({ kind }: { kind: RecapMedal }) {
   const m = MEDALS[kind];
   return (
     <span
-      className="rounded-pill px-1.5 py-0.5 text-label font-bold uppercase tracking-wider"
+      className="rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow"
       style={{ backgroundColor: m.badgeBg, color: m.badgeInk }}
     >
       {m.label}

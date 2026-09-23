@@ -9,6 +9,7 @@ import {
   type PlanSummary,
   type FullPlan,
 } from '../lib/plansApi';
+import ExerciseName from '../components/ExerciseName';
 
 interface Props {
   onBack: () => void;
@@ -150,7 +151,7 @@ export function Plans({ onBack, onUpload, onAfterActivate }: Props) {
 
             <button
               onClick={onUpload}
-              className="pressable mt-6 w-full rounded-pill border border-line bg-paper-card py-4 text-base font-semibold text-ink active:bg-pressed"
+              className="pressable mt-6 w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
             >
               Upload a new plan
             </button>
@@ -219,7 +220,7 @@ function PlanCard({
     >
       <div className="p-5">
         <div
-          className={`text-label font-semibold uppercase tracking-[0.18em] ${
+          className={`text-label font-semibold uppercase tracking-eyebrow ${
             dark ? 'text-white/70' : 'text-muted'
           }`}
         >
@@ -270,7 +271,7 @@ function PlanCard({
         {!plan.is_active && (
           <button
             onClick={onSwitch}
-            className="pressable mt-4 w-full rounded-pill bg-ink py-2.5 text-sm font-semibold text-white active:opacity-80"
+            className="pressable mt-4 w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
           >
             Switch to this plan
           </button>
@@ -360,7 +361,9 @@ function DayRow({
         >
           {exercises.map((ex) => (
             <li key={ex.id} className="py-2">
-              <div className="font-medium">{ex.name}</div>
+              <div className="font-medium">
+                <ExerciseName name={ex.name} variant="inline" />
+              </div>
               <div
                 className={`mt-0.5 text-xs ${
                   dark ? 'text-white/60' : 'text-muted'

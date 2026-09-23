@@ -50,8 +50,23 @@ function castWord(word: string, isFirstInSentence: boolean): string {
   return lower;
 }
 
+const URL_RE = /\bhttps?:\/\/\S+/gi;
+
 export function toSentenceCase(input: string): string {
   if (!input) return input;
+  // Links go through untouched. Their dots would split sentences, and a video
+  // ID is case-sensitive — "youtu.be/NCPR8FCBCv0" lower-cased goes nowhere. Each
+  // is parked behind a placeholder that starts with a digit, which castWord
+  // already leaves alone, and put back afterwards.
+  const urls: string[] = [];
+  const parked = input.replace(URL_RE, (url) => `${urls.push(url) - 1}\uE000`);
+  if (urls.length > 0) {
+    return castSentences(parked).replace(/(\d+)\uE000/g, (_, i: string) => urls[Number(i)]);
+  }
+  return castSentences(input);
+}
+
+function castSentences(input: string): string {
   // Split into sentences (very loose: by . ! ? followed by whitespace)
   // We process each sentence separately so first-letter capitalisation works.
   const sentencePattern = /([^.!?]+[.!?]?)/g;

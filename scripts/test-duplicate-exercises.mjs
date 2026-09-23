@@ -1,7 +1,7 @@
 // Tests the duplicate-exercise detector — in particular what it refuses to
 // suggest, since accepting a wrong pair merges two histories irreversibly.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-duplicate-exercises.mjs
-import { findDuplicatePairs, findDuplicateGroups } from '../src/lib/duplicateExercises.ts';
+import { duplicatePairKey, findDuplicatePairs, findDuplicateGroups } from '../src/lib/duplicateExercises.ts';
 
 let failures = 0;
 function eq(label, got, want) {
@@ -155,6 +155,73 @@ console.log('\n=== grouping does not loosen the rules ===');
       m('Hammer strength leg extension', 'Legs', 25),
     ]).length,
     2,
+  );
+}
+
+console.log('\n=== a brand at the other end of the name ===');
+{
+  const pairs = findDuplicatePairs([
+    m('Reverse pec deck prime', 'Shoulders', 20),
+    m('Prime reverse pec deck', 'Shoulders', 3),
+  ]);
+  eq('the same brand and movement is one machine', pairs.length, 1);
+  eq('reason', pairs[0].reason, 'brand');
+  eq('the survivor is the one with more history', pairs[0].survivor.setCount, 20);
+}
+{
+  eq(
+    'two brands of the same movement are two machines',
+    findDuplicatePairs([m('Prime chest press', 'Chest', 9), m('Cybex chest press', 'Chest', 9)]).length,
+    0,
+  );
+}
+
+{
+  const groups = findDuplicateGroups([
+    m('Adductor', 'Legs', 20),
+    m('Cybex adductor', 'Legs', 10),
+    m('Flex adductor', 'Legs', 8),
+  ]);
+  eq(
+    'two brands of one movement never share a group',
+    groups.every((g) => {
+      const names = [g.survivor, ...g.losers].map((x) => x.displayName);
+      return !(names.includes('Cybex adductor') && names.includes('Flex adductor'));
+    }),
+    true,
+  );
+}
+
+console.log('\n=== a word that changes the exercise ===');
+{
+  const never = [
+    ['Pec deck', 'Reverse pec deck'],
+    ['Planks', 'Side planks'],
+    ['Preacher curl', 'Single arm preacher curl'],
+    ['JM press', 'Smith machine JM press'],
+    ['Lat pulldown', 'Narrow grip lat pulldown'],
+  ];
+  for (const [a, b] of never) {
+    eq(`${a} and ${b} are different exercises`, findDuplicatePairs([m(a, null, 5), m(b, null, 5)]).length, 0);
+  }
+  eq(
+    'a word that changes nothing still pairs',
+    findDuplicatePairs([m('Preacher curl', null, 5), m('Preacher curl machine', null, 5)]).length,
+    1,
+  );
+}
+
+console.log('\n=== keeping one machine out of a merge ===');
+{
+  const rows = [m('Pec deck fly', 'Chest', 4), m('Prime pec deck fly', 'Chest', 18), m('Pec deck', 'Chest', 15)];
+  // What the merge sheet dismisses when Prime is kept apart from the other two.
+  const keys = ['pec deck fly', 'pec deck'].map((n) => duplicatePairKey('prime pec deck fly', n));
+  eq('the key is the same either way round', duplicatePairKey('a', 'b'), duplicatePairKey('b', 'a'));
+  const [g] = findDuplicateGroups(rows, new Set(keys));
+  eq(
+    'the machine kept apart is not suggested with them again',
+    [g.survivor, ...g.losers].map((x) => x.displayName).sort(),
+    ['Pec deck', 'Pec deck fly'],
   );
 }
 

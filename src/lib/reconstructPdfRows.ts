@@ -19,6 +19,9 @@ export interface PositionedText {
   x: number;
   y: number;
   str: string;
+  /** Rendered width, when the extractor reports it. Centred cells can only be
+   *  placed in a column by their middle, and the middle needs the width. */
+  width?: number;
 }
 
 const Y_TOLERANCE = 3; // pixels — items within this Y distance count as one line
@@ -193,6 +196,229 @@ function reconstructGrid(lines: Line[]): string[] | null {
   return out;
 }
 
+// --- numbered tables with tall rows -----------------------------------------
+
+/**
+ * A spreadsheet exported to PDF: ORDER | EXERCISE | REST PERIOD | REPS / SETS |
+ * NOTES, with each exercise a tall row whose cells hold several lines —
+ * "1 x 8-12" over "1 x 12-15" in one, "Lat pulldown" over "Mag Grip" in
+ * another — all centred vertically. Read by lines, one exercise comes out
+ * spread over three of them and interleaved with its neighbours, and nothing
+ * parses.
+ *
+ * So this reads it as cells instead. The header row says where each column
+ * sits across the page; the numbers in the ORDER column say where each row
+ * sits down it (a row runs halfway to the number either side). Every word then
+ * belongs to exactly one cell, however many lines that cell spans, and each row
+ * is written back out as one line under a header the parser already knows.
+ */
+type OrderedColumn = 'order' | 'name' | 'setsReps' | 'rest' | 'notes';
+
+const ORDERED_HEADER_CELLS: Array<[RegExp, OrderedColumn]> = [
+  [/^(order|#|no\.?)$/i, 'order'],
+  [/^(exercises?|movements?)$/i, 'name'],
+  [/^(reps?\s*\/\s*sets?|sets?\s*\/\s*reps?|sets?\s*(?:x|&|and)\s*reps?|reps?\s*(?:x|&|and)\s*sets?)$/i, 'setsReps'],
+  [/^rest(\s+period)?$/i, 'rest'],
+  [/^(notes?|coaching\s+notes|comments|cues)$/i, 'notes'],
+];
+
+/** Words closer than this (in PDF units) belong to the same header cell. */
+const HEADER_WORD_GAP = 15;
+
+/** "1 x 8-12", "1x 10 -12", "2x 12-15", "1 x 6-10 each". */
+const SET_GROUP_RE = /^(\d{1,2})\s*x\s*(\d{1,3}(?:\s*-\s*\d{1,3})?)\s*(each)?$/i;
+
+function widthOf(p: PositionedText): number {
+  // Without a reported width, a rough average glyph width is still enough to
+  // put a centred cell's middle in the right column.
+  return p.width ?? p.str.length * 4.5;
+}
+
+function centreOf(p: PositionedText): number {
+  return p.x + widthOf(p) / 2;
+}
+
+interface HeaderCell {
+  kind: OrderedColumn;
+  centre: number;
+}
+
+/** Read a line as a numbered table's header, or null if it isn't one. */
+function orderedHeader(line: Line): HeaderCell[] | null {
+  const sorted = [...line.parts].sort((a, b) => a.x - b.x);
+  const groups: PositionedText[][] = [];
+  for (const p of sorted) {
+    const last = groups[groups.length - 1];
+    const prev = last?.[last.length - 1];
+    if (prev && p.x - (prev.x + widthOf(prev)) <= HEADER_WORD_GAP) last.push(p);
+    else groups.push([p]);
+  }
+  const cells: HeaderCell[] = [];
+  for (const g of groups) {
+    const text = g.map((p) => p.str.trim()).join(' ').replace(/\s+/g, ' ');
+    const hit = ORDERED_HEADER_CELLS.find(([re]) => re.test(text));
+    // Every cell has to be one we know, so a line of content can't pass.
+    if (!hit) return null;
+    const first = g[0];
+    const last = g[g.length - 1];
+    cells.push({ kind: hit[1], centre: (first.x + last.x + widthOf(last)) / 2 });
+  }
+  const kinds = cells.map((c) => c.kind);
+  if (!kinds.includes('order') || !kinds.includes('name') || !kinds.includes('setsReps')) {
+    return null;
+  }
+  return cells;
+}
+
+/** Text of one cell, top line first. */
+function cellLines(parts: PositionedText[]): string[] {
+  const rows: PositionedText[][] = [];
+  for (const p of [...parts].sort((a, b) => b.y - a.y)) {
+    const row = rows.find((r) => Math.abs(r[0].y - p.y) <= Y_TOLERANCE);
+    if (row) row.push(p);
+    else rows.push([p]);
+  }
+  return rows.map(joinParts).filter(Boolean);
+}
+
+/**
+ * One exercise, as a line the parser reads under "EXERCISE SETS REPS NOTES".
+ *
+ * "1 x 12-15" over "1 x 20" is two sets with different targets. The first
+ * group's range becomes the exercise's rep range, and any set that differs is
+ * spelled out as "Set 2: 20 reps." in the notes, which is the form the per-set
+ * reader already turns into its own target.
+ */
+function orderedRowLine(cells: Record<OrderedColumn, string[]>): string | null {
+  const [name, ...subtitle] = cells.name;
+  if (!name) return null;
+
+  const groups = cells.setsReps.map((l) => l.match(SET_GROUP_RE));
+  const notes: string[] = [];
+  // Each note is closed with a full stop, so the next one starts its own
+  // sentence rather than running on ("Mag grip set 2: …").
+  const sentence = (s: string): string => (/[.!?]$/.test(s) ? s : `${s}.`);
+  if (subtitle.length) notes.push(sentence(subtitle.join(' ')));
+  const rest = cells.rest.join(' ');
+  if (rest && !/^(as\s+needed|[-–—])$/i.test(rest)) notes.push(sentence(`Rest ${rest}`));
+
+  let figures: string;
+  if (groups.length > 0 && groups.every(Boolean)) {
+    const parsed = groups.map((m) => ({
+      sets: parseInt(m![1], 10),
+      reps: m![2].replace(/\s+/g, ''),
+      each: !!m![3],
+    }));
+    const head = parsed[0];
+    const total = parsed.reduce((n, g) => n + g.sets, 0);
+    figures = `${total} ${head.reps}${parsed.every((g) => g.each) ? ' each' : ''}`;
+    const perSet: string[] = [];
+    let setNo = 0;
+    for (const g of parsed) {
+      for (let i = 0; i < g.sets; i++) {
+        setNo += 1;
+        if (g.reps !== head.reps) perSet.push(`Set ${setNo}: ${g.reps} reps.`);
+      }
+    }
+    if (perSet.length) notes.push(perSet.join(' '));
+  } else {
+    // Not the "N x reps" shape — hand the cell over as written and let the
+    // freeform reader have a go at it.
+    figures = cells.setsReps.join(' ');
+  }
+
+  const coach = cells.notes.join(' ');
+  if (coach && !/^[-–—]$/.test(coach)) notes.push(coach);
+  return `${name} ${figures} ${notes.join(' ')}`.replace(/\s+/g, ' ').trim();
+}
+
+function reconstructOrderedTables(lines: Line[]): string[] | null {
+  const headers = lines
+    .map((line) => ({ line, cells: orderedHeader(line) }))
+    .filter((h): h is { line: Line; cells: HeaderCell[] } => h.cells != null);
+  if (headers.length === 0) return null;
+
+  const consumed = new Set<PositionedText>();
+  const tables = new Map<Line, string[]>();
+
+  headers.forEach((h, hi) => {
+    const floorY = hi + 1 < headers.length ? headers[hi + 1].line.y : -Infinity;
+    const region = lines.filter((l) => l.y < h.line.y - Y_TOLERANCE && l.y > floorY);
+    const columnOf = (p: PositionedText): OrderedColumn => {
+      let best = h.cells[0];
+      for (const c of h.cells) {
+        if (Math.abs(centreOf(p) - c.centre) < Math.abs(centreOf(p) - best.centre)) best = c;
+      }
+      return best.kind;
+    };
+
+    // Each number in the ORDER column is one exercise, and marks its row.
+    const anchors = region
+      .flatMap((l) => l.parts)
+      .filter((p) => columnOf(p) === 'order' && /^\d{1,2}$/.test(p.str.trim()))
+      .map((p) => p.y)
+      .sort((a, b) => b - a);
+    if (anchors.length === 0) return;
+
+    const lastSpan =
+      anchors.length > 1
+        ? (anchors[anchors.length - 2] - anchors[anchors.length - 1]) / 2
+        : h.line.y - anchors[0];
+    const out = ['EXERCISE SETS REPS NOTES'];
+    anchors.forEach((y, i) => {
+      const top = i === 0 ? h.line.y - Y_TOLERANCE : (anchors[i - 1] + y) / 2;
+      const bottom = i === anchors.length - 1 ? y - lastSpan : (y + anchors[i + 1]) / 2;
+      const byColumn: Record<OrderedColumn, PositionedText[]> = {
+        order: [],
+        name: [],
+        setsReps: [],
+        rest: [],
+        notes: [],
+      };
+      for (const l of region) {
+        if (l.y >= top || l.y < bottom) continue;
+        for (const p of l.parts) {
+          byColumn[columnOf(p)].push(p);
+          consumed.add(p);
+        }
+      }
+      const row = orderedRowLine({
+        order: cellLines(byColumn.order),
+        name: cellLines(byColumn.name),
+        setsReps: cellLines(byColumn.setsReps),
+        rest: cellLines(byColumn.rest),
+        notes: cellLines(byColumn.notes),
+      });
+      if (row) out.push(row);
+    });
+    for (const p of h.line.parts) consumed.add(p);
+    tables.set(h.line, out);
+  });
+  if (tables.size === 0) return null;
+
+  // Everything outside the tables stays where it was — except the title block
+  // above the page's first day ("TRAINING PROGRAMME", "CLIENT NAME: James").
+  // Every note in this layout lives inside a cell, so that block is page
+  // furniture, and on page 2 it would otherwise read as a note on the last
+  // exercise of page 1. The line directly above the first table is kept: it's
+  // the day's name.
+  const out: string[] = [];
+  let beforeFirstTable: string[] = [];
+  for (const l of lines) {
+    const table = tables.get(l);
+    if (table) {
+      out.push(...beforeFirstTable.slice(-1), ...table);
+      beforeFirstTable = [];
+      continue;
+    }
+    const left = l.parts.filter((p) => !consumed.has(p));
+    if (!left.length) continue;
+    if (out.length === 0) beforeFirstTable.push(joinParts(left));
+    else out.push(joinParts(left));
+  }
+  return out.filter((t) => t && !/^\d{1,3}$/.test(t));
+}
+
 function median(nums: number[]): number {
   if (nums.length === 0) return 0;
   const s = [...nums].sort((a, b) => a - b);
@@ -277,6 +503,8 @@ export function reconstructRows(items: PositionedText[]): string[] {
   // where the columns are days rather than fields — reading that by rows gives
   // you one line per week-row with five days' exercises jumbled together.
   if (dataLines.length === 0) {
+    const ordered = reconstructOrderedTables(lines);
+    if (ordered) return ordered;
     const grid = reconstructGrid(lines);
     if (grid) return grid;
     // Otherwise fall back to a plain Y-ordered join.

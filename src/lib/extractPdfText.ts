@@ -170,13 +170,18 @@ export async function extractPdfText(file: File): Promise<string> {
       doing = `reading page ${pageNum} of ${pdf.numPages}`;
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
-      const items = content.items as Array<{ str?: string; transform?: number[] }>;
+      const items = content.items as Array<{ str?: string; transform?: number[]; width?: number }>;
 
       const positioned: PositionedText[] = [];
       for (const item of items) {
         // Marked-content items carry no text or position at all.
         if (!item.str || !item.str.trim() || !item.transform) continue;
-        positioned.push({ x: item.transform[4], y: item.transform[5], str: item.str });
+        positioned.push({
+          x: item.transform[4],
+          y: item.transform[5],
+          str: item.str,
+          width: item.width,
+        });
       }
 
       // Column geometry is per-page (headers repeat on each page), so reconstruct

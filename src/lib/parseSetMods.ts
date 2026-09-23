@@ -41,6 +41,17 @@ export function parseSetMods(notes: string, totalSets: number): SetModsResult {
     const setIdx = parseInt(match[1], 10);
     if (Number.isNaN(setIdx) || setIdx < 1 || setIdx > totalSets) continue;
     const body = match[2];
+    // "Set 2: 12-15 reps." — a set with a range of its own, as a spreadsheet
+    // plan writes "1 x 8-12" over "1 x 12-15".
+    const range = body.match(/^\s*(\d+)\s*-\s*(\d+)\s*REPS?\s*$/);
+    if (range) {
+      out.set(setIdx, {
+        drops: [],
+        repRangeOverride: `${range[1]}-${range[2]}`,
+        repTarget: parseInt(range[2], 10),
+      });
+      continue;
+    }
     const chunks = body.split(/\bDROP\b/);
     // chunks[0] is the main set's text; chunks[1..] are drop chunks
     const mainMatch = chunks[0].match(/(\d+)\s*REPS?/);

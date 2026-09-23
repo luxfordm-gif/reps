@@ -55,13 +55,13 @@ export function WeeklyProgress({
   const selectedDetails = selected != null ? (dayDetails[selected] ?? []) : [];
 
   return (
-    <div className="rounded-card bg-ink p-5 text-white shadow-lift">
+    <div className="rounded-card bg-ink p-5 text-white shadow-card">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
+        <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/55">
           Weekly Progress
         </div>
         {planWeek != null && (
-          <div className="text-xs font-medium uppercase tracking-[0.12em] text-white/55">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/55">
             Plan week {planWeek}
           </div>
         )}
@@ -137,7 +137,7 @@ export function WeeklyProgress({
       <div className="mt-4 min-h-[3.25rem] rounded-control bg-white/10 px-3.5 py-2.5 text-xs text-white">
         {selected != null && selectedDetails.length > 0 ? (
           <>
-            <div className="font-semibold uppercase tracking-[0.12em] text-white/60">
+            <div className="font-semibold uppercase tracking-eyebrow text-white/60">
               {FULL_DAYS[selected]}
             </div>
             <ul className="mt-1 space-y-2">

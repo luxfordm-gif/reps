@@ -27,7 +27,7 @@ export function EndWorkoutDialog({ onSave, onDiscard, onCancel }: Props) {
           </button>
           <button
             onClick={onDiscard}
-            className="pressable rounded-pill border border-ink bg-transparent py-3 text-sm font-semibold text-ink active:bg-ink/5"
+            className="pressable rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
           >
             Discard
           </button>

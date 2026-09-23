@@ -46,7 +46,7 @@ export function SetNewPassword({ onDone }: Props) {
         >
           <Logo className="h-16 w-auto self-start" />
 
-          <h1 className="mt-10 text-display font-bold leading-tight tracking-tight text-ink">
+          <h1 className="mt-10 text-display font-bold leading-tight tracking-title text-ink">
             Set a new password.
           </h1>
           <p className="mt-1.5 text-base text-muted">
@@ -98,7 +98,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-eyebrow text-muted">
         {label}
       </span>
       <input

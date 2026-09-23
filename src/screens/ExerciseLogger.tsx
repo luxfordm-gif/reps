@@ -28,6 +28,7 @@ import {
   type PlanExerciseRow,
 } from '../lib/plansApi';
 import { listMachines, type MachineRow } from '../lib/machinesApi';
+import { filterExercisesByQuery } from '../lib/exerciseSearch';
 import {
   listAlternativesForExercise,
   addAlternative,
@@ -69,6 +70,10 @@ import {
   type LoadProfileKind,
   type MachineProfile,
 } from '../lib/weightProfile';
+import ExerciseName from '../components/ExerciseName';
+import ExerciseNameFields from '../components/ExerciseNameFields';
+import { composeName, editedName, splitBrand } from '../lib/exerciseBrand';
+import { rememberNewBrand } from '../lib/brandsApi';
 
 // Display: kg as stored; lb rounded to nearest 0.5 to match the input's step.
 // Pin units store and display the same number (1:1 — no physical conversion).
@@ -1431,29 +1436,34 @@ export function ExerciseLogger({
             href={googleImagesUrl(displayName)}
             target="_blank"
             rel="noopener noreferrer"
-            className="block break-words text-2xl font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
+            className="block break-words text-3xl font-bold leading-tight tracking-title text-ink underline-offset-2 active:underline"
             style={{ textWrap: 'balance' } as React.CSSProperties}
           >
-            {displayName}
+            <ExerciseName
+              name={displayName}
+              brandClassName="mt-1 text-base font-semibold tracking-normal"
+            />
           </a>
-          <div className="mt-1 flex items-center gap-2">
-            <span className="text-sm text-muted">{exercise.body_part}</span>
-            <UnitBadge unit={unit} isOverride={unitIsOverride} />
-            {profile.kind != null && (
+          {/* Body part and unit used to sit here. The unit is inside every
+              weight field and the body part is plain from the movement, so the
+              only tag left is the one nothing else on the screen says: how a
+              profile machine loads. */}
+          {profile.kind != null && (
+            <div className="mt-2 flex items-center gap-2">
               <span
                 title={
                   profile.kind === 'pegs'
                     ? `Loads at ${profile.positions} numbered pegs`
                     : `Has ${profile.positions} cam positions`
                 }
-                className="inline-flex items-center rounded-pill bg-line pb-0.5 pl-[9px] pr-2 pt-[3px] text-label font-bold uppercase tracking-[0.12em] text-muted"
+                className="inline-flex items-center rounded-pill bg-line px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow text-muted"
               >
                 {profile.kind === 'pegs'
                   ? `${profile.positions} pegs`
                   : `curve 1–${profile.positions}`}
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {alternatives.length > 0 && (
@@ -1490,7 +1500,7 @@ export function ExerciseLogger({
           />
         )}
 
-        <div className="mt-5 grid grid-cols-3 gap-3">
+        <div className="mt-7 grid grid-cols-3 gap-2">
           <Stat label="Target sets" value={String(targetSets)} />
           <Stat label="Rep range" value={exercise.rep_range} />
           <Stat
@@ -1500,7 +1510,10 @@ export function ExerciseLogger({
           />
         </div>
 
-        {lastSets.length > 0 && lastTopSet && (
+        {/* The set rows already show last time's weights and reps as their
+            placeholders. What they can't show is which peg or cam position
+            each set was loaded at, so the row stays for profile machines. */}
+        {profile.kind != null && lastSets.length > 0 && lastTopSet && (
           <LastTimeRow
             lastSets={lastSets}
             lastTopSet={lastTopSet}
@@ -1566,7 +1579,7 @@ export function ExerciseLogger({
 
         {inRound && !restActive && (
           <div className="mt-5 rounded-card bg-paper-card px-4 py-3 text-center shadow-card">
-            <div className="text-label font-semibold uppercase tracking-[0.18em] text-muted">
+            <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
               {groupedSetLabel(roundNames.length + 1)}
             </div>
             <div className="mt-1 text-sm text-ink">
@@ -1600,7 +1613,7 @@ export function ExerciseLogger({
             onClick={() => setNotesOpen((v) => !v)}
             className="flex w-full items-center justify-between py-4 text-left active:opacity-60"
           >
-            <span className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-ink">
+            <span className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-eyebrow text-ink">
               <NotesIcon />
               Coach notes
               {savedCoach && (
@@ -1653,7 +1666,7 @@ export function ExerciseLogger({
             onClick={() => setPersonalOpen((v) => !v)}
             className="flex w-full items-center justify-between py-4 text-left active:opacity-60"
           >
-            <span className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-ink">
+            <span className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-eyebrow text-ink">
               <NotesIcon />
               My notes
               {savedPersonal && (
@@ -2014,7 +2027,7 @@ function ExerciseMenu({
           className="absolute right-0 top-11 z-40 w-56 overflow-y-auto overflow-x-hidden overscroll-contain rounded-card border border-line bg-paper-card shadow-card"
         >
           <div className="px-4 py-3">
-            <div className="text-label font-semibold uppercase tracking-[0.12em] text-muted">
+            <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
               Weight unit
             </div>
             <div className="mt-2 flex rounded-pill bg-line p-0.5">
@@ -2022,7 +2035,7 @@ function ExerciseMenu({
                 <button
                   key={u}
                   onClick={() => pick(() => onSelectUnit(u))}
-                  className={`flex-1 rounded-pill px-2 pb-1 pt-[5px] text-xs font-semibold uppercase tracking-wider ${
+                  className={`flex-1 rounded-pill px-2 py-1 text-xs font-semibold uppercase tracking-eyebrow ${
                     weightUnit === u ? 'bg-ink text-white' : 'text-muted'
                   }`}
                 >
@@ -2033,7 +2046,7 @@ function ExerciseMenu({
           </div>
           <Hairline />
           <div className="px-4 py-3">
-            <div className="text-label font-semibold uppercase tracking-[0.12em] text-muted">
+            <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
               Weight profile
             </div>
             <div className="mt-2 flex rounded-pill bg-line p-0.5">
@@ -2052,7 +2065,7 @@ function ExerciseMenu({
                         : 1,
                     })
                   }
-                  className={`flex-1 rounded-pill px-2 pb-1 pt-[5px] text-xs font-semibold uppercase tracking-wider ${
+                  className={`flex-1 rounded-pill px-2 py-1 text-xs font-semibold uppercase tracking-eyebrow ${
                     profile.kind === kind ? 'bg-ink text-white' : 'text-muted'
                   }`}
                 >
@@ -2327,22 +2340,22 @@ function AlternativeSheet({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-end justify-center bg-ink/40 transition-opacity duration-pop ease-snap sm:items-center ${
+      className={`fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm transition-opacity duration-pop ease-snap sm:items-center ${
         shown ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={onClose}
     >
       <div
-        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 transition-transform sm:rounded-card ${
+        className={`flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper-card p-6 shadow-card transition-transform sm:rounded-card ${
           shown
             ? 'translate-y-0 duration-[300ms] ease-sheet'
             : 'translate-y-10 duration-pop ease-snap'
         }`}
-        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-line" aria-hidden />
-        <h2 className="text-base font-semibold text-ink">Switch exercise</h2>
+        <div className="mx-auto mb-4 h-1 w-10 rounded-pill bg-line" aria-hidden />
+        <h2 className="text-lg font-bold tracking-tight text-ink">Switch exercise</h2>
         <p className="mt-1 text-xs text-muted">
           Same tempo and rep range. The plan always defaults back to the original.
         </p>
@@ -2358,7 +2371,7 @@ function AlternativeSheet({
                   <span className="block break-words text-sm font-semibold text-ink">
                     {primaryName}
                   </span>
-                  <span className="text-label font-semibold uppercase tracking-wider text-muted">
+                  <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
                     Plan default
                   </span>
                 </span>
@@ -2378,7 +2391,7 @@ function AlternativeSheet({
                     className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left active:bg-pressed"
                   >
                     <span className="block min-w-0 flex-1 break-words text-sm font-semibold text-ink">
-                      {alt.name}
+                      <ExerciseName name={alt.name} variant="inline" />
                     </span>
                     {active && (
                       <span className="shrink-0 text-ink">
@@ -2416,6 +2429,91 @@ function AlternativeSheet({
   );
 }
 
+// The machines both the add-alternative and swap sheets pick from, with a
+// search above to narrow the list by name. The list keeps its height while
+// filtering so the sheet doesn't jump under the user's thumb. When nothing
+// matches, what they typed can go straight into the new-exercise field below.
+function MachinePickerList({
+  machines,
+  disabled = false,
+  onPick,
+  onUseAsNew,
+}: {
+  machines: MachineRow[] | null;
+  disabled?: boolean;
+  onPick: (m: MachineRow) => void;
+  onUseAsNew: (name: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const trimmedQuery = query.trim();
+  const shown =
+    machines && filterExercisesByQuery(machines, query, (m) => m.displayName);
+
+  return (
+    <>
+      {machines !== null && machines.length > 0 && (
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search exercises"
+          aria-label="Search exercises"
+          autoComplete="off"
+          autoCorrect="off"
+          enterKeyHint="search"
+          className="mt-4 w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+        />
+      )}
+      <div
+        className={`${
+          machines !== null && machines.length > 0 ? 'mt-3' : 'mt-4'
+        } h-[42vh] min-h-0 overflow-y-auto`}
+      >
+        {machines === null || shown === null ? (
+          <div className="py-6 text-center text-sm text-muted">Loading…</div>
+        ) : machines.length === 0 ? (
+          <div className="py-2 text-center text-xs text-muted">
+            No other machines for this body part yet — add a new exercise
+            below.
+          </div>
+        ) : shown.length === 0 ? (
+          <div className="py-2 text-center text-xs text-muted">
+            <p>Nothing matches “{trimmedQuery}”.</p>
+            <button
+              onClick={() => onUseAsNew(trimmedQuery)}
+              disabled={disabled}
+              className="pressable mt-3 rounded-pill border border-line bg-paper-card px-4 py-2 text-sm font-semibold text-ink active:bg-pressed disabled:opacity-40"
+            >
+              Add it as a new exercise
+            </button>
+          </div>
+        ) : (
+          <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
+            {shown.map((m) => (
+              <li key={m.normalizedName}>
+                <button
+                  onClick={() => onPick(m)}
+                  disabled={disabled}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed disabled:opacity-50"
+                >
+                  <span className="text-sm font-semibold text-ink">
+                    <ExerciseName name={m.displayName} variant="inline" />
+                  </span>
+                  {m.setCount > 0 && (
+                    <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+                      history
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
 // Adds a new alternative to the slot. Reuses the SwapMachineModal "choose"
 // stage — pick an existing tracked machine (pulls its history) or type a new
 // movement (starts at zero) — but adding is always a persisted plan-slot
@@ -2432,7 +2530,8 @@ function AddAlternativeModal({
   onConfirm: (name: string, normalizedName: string) => Promise<void>;
 }) {
   const [machines, setMachines] = useState<MachineRow[] | null>(null);
-  const [newName, setNewName] = useState('');
+  const [newMovement, setNewMovement] = useState('');
+  const [newBrand, setNewBrand] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -2475,80 +2574,63 @@ function AddAlternativeModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bodyPart, excludeNormalized.join('|')]);
 
-  const trimmedNew = newName.trim();
+  const trimmedNew = newMovement.trim() ? composeName(newMovement, newBrand) : '';
+
+  // A search that found nothing goes into the new-exercise fields, with any
+  // brand in it moved to the brand field.
+  function fillNewFrom(typed: string) {
+    const { movement, brand } = splitBrand(typed);
+    setNewMovement(movement);
+    setNewBrand(brand ?? '');
+  }
 
   function chooseNew() {
     if (!trimmedNew) return;
+    rememberNewBrand(newBrand);
     submit(trimmedNew, normalizeExerciseName(trimmedNew));
   }
 
   return (
     <div
-      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
       onClick={onCancel}
     >
       <div
-        className="sheet-in flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 sm:rounded-card"
-        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        className="sheet-in flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper-card p-6 shadow-card sm:rounded-card"
+        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-semibold text-ink">Add alternative</h2>
+        <h2 className="text-lg font-bold tracking-tight text-ink">Add alternative</h2>
         <p className="mt-1 text-xs text-muted">
           A backup movement for when the planned machine is taken. It keeps the
           same tempo and rep range, and you can switch to it any time. The plan
           always defaults back to the original.
         </p>
 
-        <div className="mt-4 h-[42vh] min-h-0 overflow-y-auto">
-          {machines === null ? (
-            <div className="py-6 text-center text-sm text-muted">Loading…</div>
-          ) : machines.length === 0 ? (
-            <div className="py-2 text-center text-xs text-muted">
-              No other machines for this body part yet — add a new exercise
-              below.
-            </div>
-          ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
-              {machines.map((m) => (
-                <li key={m.normalizedName}>
-                  <button
-                    onClick={() => submit(m.displayName, m.normalizedName)}
-                    disabled={submitting}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed disabled:opacity-50"
-                  >
-                    <span className="text-sm font-semibold text-ink">
-                      {m.displayName}
-                    </span>
-                    {m.setCount > 0 && (
-                      <span className="text-label font-semibold uppercase tracking-wider text-muted">
-                        history
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <MachinePickerList
+          machines={machines}
+          disabled={submitting}
+          onPick={(m) => submit(m.displayName, m.normalizedName)}
+          onUseAsNew={fillNewFrom}
+        />
 
-        <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
+        <p className="mt-5 text-label font-semibold uppercase tracking-eyebrow text-muted">
           Add a new exercise
         </p>
-        <div className="mt-2 flex items-center gap-2">
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="New exercise name"
-            className="min-w-0 flex-1 rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
-          />
-          <button
-            onClick={chooseNew}
-            disabled={!trimmedNew || submitting}
-            className="pressable shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
-          >
-            {submitting ? 'Adding…' : 'Add'}
-          </button>
-        </div>
+        <ExerciseNameFields
+          className="mt-2"
+          movement={newMovement}
+          brand={newBrand}
+          onMovementChange={setNewMovement}
+          onBrandChange={setNewBrand}
+        />
+        <button
+          onClick={chooseNew}
+          disabled={!trimmedNew || submitting}
+          className="pressable mt-2 w-full rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+        >
+          {submitting ? 'Adding…' : 'Add'}
+        </button>
 
         {submitError && (
           <div className="mt-3 rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -2588,7 +2670,8 @@ function SwapMachineModal({
 }) {
   const [stage, setStage] = useState<'choose' | 'scope'>('choose');
   const [machines, setMachines] = useState<MachineRow[] | null>(null);
-  const [newName, setNewName] = useState('');
+  const [newMovement, setNewMovement] = useState('');
+  const [newBrand, setNewBrand] = useState('');
   const [pending, setPending] = useState<{
     name: string;
     normalizedName: string;
@@ -2620,7 +2703,15 @@ function SwapMachineModal({
     };
   }, [bodyPart, currentNormalized]);
 
-  const trimmedNew = newName.trim();
+  const trimmedNew = newMovement.trim() ? composeName(newMovement, newBrand) : '';
+
+  // A search that found nothing goes into the new-exercise fields, with any
+  // brand in it moved to the brand field.
+  function fillNewFrom(typed: string) {
+    const { movement, brand } = splitBrand(typed);
+    setNewMovement(movement);
+    setNewBrand(brand ?? '');
+  }
 
   function chooseExisting(m: MachineRow) {
     setPending({
@@ -2633,6 +2724,7 @@ function SwapMachineModal({
 
   function chooseNew() {
     if (!trimmedNew) return;
+    rememberNewBrand(newBrand);
     setPending({
       name: trimmedNew,
       normalizedName: normalizeExerciseName(trimmedNew),
@@ -2643,67 +2735,43 @@ function SwapMachineModal({
 
   return (
     <div
-      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
       onClick={onCancel}
     >
       <div
-        className="sheet-in flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper p-5 sm:rounded-card"
-        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        className="sheet-in flex max-h-[85vh] w-full max-w-md flex-col rounded-t-card bg-paper-card p-6 shadow-card sm:rounded-card"
+        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
         {stage === 'choose' ? (
           <>
-            <h2 className="text-base font-semibold text-ink">Swap machine</h2>
+            <h2 className="text-lg font-bold tracking-tight text-ink">Swap machine</h2>
             <p className="mt-1 text-xs text-muted">
               Pick another {bodyPart ? `${bodyPart.toLowerCase()} ` : ''}machine,
               or add a brand-new exercise.
             </p>
 
-            <div className="mt-4 h-[42vh] min-h-0 overflow-y-auto">
-              {machines === null ? (
-                <div className="py-6 text-center text-sm text-muted">Loading…</div>
-              ) : machines.length === 0 ? (
-                <div className="py-2 text-center text-xs text-muted">
-                  No other machines for this body part yet — add a new exercise
-                  below.
-                </div>
-              ) : (
-                <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
-                  {machines.map((m) => (
-                    <li key={m.normalizedName}>
-                      <button
-                        onClick={() => chooseExisting(m)}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed"
-                      >
-                        <span className="text-sm font-semibold text-ink">
-                          {m.displayName}
-                        </span>
-                        {m.setCount > 0 && (
-                          <span className="text-label font-semibold uppercase tracking-wider text-muted">
-                            history
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <MachinePickerList
+              machines={machines}
+              onPick={chooseExisting}
+              onUseAsNew={fillNewFrom}
+            />
 
-            <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
+            <p className="mt-5 text-label font-semibold uppercase tracking-eyebrow text-muted">
               Add a new exercise
             </p>
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="New exercise name"
-                className="min-w-0 flex-1 rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
-              />
+            <ExerciseNameFields
+              className="mt-2"
+              movement={newMovement}
+              brand={newBrand}
+              onMovementChange={setNewMovement}
+              onBrandChange={setNewBrand}
+            />
+            <div className="mt-2">
               <button
                 onClick={chooseNew}
                 disabled={!trimmedNew}
-                className="pressable shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+                className="pressable w-full rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
               >
                 Add
               </button>
@@ -2718,7 +2786,7 @@ function SwapMachineModal({
           </>
         ) : (
           <>
-            <h2 className="text-base font-semibold text-ink">
+            <h2 className="text-lg font-bold tracking-tight text-ink">
               Swap to “{pending?.name}”
             </h2>
             <p className="mt-1 text-xs text-muted">
@@ -2726,7 +2794,7 @@ function SwapMachineModal({
                 ? 'New exercise — it starts fresh and baselines from this workout.'
                 : "Pulls up that machine's own history so you can pick up where you left off."}
             </p>
-            <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
+            <p className="mt-5 text-label font-semibold uppercase tracking-eyebrow text-muted">
               Is this a one-off?
             </p>
             <div className="mt-2 grid gap-2">
@@ -2772,9 +2840,15 @@ function RenameExerciseModal({
   onCancel: () => void;
   onConfirm: (newName: string, resetBaseline: boolean) => void;
 }) {
-  const [name, setName] = useState(initialName);
-  const trimmed = name.trim();
+  const [initial] = useState(() => splitBrand(initialName));
+  const [movement, setMovement] = useState(initial.movement);
+  const [brand, setBrand] = useState(initial.brand ?? '');
+  const trimmed = editedName(initialName, movement, brand);
   const valid = trimmed.length > 0 && trimmed !== initialName.trim();
+  const confirm = (resetBaseline: boolean) => {
+    rememberNewBrand(brand);
+    onConfirm(trimmed, resetBaseline);
+  };
 
   // The field autofocuses, so the keyboard is up straight away: hold the page
   // behind still and sit in what the keyboard has left of the viewport.
@@ -2783,41 +2857,43 @@ function RenameExerciseModal({
 
   return (
     <div
-      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
       style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onCancel}
     >
       <SheetPanel
-        inset={5}
-        className="w-full max-w-md rounded-t-card bg-paper sm:rounded-card"
+        inset={6}
+        className="w-full max-w-md rounded-t-card bg-paper-card shadow-card sm:rounded-card"
         header={
           <>
-            <h2 className="text-base font-semibold text-ink">Edit exercise name</h2>
+            <h2 className="text-lg font-bold tracking-tight text-ink">Edit exercise name</h2>
             <p className="mt-1 text-xs text-muted">
               Renames this exercise across your plan.
             </p>
           </>
         }
       >
-        <input
+        <ExerciseNameFields
           autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="mt-4 w-full rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+          className="mt-4"
+          movement={movement}
+          brand={brand}
+          onMovementChange={setMovement}
+          onBrandChange={setBrand}
         />
-        <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
+        <p className="mt-5 text-label font-semibold uppercase tracking-eyebrow text-muted">
           Is this the same machine?
         </p>
         <div className="mt-2 grid gap-2">
           <button
-            onClick={() => onConfirm(trimmed, false)}
+            onClick={() => confirm(false)}
             disabled={!valid}
             className="pressable w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
           >
             Same machine — keep history
           </button>
           <button
-            onClick={() => onConfirm(trimmed, true)}
+            onClick={() => confirm(true)}
             disabled={!valid}
             className="pressable w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink disabled:opacity-40 active:bg-pressed"
           >
@@ -2852,15 +2928,15 @@ function DidYouMeanModal({
 
   return (
     <div
-      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
+      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
       onClick={onCancel}
     >
       <div
-        className="sheet-in w-full max-w-md rounded-t-card bg-paper p-5 sm:rounded-card"
-        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        className="sheet-in w-full max-w-md rounded-t-card bg-paper-card p-6 shadow-card sm:rounded-card"
+        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-semibold text-ink">Did you mean…?</h2>
+        <h2 className="text-lg font-bold tracking-tight text-ink">Did you mean…?</h2>
         <p className="mt-1 text-xs text-muted">
           Looks like you already have an exercise with a similar name.
         </p>
@@ -2940,14 +3016,14 @@ function LastTimeRow({
   };
 
   return (
-    <div className="mt-4 overflow-hidden rounded-control bg-paper-card shadow-card">
+    <div className="mt-4 overflow-hidden rounded-panel bg-paper-card shadow-card">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         className="flex w-full items-center justify-between px-3.5 py-2.5 text-left active:bg-pressed"
       >
-        <span className="text-label font-semibold uppercase tracking-[0.12em] text-muted">
+        <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
           Last time
         </span>
         <span className="flex items-center gap-2 text-xs font-medium text-ink">
@@ -3017,7 +3093,7 @@ function Stat({
     <div
       className={`rounded-panel bg-paper-card ${compact ? 'p-2' : 'p-3'} text-center shadow-card`}
     >
-      <div className={`text-label font-semibold uppercase tracking-wider text-muted`}>
+      <div className={`text-label font-semibold uppercase tracking-eyebrow text-muted`}>
         {label}
       </div>
       <div
@@ -3044,27 +3120,6 @@ function unitSuffix(unit: MachineUnit): string {
 // under the letters than over them, and the letter spacing puts a gap after the
 // last letter with nothing to balance it. Every chip in here is nudged the same
 // way — down a pixel, right a pixel.
-function UnitBadge({
-  unit,
-  isOverride,
-}: {
-  unit: MachineUnit;
-  isOverride: boolean;
-}) {
-  return (
-    <span
-      title={`${
-        unit === 'pin' ? 'Logged as pin numbers' : `Logged in ${unit}`
-      }${isOverride ? ' — not your default unit' : ''}`}
-      className={`inline-flex items-center rounded-pill pb-0.5 pl-[9px] pr-2 pt-[3px] text-label font-bold uppercase tracking-[0.12em] ${
-        isOverride ? 'bg-ink text-white' : 'bg-line text-muted'
-      }`}
-    >
-      {unit}
-    </span>
-  );
-}
-
 function SetGroup({
   rows,
   activeIndex,
@@ -3156,7 +3211,7 @@ function SetGroup({
         return (
           <div key={idx}>
             {showBackOffHeader && (
-              <div className="px-4 pt-2.5 text-label font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="px-4 pt-2.5 text-label font-semibold uppercase tracking-eyebrow text-muted">
                 Back off · {row.repRangeLabel}
               </div>
             )}
@@ -3171,10 +3226,19 @@ function SetGroup({
               className={`relative flex items-center gap-2.5 px-4 py-3 transition-colors max-[360px]:gap-2 max-[360px]:px-3 ${
                 !isMain ? 'bg-surface' : ''
               } ${
-                isActive && rows.length > 1 ? 'ring-1 ring-inset ring-ink rounded-panel' : ''
+                // The group's outline already says which set is up; inside it,
+                // a second box around one row fought with it. A short bar on
+                // the left edge picks out the row without drawing another box.
+                isActive && rows.length > 1
+                  ? 'before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full before:bg-ink'
+                  : ''
               } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
             >
-              <div className="w-11 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">
+              <div
+                className={`w-11 shrink-0 text-xs font-semibold uppercase tracking-eyebrow ${
+                  isActive && rows.length > 1 ? 'text-ink' : 'text-muted'
+                }`}
+              >
                 {isMain ? `Set ${setIndex}` : 'Drop'}
               </div>
             {!weightless && multiPoint && (
@@ -3322,7 +3386,7 @@ function SetGroup({
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
-                <div className="text-label font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
                   Points
                 </div>
                 <div className="mt-2 space-y-2">
@@ -3388,7 +3452,7 @@ function SetGroup({
                 </div>
                 {/* The number the set actually logs, on a row of its own. */}
                 <div className="mt-2.5 flex items-center justify-between border-t border-line/60 pt-2">
-                  <span className="text-label font-semibold uppercase tracking-[0.14em] text-muted">
+                  <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
                     Total
                   </span>
                   <span className="text-sm font-bold text-ink">
@@ -3403,7 +3467,7 @@ function SetGroup({
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
-                <span className="shrink-0 text-label font-semibold uppercase tracking-[0.14em] text-muted">
+                <span className="shrink-0 text-label font-semibold uppercase tracking-eyebrow text-muted">
                   Curve
                 </span>
                 {row.completed ? (
@@ -3457,7 +3521,7 @@ function SetGroup({
         );
       })}
       {footerLabel && (hasDrops || scheme === 'muscle_round' || scheme === 'intensifier') && (
-        <div className="border-t border-line/60 bg-surface px-3 py-1.5 text-label font-semibold uppercase tracking-wider text-muted">
+        <div className="border-t border-line/60 bg-surface px-3 py-1.5 text-label font-semibold uppercase tracking-eyebrow text-muted">
           {footerLabel}
         </div>
       )}
@@ -3490,7 +3554,7 @@ function RestTimer({
   return (
     <div className="flex items-center gap-4">
       <div className="flex flex-col">
-        <span className="text-label font-semibold uppercase tracking-[0.12em] text-ink">
+        <span className="text-label font-semibold uppercase tracking-eyebrow text-ink">
           Rest
         </span>
         <span className="mt-0.5 text-caption text-muted">Next set in</span>
@@ -3607,7 +3671,7 @@ function RestOverlay({
   void lastSetReps;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0A0A0A] text-white">
+    <div className="fixed inset-0 z-50 flex flex-col bg-ink text-white">
       <div
         className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pt-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
@@ -3633,7 +3697,7 @@ function RestOverlay({
 
         {elapsedLabel && (
           <div className="mt-3 flex flex-col items-center">
-            <div className="text-label font-semibold uppercase tracking-[0.18em] text-white/50">
+            <div className="text-label font-semibold uppercase tracking-eyebrow text-white/50">
               Workout time
             </div>
             <div className="mt-1 font-mono text-base font-semibold tabular-nums">
@@ -3673,7 +3737,7 @@ function RestOverlay({
               <div className="font-mono text-display-xl font-bold leading-none tabular-nums">
                 {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
               </div>
-              <div className="mt-3 text-label font-semibold uppercase tracking-[0.18em] text-white/60">
+              <div className="mt-3 text-label font-semibold uppercase tracking-eyebrow text-white/60">
                 Until next set
               </div>
             </div>
@@ -3681,7 +3745,7 @@ function RestOverlay({
 
           {nextSetName && (
             <div className="mt-6 flex flex-col items-center">
-              <div className="text-label font-semibold uppercase tracking-[0.18em] text-white/50">
+              <div className="text-label font-semibold uppercase tracking-eyebrow text-white/50">
                 Next set
               </div>
               <div className="mt-1 text-lg font-bold tracking-tight">{nextSetName}</div>
@@ -3694,7 +3758,7 @@ function RestOverlay({
           )}
 
           <div className="mt-5 flex flex-col items-center">
-            <div className="text-label font-semibold uppercase tracking-[0.18em] text-white/50">
+            <div className="text-label font-semibold uppercase tracking-eyebrow text-white/50">
               Default rest time
             </div>
             {/* Six choices on one line at 390px: None, 30s, 60s, 90s, 2m, 3m.
@@ -3762,9 +3826,9 @@ function MiniRestBar({
       <button
         onClick={onExpand}
         aria-label="Expand rest timer"
-        className="pressable pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-pill bg-[#0A0A0A] py-2 pl-4 pr-3 text-white shadow-card active:opacity-80"
+        className="pressable pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-pill bg-ink py-2 pl-4 pr-3 text-white shadow-card active:opacity-80"
       >
-        <span className="text-label font-semibold uppercase tracking-[0.18em] text-white/60">
+        <span className="text-label font-semibold uppercase tracking-eyebrow text-white/60">
           Rest
         </span>
         <span className="font-mono text-base font-bold tabular-nums">
@@ -3805,7 +3869,7 @@ function RoundAction({
       <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/30 text-white">
         {children}
       </div>
-      <div className="whitespace-nowrap text-label font-semibold uppercase tracking-[0.14em] text-white/70">
+      <div className="whitespace-nowrap text-label font-semibold uppercase tracking-eyebrow text-white/70">
         {label}
       </div>
     </button>
@@ -3880,7 +3944,7 @@ function RestPicker({
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
       {!compact && (
-        <span className="mr-1 text-label font-semibold uppercase tracking-wider text-muted">
+        <span className="mr-1 text-label font-semibold uppercase tracking-eyebrow text-muted">
           Rest
         </span>
       )}
@@ -3916,7 +3980,7 @@ function Improvements({
   const kudos = buildKudos({ thisSets: sets, lastSets, repRange, seed });
   return (
     <div className="mt-7 rounded-card bg-paper-card p-5 shadow-card">
-      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+      <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
         {kudos.label}
       </div>
       <div className="mt-1 text-lg font-bold leading-snug tracking-tight text-ink">

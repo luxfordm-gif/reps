@@ -52,7 +52,7 @@ export function SyncStatus({ className = '' }: { className?: string }) {
       ? 'bg-muted'
       : syncing || pending > 0
         ? 'bg-ink animate-pulse'
-        : 'bg-[#34C759]';
+        : 'bg-good-bright';
 
   // Only ever tappable when there's something for the user to do about it.
   const Tag = stuck > 0 ? 'button' : 'div';
