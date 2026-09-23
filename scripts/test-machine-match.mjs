@@ -187,6 +187,56 @@ console.log('\n=== the machine catalogue ===');
     brand: 'Arsenal Strength Reloaded',
   });
   check('a cardio name is the exercise, not a brand', splitBrand('Assault bike').brand, null);
+  check('a brand after a comma', splitBrand('Cable shoulder press, Nautilus'), {
+    movement: 'Cable shoulder press',
+    brand: 'Nautilus',
+  });
+  check('even a front-only maker, when the comma sets it off', splitBrand('Cable shoulder press, flex'), {
+    movement: 'Cable shoulder press',
+    brand: 'Flex Fitness',
+  });
+  check('a brand before a comma', splitBrand('Flex, Dip machine'), {
+    movement: 'Dip machine',
+    brand: 'Flex Fitness',
+  });
+  check('a note after a comma stays in the movement', splitBrand('JM press, smith machine').brand, null);
+  check('a comma note after a brand at the front', splitBrand('Hammer strength incline, plate'), {
+    movement: 'Incline, plate',
+    brand: 'Hammer Strength',
+  });
+  check('a brand after a dash', splitBrand('Preacher curl - Gymleco'), {
+    movement: 'Preacher curl',
+    brand: 'Gymleco',
+  });
+  check('a model number is not a movement', splitBrand('Teca 540'), { movement: 'Teca 540', brand: null });
+  check('the Dorian Yates row', splitBrand('Hammer strength dy underhand row'), {
+    movement: 'Underhand row',
+    brand: 'Hammer Strength DY',
+  });
+  check('an original Cybex', splitBrand('Cybex og leg press'), { movement: 'Leg press', brand: 'Cybex OG' });
+  check('a maker in the middle', splitBrand('Incline gymleco lying fly machine'), {
+    movement: 'Incline lying fly machine',
+    brand: 'Gymleco',
+  });
+  check('makers from a real coach\'s plan', [
+    splitBrand('Teca lateral raise'),
+    splitBrand('Mfg high wide row'),
+    splitBrand('Granite weighted hyperextension'),
+  ], [
+    { movement: 'Lateral raise', brand: 'Teca' },
+    { movement: 'High wide row', brand: 'MFG' },
+    { movement: 'Weighted hyperextension', brand: 'Granite' },
+  ]);
+  check('a brand in the middle of the name', splitBrand('Single arm hammer strength pulldown'), {
+    movement: 'Single arm pulldown',
+    brand: 'Hammer Strength',
+  });
+  check('with its line', splitBrand('Seated cybex eagle leg curl'), {
+    movement: 'Seated leg curl',
+    brand: 'Cybex Eagle',
+  });
+  check('a front-only maker is not taken from the middle', splitBrand('Hip flex stretch').brand, null);
+  check('"hammer" in the middle is still a curl', splitBrand('Cable hammer curl').brand, null);
   check('a pendulum squat is a movement', splitBrand('Pendulum squat').brand, null);
 }
 {

@@ -122,31 +122,64 @@ export interface SplitName {
 }
 
 /**
- * Splits a brand off the start or end of an exercise name. The brand has to be
- * whole words and something has to be left over, so "Prime" on its own stays a
- * name. The movement is returned starting with a capital, as names are shown.
+ * Splits a brand out of an exercise name. The brand has to be whole words and
+ * something has to be left over, so "Prime" on its own stays a name. The
+ * movement is returned starting with a capital, as names are shown.
  *
- *   "Prime pec deck fly"       → { movement: "Pec deck fly", brand: "Prime" }
- *   "Reverse pec deck prime"   → { movement: "Reverse pec deck", brand: "Prime" }
- *   "Rope hammer curl"         → { movement: "Rope hammer curl", brand: null }
+ *   "Prime pec deck fly"                   → { movement: "Pec deck fly", brand: "Prime" }
+ *   "Reverse pec deck prime"               → { movement: "Reverse pec deck", brand: "Prime" }
+ *   "Single arm hammer strength pulldown"  → { movement: "Single arm pulldown", brand: "Hammer Strength" }
+ *   "Cable shoulder press, Nautilus"       → { movement: "Cable shoulder press", brand: "Nautilus" }
+ *   "Rope hammer curl"                     → { movement: "Rope hammer curl", brand: null }
+ *
+ * A brand at either end is looked for first; one in the middle only when no
+ * brand is at an end. Makers marked startOnly count only at the front.
  */
 export function splitBrand(name: string): SplitName {
   const trimmed = name.trim().replace(/\s+/g, ' ');
   const lower = trimmed.toLowerCase();
-  for (const p of allPatterns()) {
+  const patterns = allPatterns();
+  const byText = new Map(patterns.map((p) => [p.text, p.spelling]));
+
+  // A brand set off by a comma — "Cable shoulder press, Nautilus", "Flex, Dip
+  // machine". The comma says it's a label rather than part of the movement, so
+  // even makers that only count at the front are taken from the end here.
+  // A dash does the same job: "Preacher curl - Gymleco".
+  const parts = trimmed.split(/,| [-–—] /).map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const last = byText.get(parts[parts.length - 1].toLowerCase());
+    if (last) return found(parts.slice(0, -1).join(', '), last);
+    const first = byText.get(parts[0].toLowerCase());
+    if (first) return found(parts.slice(1).join(', '), first);
+  }
+
+  for (const p of patterns) {
     const b = p.text;
     if (!b || lower.length <= b.length + 1) continue;
     if (lower.startsWith(b + ' ')) {
-      return { movement: capitalise(trimmed.slice(b.length + 1).trim()), brand: p.spelling };
+      return found(trimmed.slice(b.length + 1), p.spelling);
     }
     if (!p.startOnly && lower.endsWith(' ' + b)) {
-      return {
-        movement: capitalise(trimmed.slice(0, trimmed.length - b.length - 1).trim()),
-        brand: p.spelling,
-      };
+      return found(trimmed.slice(0, trimmed.length - b.length - 1), p.spelling);
     }
   }
+  for (const p of patterns) {
+    if (!p.text || p.startOnly) continue;
+    const at = lower.indexOf(' ' + p.text + ' ');
+    if (at < 0) continue;
+    const before = trimmed.slice(0, at);
+    const after = trimmed.slice(at + p.text.length + 2);
+    return found(`${before} ${after}`, p.spelling);
+  }
   return { movement: trimmed, brand: null };
+
+  // What's left has to read as a movement. "Teca 540" is a machine's model
+  // number, and "540" under a brand says nothing, so it stays one name.
+  function found(movement: string, brand: string): SplitName {
+    const m = movement.trim();
+    if (!/[a-z]{2}/i.test(m)) return { movement: trimmed, brand: null };
+    return { movement: capitalise(m), brand };
+  }
 }
 
 /** Puts a brand back on the front of a movement: ("Chest press", "Prime") →

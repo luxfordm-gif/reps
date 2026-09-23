@@ -80,8 +80,27 @@ function isPluralOf(a: string, b: string): boolean {
 function isExtensionOf(a: string, b: string): boolean {
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short.length < MIN_LENGTH) return false;
-  return long.startsWith(`${short} `) || long.endsWith(` ${short}`);
+  let extra: string;
+  if (long.startsWith(`${short} `)) extra = long.slice(short.length + 1);
+  else if (long.endsWith(` ${short}`)) extra = long.slice(0, long.length - short.length - 1);
+  else return false;
+  return !extra.split(/[\s,()-]+/).some((w) => CHANGES_THE_MOVEMENT.has(w));
 }
+
+/**
+ * Words that make a different exercise out of the same name: "Reverse pec
+ * deck" trains the rear delts, not the chest; "Side planks" are not planks; a
+ * single-arm or narrow-grip version is its own thing to track. An extension
+ * that adds one of these is not a duplicate.
+ */
+const CHANGES_THE_MOVEMENT = new Set([
+  'reverse', 'side', 'single', 'unilateral', 'one', 'dual', 'alternating',
+  'incline', 'decline', 'flat', 'close', 'narrow', 'wide', 'grip', 'neutral',
+  'underhand', 'overhand', 'seated', 'standing', 'lying', 'kneeling',
+  'overhead', 'front', 'rear', 'high', 'low', 'smith', 'cable', 'dumbbell',
+  'barbell', 'db', 'bb', 'ez', 'rope', 'weighted', 'assisted', 'banded',
+  'hyperextension', 'deficit', 'pause', 'paused',
+]);
 
 /**
  * The same brand and movement with the brand in a different place — "Prime
@@ -147,6 +166,12 @@ export function findDuplicatePairs<T extends DuplicateCandidate>(
       // happen to read alike. Where either is unknown this says nothing, so
       // it only rules a pair out when both are known.
       if (a.bodyPart && b.bodyPart && a.bodyPart !== b.bodyPart) continue;
+
+      // Two different brands are two machines, however alike the rest reads:
+      // a Cybex adductor and a Flex adductor load nothing alike.
+      const brandA = splitBrand(an).brand;
+      const brandB = splitBrand(bn).brand;
+      if (brandA && brandB && brandA !== brandB) continue;
 
       const [survivor, loser] = rank(a, b) <= 0 ? [a, b] : [b, a];
       pairs.push({
@@ -254,20 +279,29 @@ export function findDuplicateGroups<T extends DuplicateCandidate>(
     }
     return root;
   };
-  const union = (a: string, b: string) => {
+  // The one brand each group holds, if any. A pair that would put two brands
+  // in one group is left out: "Cybex adductor" and "Flex adductor" each pair
+  // with plain "Adductor", but joining both would merge two different
+  // machines. Pairs come most convincing first, so the stronger link wins.
+  const brandOf = new Map<string, string | null>();
+  const brandOfRoot = (x: string) => brandOf.get(find(x)) ?? splitBrand(x).brand;
+  const used: DuplicatePair<T>[] = [];
+  for (const p of pairs) {
+    const a = p.survivor.normalizedName;
+    const b = p.loser.normalizedName;
+    const ba = brandOfRoot(a);
+    const bb = brandOfRoot(b);
+    if (ba && bb && ba !== bb) continue;
     const ra = find(a);
     const rb = find(b);
     if (ra !== rb) parent.set(ra, rb);
-  };
-  for (const p of pairs) {
-    parent.set(p.survivor.normalizedName, find(p.survivor.normalizedName));
-    parent.set(p.loser.normalizedName, find(p.loser.normalizedName));
-    union(p.survivor.normalizedName, p.loser.normalizedName);
+    brandOf.set(rb, ba ?? bb);
+    used.push(p);
   }
 
   const members = new Map<string, Map<string, T>>();
   const pairKeys = new Map<string, string[]>();
-  for (const p of pairs) {
+  for (const p of used) {
     const root = find(p.survivor.normalizedName);
     let bucket = members.get(root);
     if (!bucket) {

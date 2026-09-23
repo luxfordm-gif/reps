@@ -176,6 +176,41 @@ console.log('\n=== a brand at the other end of the name ===');
   );
 }
 
+{
+  const groups = findDuplicateGroups([
+    m('Adductor', 'Legs', 20),
+    m('Cybex adductor', 'Legs', 10),
+    m('Flex adductor', 'Legs', 8),
+  ]);
+  eq(
+    'two brands of one movement never share a group',
+    groups.every((g) => {
+      const names = [g.survivor, ...g.losers].map((x) => x.displayName);
+      return !(names.includes('Cybex adductor') && names.includes('Flex adductor'));
+    }),
+    true,
+  );
+}
+
+console.log('\n=== a word that changes the exercise ===');
+{
+  const never = [
+    ['Pec deck', 'Reverse pec deck'],
+    ['Planks', 'Side planks'],
+    ['Preacher curl', 'Single arm preacher curl'],
+    ['JM press', 'Smith machine JM press'],
+    ['Lat pulldown', 'Narrow grip lat pulldown'],
+  ];
+  for (const [a, b] of never) {
+    eq(`${a} and ${b} are different exercises`, findDuplicatePairs([m(a, null, 5), m(b, null, 5)]).length, 0);
+  }
+  eq(
+    'a word that changes nothing still pairs',
+    findDuplicatePairs([m('Preacher curl', null, 5), m('Preacher curl machine', null, 5)]).length,
+    1,
+  );
+}
+
 console.log('\n=== group dismissal and units ===');
 {
   const rows = [m('Assisted pullup', 'Back', 3), m('Assisted pullups', 'Back', 30)];
