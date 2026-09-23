@@ -32,6 +32,9 @@ import {
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
 import { SheetPanel } from '../components/SheetPanel';
+import ExerciseName from '../components/ExerciseName';
+import { editedName, splitBrand } from '../lib/exerciseBrand';
+import { rememberNewBrand } from '../lib/brandsApi';
 
 type SortMode = 'alpha' | 'bodyPart';
 const UNITS: MachineUnit[] = ['kg', 'lb', 'pin'];
@@ -571,7 +574,7 @@ function DuplicateRow({
             keeping. Which name survives is chosen in the merge sheet. */}
         {[group.survivor, ...group.losers].map((machine) => (
           <div key={machine.normalizedName} className="text-sm leading-snug text-ink">
-            {machine.displayName}
+            <ExerciseName name={machine.displayName} variant="inline" />
           </div>
         ))}
         {/* Counts sit on one subordinate line rather than beside each name:
@@ -803,7 +806,7 @@ function Row({
         )}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-ink">
-            {machine.displayName}
+            <ExerciseName name={machine.displayName} variant="inline" />
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted">
             {machine.bodyPart && (
@@ -866,7 +869,10 @@ function MachineEditModal({
   onDelete: () => void;
   busy: boolean;
 }) {
-  const [name, setName] = useState(machine.displayName);
+  const [initialParts] = useState(() => splitBrand(machine.displayName));
+  const [movement, setMovement] = useState(initialParts.movement);
+  const [brand, setBrand] = useState(initialParts.brand ?? '');
+  const name = editedName(machine.displayName, movement, brand);
   const [bodyPart, setBodyPart] = useState<string | null>(machine.bodyPart);
   const [unit, setUnit] = useState<MachineUnit>(machine.unit);
   const [nameChoice, setNameChoice] = useState<'inPlace' | 'fork' | null>(null);
@@ -878,7 +884,7 @@ function MachineEditModal({
   useScrollLock();
   const viewport = useVisualViewport();
 
-  const nameChanged = name.trim() && name.trim() !== machine.displayName;
+  const nameChanged = name.trim() && name.trim() !== machine.displayName.trim();
   const bodyPartChanged = (bodyPart ?? null) !== (machine.bodyPart ?? null);
   const unitChanged = unit !== machine.unit;
 
@@ -888,6 +894,7 @@ function MachineEditModal({
 
   function save() {
     if (!name.trim()) return;
+    rememberNewBrand(brand);
     const patch: SavePatch = {
       bodyPartChanged,
       bodyPart,
@@ -916,12 +923,25 @@ function MachineEditModal({
         <div className="mt-4 space-y-5">
           <Field label="Name">
             <input
-              value={name}
+              value={movement}
               onChange={(e) => {
-                setName(e.target.value);
+                setMovement(e.target.value);
                 setNameChoice(null);
               }}
               className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+            />
+          </Field>
+
+          <Field label="Brand (optional)">
+            <input
+              value={brand}
+              onChange={(e) => {
+                setBrand(e.target.value);
+                setNameChoice(null);
+              }}
+              placeholder="e.g. Prime"
+              autoCapitalize="words"
+              className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink placeholder:font-normal placeholder:text-muted focus:border-ink focus:outline-none"
             />
           </Field>
 

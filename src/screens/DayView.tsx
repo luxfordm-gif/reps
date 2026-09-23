@@ -27,6 +27,7 @@ import {
 } from '../lib/sessionsApi';
 import { clearHomeCache } from '../lib/homeCache';
 import { useNetStatus } from '../lib/offline/net';
+import ExerciseName from '../components/ExerciseName';
 
 type TrainingDay = FullPlan['training_days'][number];
 
@@ -668,7 +669,7 @@ function ExerciseRow({
             onClick={openImages}
             className="text-left text-base font-semibold leading-tight text-ink underline-offset-2 active:underline"
           >
-            {exercise.name}
+            <ExerciseName name={exercise.name} />
           </button>
           <div
             onClick={onTap}
@@ -748,7 +749,7 @@ function ReorderRow({
     <div className={`flex items-center gap-3 px-5 py-3.5 ${!isLast ? 'border-b border-line' : ''}`}>
       <div className="min-w-0 flex-1">
         <div className="truncate text-base font-semibold leading-tight text-ink">
-          {exercise.name}
+          <ExerciseName name={exercise.name} variant="inline" />
         </div>
         <div className="mt-1 text-xs text-muted">
           {exercise.total_sets ?? '–'} × {exercise.rep_range}

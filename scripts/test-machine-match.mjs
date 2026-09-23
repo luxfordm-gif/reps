@@ -7,6 +7,16 @@ import {
   isAnswerable,
 } from '../src/lib/machineMatch.ts';
 import { normalizeExerciseName } from '../src/lib/normalizeExerciseName.ts';
+import {
+  composeName,
+  editedName,
+  exerciseKey,
+  rememberBrands,
+  resetCustomBrands,
+  splitBrand,
+} from '../src/lib/exerciseBrand.ts';
+import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
+import { FORMAT_A_TEXT } from './fixtures/plans/trainer-formats.mjs';
 
 let failures = 0;
 function check(label, actual, expected) {
@@ -103,6 +113,69 @@ console.log('\n=== different machines stay different ===');
   const m = computeMatch(row('Pec deck'), HISTORY);
   check('a brand machine is not the generic one', m.kind !== 'exact', true);
   check('and nothing is decided for the user', m.decision, 'pending');
+}
+
+console.log('\n=== a machine brand, split from the movement ===');
+{
+  check('brand first', splitBrand('Prime pec deck fly'), { movement: 'Pec deck fly', brand: 'Prime' });
+  check('brand last', splitBrand('Reverse pec deck prime'), { movement: 'Reverse pec deck', brand: 'Prime' });
+  check(
+    'a two-word brand at the end',
+    splitBrand('Single arm underhand row machine hammer strength'),
+    { movement: 'Single arm underhand row machine', brand: 'Hammer Strength' },
+  );
+  check('"hammer" alone is a curl, not a brand', splitBrand('Rope hammer curl').brand, null);
+  check('nor at the start', splitBrand('Hammer curl').brand, null);
+  check('a brand inside a word is not a brand', splitBrand('Primer press').brand, null);
+  check('a brand on its own stays a name', splitBrand('Prime'), { movement: 'Prime', brand: null });
+  check('no brand, name unchanged', splitBrand('Lat pulldown'), { movement: 'Lat pulldown', brand: null });
+
+  check('joined with the brand first', composeName('Chest press', 'Prime'), 'Prime chest press');
+  check('a blank brand leaves the movement', composeName('Chest press', '  '), 'Chest press');
+  check('capitals in an abbreviation survive', composeName('EZ bar curl', 'Cybex'), 'Cybex EZ bar curl');
+  check('the key carries the brand', exerciseKey('Chest press', 'Prime'), 'prime chest press');
+  check(
+    'and so a branded machine never takes the generic one\'s key',
+    exerciseKey('Chest press', 'Prime') === exerciseKey('Chest press', ''),
+    false,
+  );
+
+  check(
+    'an untouched edit keeps a brand-last name as it was',
+    editedName('Reverse pec deck prime', 'Reverse pec deck', 'Prime'),
+    'Reverse pec deck prime',
+  );
+  check(
+    'a changed brand is put on the front',
+    editedName('Reverse pec deck prime', 'Reverse pec deck', 'Cybex'),
+    'Cybex reverse pec deck',
+  );
+  check('adding a brand to a plain name', editedName('Chest press', 'Chest press', 'Prime'), 'Prime chest press');
+  check('clearing the movement leaves nothing', editedName('Chest press', ' ', 'Prime'), '');
+
+  check('an unknown brand stays in the name', splitBrand('Newtech chest press').brand, null);
+  rememberBrands(['Newtech']);
+  check('until it has been typed as one', splitBrand('Newtech chest press'), {
+    movement: 'Chest press',
+    brand: 'Newtech',
+  });
+  resetCustomBrands();
+}
+{
+  // A real coach's plan: brands at either end, and a rope hammer curl.
+  const parsed = parseTrainingPlan(FORMAT_A_TEXT).days.flatMap((d) => d.exercises);
+  const byKey = new Map(parsed.map((e) => [e.normalizedName, e]));
+  const split = (key) => splitBrand(byKey.get(key)?.name ?? '');
+  check('a parsed brand-first name splits', split('prime pec deck fly'), {
+    movement: 'Pec deck fly',
+    brand: 'Prime',
+  });
+  check('a parsed brand-last name splits', split('reverse pec deck prime'), {
+    movement: 'Reverse pec deck',
+    brand: 'Prime',
+  });
+  check('the parsed key still carries the brand', byKey.has('prime pec deck fly'), true);
+  check('the rope hammer curl has no brand', split('rope hammer curl').brand, null);
 }
 
 console.log('\n=== the better-used machine wins a tie ===');

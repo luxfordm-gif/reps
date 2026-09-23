@@ -33,6 +33,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-23.1',
+    title: "What's new",
+    bullets: [
+      'Machine brands now sit under the exercise name',
+      'Adding an exercise has its own field for the brand',
+    ],
+  },
+  {
     version: '2026-09-22.4',
     title: "What's new",
     bullets: [

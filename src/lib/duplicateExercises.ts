@@ -1,11 +1,14 @@
 import { levenshtein } from './stringSimilarity';
+import { splitBrand } from './exerciseBrand';
 
 // Finding the same movement recorded twice.
 //
-// Duplicates arrive by three routes: a plan names a machine slightly
+// Duplicates arrive by four routes: a plan names a machine slightly
 // differently from the last one ("Deadlift" / "Deadlift from floor"), a name
-// is typed with a typo and becomes permanent ("Hammer strngth high row"), or a
-// plural creeps in ("Assisted pullup" / "Assisted pullups"). All three split a
+// is typed with a typo and becomes permanent ("Hammer strngth high row"), a
+// plural creeps in ("Assisted pullup" / "Assisted pullups"), or the brand sits
+// at the other end ("Reverse pec deck prime" / "Prime reverse pec deck"). All
+// four split a
 // movement's history in two, which fragments its records, its charts and what
 // the logger pre-fills.
 //
@@ -38,7 +41,7 @@ export interface DuplicatePair<T extends DuplicateCandidate = DuplicateCandidate
   survivor: T;
   loser: T;
   /** Why these two were put together, for the row to say. */
-  reason: 'plural' | 'extension' | 'typo';
+  reason: 'brand' | 'plural' | 'extension' | 'typo';
   /** True when merging would reinterpret the loser's numbers. */
   unitDiffers: boolean;
 }
@@ -80,6 +83,21 @@ function isExtensionOf(a: string, b: string): boolean {
   return long.startsWith(`${short} `) || long.endsWith(` ${short}`);
 }
 
+/**
+ * The same brand and movement with the brand in a different place — "Prime
+ * reverse pec deck" and "Reverse pec deck prime". Coaches put it at either end,
+ * and a brand typed into its own field goes on the front.
+ */
+function isBrandMovedOf(a: string, b: string): boolean {
+  const x = splitBrand(a);
+  const y = splitBrand(b);
+  if (!x.brand || !y.brand) return false;
+  return (
+    x.brand.toLowerCase() === y.brand.toLowerCase() &&
+    x.movement.toLowerCase() === y.movement.toLowerCase()
+  );
+}
+
 function pairKey(a: string, b: string): string {
   return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`;
 }
@@ -115,7 +133,8 @@ export function findDuplicatePairs<T extends DuplicateCandidate>(
       if (dismissed.has(key)) continue;
 
       let reason: DuplicatePair['reason'] | null = null;
-      if (isPluralOf(an, bn)) reason = 'plural';
+      if (isBrandMovedOf(an, bn)) reason = 'brand';
+      else if (isPluralOf(an, bn)) reason = 'plural';
       else if (isExtensionOf(an, bn)) reason = 'extension';
       else {
         const distance = levenshtein(an, bn);
@@ -143,7 +162,12 @@ export function findDuplicatePairs<T extends DuplicateCandidate>(
   // Most convincing first: a plural or an added phrase is a surer thing than a
   // near-miss spelling, and within a reason the pair with the most history at
   // stake is the one worth looking at.
-  const order: Record<DuplicatePair['reason'], number> = { plural: 0, extension: 1, typo: 2 };
+  const order: Record<DuplicatePair['reason'], number> = {
+    brand: 0,
+    plural: 1,
+    extension: 2,
+    typo: 3,
+  };
   return pairs.sort(
     (x, y) =>
       order[x.reason] - order[y.reason] ||

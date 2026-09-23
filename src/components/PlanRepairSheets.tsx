@@ -3,6 +3,8 @@ import { BODY_PART_OPTIONS, type ExerciseDraft } from '../lib/planRepair';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
 import { SheetPanel } from './SheetPanel';
+import { editedName, splitBrand } from '../lib/exerciseBrand';
+import { rememberNewBrand } from '../lib/brandsApi';
 
 // The two editor sheets for repairing an import on the upload review screen.
 // Both are plain forms: the person using them is fixing what the parser got
@@ -85,6 +87,10 @@ export function ExerciseEditorSheet({
   onClose,
 }: ExerciseEditorProps) {
   const [draft, setDraft] = useState<ExerciseDraft>(initial);
+  const [nameParts, setNameParts] = useState(() => {
+    const { movement, brand } = splitBrand(initial.name);
+    return { movement, brand: brand ?? '' };
+  });
   const [dayIdx, setDayIdx] = useState(initialDayIdx);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const nameRef = useRef<HTMLInputElement | null>(null);
@@ -104,6 +110,12 @@ export function ExerciseEditorSheet({
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
+  function setNamePart(part: 'movement' | 'brand', value: string) {
+    const next = { ...nameParts, [part]: value };
+    setNameParts(next);
+    set('name', editedName(initial.name, next.movement, next.brand));
+  }
+
   return (
     <SheetFrame title={title} onClose={onClose}>
       {sourceText && (
@@ -117,7 +129,9 @@ export function ExerciseEditorSheet({
         className="mt-4 space-y-3"
         onSubmit={(e) => {
           e.preventDefault();
-          if (canSave) onSave(draft, dayIdx);
+          if (!canSave) return;
+          rememberNewBrand(nameParts.brand);
+          onSave(draft, dayIdx);
         }}
       >
         <label className="block">
@@ -125,11 +139,23 @@ export function ExerciseEditorSheet({
           <input
             ref={nameRef}
             type="text"
-            value={draft.name}
-            onChange={(e) => set('name', e.target.value)}
+            value={nameParts.movement}
+            onChange={(e) => setNamePart('movement', e.target.value)}
             placeholder="Incline bench press"
             className={inputClass}
             autoCapitalize="sentences"
+          />
+        </label>
+
+        <label className="block">
+          <span className={labelClass}>Brand (optional)</span>
+          <input
+            type="text"
+            value={nameParts.brand}
+            onChange={(e) => setNamePart('brand', e.target.value)}
+            placeholder="e.g. Prime"
+            className={inputClass}
+            autoCapitalize="words"
           />
         </label>
 

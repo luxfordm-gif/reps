@@ -2,6 +2,7 @@ import { imageForDay } from '../lib/dayImages';
 import { useElapsedLabel } from '../lib/elapsed';
 import { haptics } from '../lib/haptics';
 import type { ActiveSessionContext } from '../lib/sessionsApi';
+import ExerciseName from './ExerciseName';
 
 /**
  * Everything the docked bar needs to stand in for the workout in progress.
@@ -84,7 +85,11 @@ export function ActiveWorkoutBar({ info, onEnd }: Props) {
             <span className="shrink-0 font-mono tabular-nums text-white/70">{label}</span>
           </span>
           <span className="mt-1 block truncate text-caption text-white/55">
-            {exerciseName ?? 'Tap to pick up where you left off'}
+            {exerciseName ? (
+              <ExerciseName name={exerciseName} variant="inline" />
+            ) : (
+              'Tap to pick up where you left off'
+            )}
           </span>
         </span>
       </button>

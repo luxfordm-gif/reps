@@ -158,6 +158,24 @@ console.log('\n=== grouping does not loosen the rules ===');
   );
 }
 
+console.log('\n=== a brand at the other end of the name ===');
+{
+  const pairs = findDuplicatePairs([
+    m('Reverse pec deck prime', 'Shoulders', 20),
+    m('Prime reverse pec deck', 'Shoulders', 3),
+  ]);
+  eq('the same brand and movement is one machine', pairs.length, 1);
+  eq('reason', pairs[0].reason, 'brand');
+  eq('the survivor is the one with more history', pairs[0].survivor.setCount, 20);
+}
+{
+  eq(
+    'two brands of the same movement are two machines',
+    findDuplicatePairs([m('Prime chest press', 'Chest', 9), m('Cybex chest press', 'Chest', 9)]).length,
+    0,
+  );
+}
+
 console.log('\n=== group dismissal and units ===');
 {
   const rows = [m('Assisted pullup', 'Back', 3), m('Assisted pullups', 'Back', 30)];

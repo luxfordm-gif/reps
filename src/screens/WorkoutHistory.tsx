@@ -11,6 +11,7 @@ import {
   type LoggedSet,
 } from '../lib/sessionsApi';
 import { describePoints, parsePositionWeights } from '../lib/weightProfile';
+import ExerciseName from '../components/ExerciseName';
 
 interface Props {
   onBack: () => void;
@@ -343,7 +344,9 @@ function ExerciseAccordion({
         className="flex w-full items-center justify-between px-5 py-4 text-left active:opacity-70"
       >
         <div className="min-w-0">
-          <div className="truncate text-base font-bold tracking-tight text-ink">{name}</div>
+          <div className="truncate text-base font-bold tracking-tight text-ink">
+            <ExerciseName name={name} variant="inline" />
+          </div>
           <div className="mt-0.5 text-xs text-muted">{sets.length} sets</div>
         </div>
         <Chevron rotate={open ? 90 : 0} />
