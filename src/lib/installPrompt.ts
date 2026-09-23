@@ -62,10 +62,14 @@ export const PLAN_READY_KEY = 'reps.installPrompt.planReadyAt';
  * Nothing should be asked of someone who is still arriving. Until a plan is in
  * there is only one thing to do on this app — upload one — and a card about
  * home screens on top of that screen is noise in the one place there was none.
- * Even once the plan is in, the minutes straight after are spent reading it,
- * so the banner waits those out too and turns up on a later visit instead.
+ * Once the plan is in, a minute is enough for it to have been looked at.
+ *
+ * Longer costs something on an iPhone: an app added to the home screen does
+ * not share Safari's storage, so it signs in afresh, and any sets still queued
+ * offline in Safari stay behind in Safari. The sooner it is added, the less of
+ * a person's training lives in the browser tab they are about to leave.
  */
-export const PLAN_GRACE_MS = 5 * 60 * 1000;
+export const PLAN_GRACE_MS = 60 * 1000;
 
 // --- Detection -----------------------------------------------------------------
 
@@ -212,7 +216,7 @@ export function readPlanReadyAt(): number | null {
 /**
  * Home reporting what it just loaded. Called with `true` the first time a plan
  * is seen, which starts the grace period; the stamp is written once and never
- * moved, so uploading a second plan doesn't buy another five minutes of quiet.
+ * moved, so uploading a second plan doesn't buy another minute of quiet.
  */
 export function notePlanState(present: boolean, now: number = Date.now()): void {
   const had = hasPlan;

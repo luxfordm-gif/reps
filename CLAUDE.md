@@ -15,25 +15,33 @@ of the calls below.
 `src/lib/changelog.ts` drives a dialog that stops a user to read it. An entry
 there has to be worth being stopped for.
 
-**An entry earns its place** when a release contains a new capability, a change
-in behaviour the user will notice and act on, or a bug that was costing them
-something real.
+**It is about improvements, never bugs.** An entry earns its place when a
+release makes the app better: a new capability, a change in how something works
+that the user will notice, or a layout that's noticeably better on their phone
+(e.g. "Screens hold still when the keyboard opens on iPhone"). Bug fixes never go
+in — not even framed as "no longer…". Fixes belong in the PR description.
 
-**An entry never gets written** for spacing, alignment, a control made to fit a
-narrow phone, an arrow taken off a button — or for changes to the "What's new"
-mechanism itself. A release made only of those ships with **no new changelog
-entry at all**. That is the normal case, not a failure, and most releases fall
-into it.
+**It is short.** At most three bullets, each one plain sentence of about ten
+words — what's better, not how or why. No second clauses, no lists of screens,
+no explanations. `scripts/test-whats-new.mjs` fails the build if the top entry
+has more than three bullets or any bullet over 80 characters.
+
+**An entry never gets written** for spacing, alignment, an arrow taken off a
+button, a debugging aid like a build number — or for changes to the "What's new"
+mechanism itself. A release made only of those, or only of bug fixes, ships with
+**no new changelog entry at all**. That is the normal case, not a failure, and
+most releases fall into it.
 
 A pull request description and a changelog entry are different documents with
 different audiences. Do not transcribe one into the other. Write the PR up in
-full — that's for the repo — then ask of each item separately: *would someone a
-month into training on this app want to be stopped to read this?* If nothing
-clears the bar, leave `changelog.ts` untouched.
+full — that's for the repo — then ask of each item separately: *is this an
+improvement someone a month into training on this app would want to be stopped
+for?* If nothing clears the bar, leave `changelog.ts` untouched.
 
-Withdrawing an entry after it has shipped is safe: `decideWhatsNew` treats a
-stored version the build doesn't recognise as "re-baseline silently", so nobody
-gets replayed notes they have already read. See `src/lib/whatsNew.ts`.
+Withdrawing an entry after it has shipped is safe if it's mapped in
+`WITHDRAWN_VERSIONS` to the entry below it, so nobody gets replayed notes they
+have already read. Rewriting the top entry in place, keeping its version, is also
+safe: people who dismissed it aren't shown it again. See `src/lib/whatsNew.ts`.
 
 ## Copy
 
