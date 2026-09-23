@@ -28,6 +28,7 @@ import {
 import { clearHomeCache } from '../lib/homeCache';
 import { useNetStatus } from '../lib/offline/net';
 import ExerciseName from '../components/ExerciseName';
+import { DumbbellIcon } from '../components/Tile';
 
 type TrainingDay = FullPlan['training_days'][number];
 
@@ -352,22 +353,27 @@ export function DayView({
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader title={baseDayName(day.name)} onBack={onBack} />
 
-        <div className="mt-3 flex items-center gap-3 text-sm text-muted">
-          {day.week_index != null && !siblingDay && (
-            <>
-              <span>Week {day.week_index}</span>
-              <span className="h-1 w-1 rounded-full bg-muted/50" />
-            </>
-          )}
-          <span>{exercises.length} exercises</span>
-          <span className="h-1 w-1 rounded-full bg-muted/50" />
-          <span>{totalSets} working sets</span>
-          <span className="h-1 w-1 rounded-full bg-muted/50" />
-          <span>~{estimatedMinutes(totalSets)} min</span>
+        {/* The day at a glance, one chip per figure. These carried the top of
+            the screen as a single grey line of text, which left the title with
+            nothing under it and read the same weight as the body copy below. */}
+        {/* One line, always. Where the three don't fit — a wide font, the
+            largest text sizes — only the sets chip gives way, so the two short
+            figures are never cut. */}
+        <div className="mt-4 flex gap-2">
+          <StatChip icon={<DumbbellIcon />}>{exercises.length} exercises</StatChip>
+          <StatChip icon={<LayersIcon />} shrink>{totalSets} working sets</StatChip>
+          <StatChip icon={<ClockIcon />}>~{estimatedMinutes(totalSets)} min</StatChip>
         </div>
 
+        {day.week_index != null && !siblingDay && (
+          <div className="mt-3 text-sm text-muted">Week {day.week_index}</div>
+        )}
+
         {siblingDay && day.week_index != null && onSwitchToSibling && (
-          <div className="mt-3 flex items-center justify-between">
+          // Set off by a hairline either side: it changes which workout the
+          // whole screen below shows, so it's a band of its own rather than
+          // another line of detail under the title.
+          <div className="mt-5 flex items-center justify-between border-y border-line py-3">
             <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
               Rotation
             </span>
@@ -453,14 +459,7 @@ export function DayView({
           </div>
         )}
 
-        <div className="mt-5 h-px bg-line" />
-
-        <div className="mt-6 flex items-baseline justify-between gap-3">
-          <h2 className="text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
-          <span className="shrink-0 text-label font-semibold uppercase tracking-eyebrow text-muted">
-            {groups.length} {groups.length === 1 ? 'group' : 'groups'}
-          </span>
-        </div>
+        <h2 className="mt-8 text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
         {bodyPartSummary && (
           <p className="mt-1.5 text-sm leading-relaxed text-muted">
             A focused session for {bodyPartSummary}.
@@ -859,5 +858,50 @@ function TickBadge() {
         />
       </svg>
     </span>
+  );
+}
+
+function StatChip({
+  icon,
+  shrink = false,
+  children,
+}: {
+  icon: React.ReactNode;
+  /** Let this chip truncate when the row runs out of room. */
+  shrink?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`flex ${shrink ? 'min-w-0' : 'shrink-0'} items-center gap-1.5 whitespace-nowrap rounded-control bg-surface-strong px-2.5 py-2 text-xs font-medium text-ink`}
+    >
+      {/* Icons are drawn at 18px; at this size they sit at 14, which the
+          viewBox handles. Kept small so all three chips fit one line. */}
+      <span className="flex shrink-0 text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
+      <span className="truncate">{children}</span>
+    </div>
+  );
+}
+
+function LayersIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path
+        d="M9 2.5 2.5 6 9 9.5 15.5 6 9 2.5ZM2.5 9 9 12.5 15.5 9M2.5 12 9 15.5 15.5 12"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <circle cx="9" cy="9" r="6.75" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M9 5.5V9l2.5 1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
