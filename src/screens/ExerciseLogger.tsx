@@ -28,6 +28,7 @@ import {
   type PlanExerciseRow,
 } from '../lib/plansApi';
 import { listMachines, type MachineRow } from '../lib/machinesApi';
+import { filterExercisesByQuery } from '../lib/exerciseSearch';
 import {
   listAlternativesForExercise,
   addAlternative,
@@ -2416,6 +2417,91 @@ function AlternativeSheet({
   );
 }
 
+// The machines both the add-alternative and swap sheets pick from, with a
+// search above to narrow the list by name. The list keeps its height while
+// filtering so the sheet doesn't jump under the user's thumb. When nothing
+// matches, what they typed can go straight into the new-exercise field below.
+function MachinePickerList({
+  machines,
+  disabled = false,
+  onPick,
+  onUseAsNew,
+}: {
+  machines: MachineRow[] | null;
+  disabled?: boolean;
+  onPick: (m: MachineRow) => void;
+  onUseAsNew: (name: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const trimmedQuery = query.trim();
+  const shown =
+    machines && filterExercisesByQuery(machines, query, (m) => m.displayName);
+
+  return (
+    <>
+      {machines !== null && machines.length > 0 && (
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search exercises"
+          aria-label="Search exercises"
+          autoComplete="off"
+          autoCorrect="off"
+          enterKeyHint="search"
+          className="mt-4 w-full rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+        />
+      )}
+      <div
+        className={`${
+          machines !== null && machines.length > 0 ? 'mt-3' : 'mt-4'
+        } h-[42vh] min-h-0 overflow-y-auto`}
+      >
+        {machines === null || shown === null ? (
+          <div className="py-6 text-center text-sm text-muted">Loading…</div>
+        ) : machines.length === 0 ? (
+          <div className="py-2 text-center text-xs text-muted">
+            No other machines for this body part yet — add a new exercise
+            below.
+          </div>
+        ) : shown.length === 0 ? (
+          <div className="py-2 text-center text-xs text-muted">
+            <p>Nothing matches “{trimmedQuery}”.</p>
+            <button
+              onClick={() => onUseAsNew(trimmedQuery)}
+              disabled={disabled}
+              className="pressable mt-3 rounded-pill border border-line bg-paper-card px-4 py-2 text-sm font-semibold text-ink active:bg-pressed disabled:opacity-40"
+            >
+              Add it as a new exercise
+            </button>
+          </div>
+        ) : (
+          <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
+            {shown.map((m) => (
+              <li key={m.normalizedName}>
+                <button
+                  onClick={() => onPick(m)}
+                  disabled={disabled}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed disabled:opacity-50"
+                >
+                  <span className="text-sm font-semibold text-ink">
+                    {m.displayName}
+                  </span>
+                  {m.setCount > 0 && (
+                    <span className="text-label font-semibold uppercase tracking-wider text-muted">
+                      history
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
 // Adds a new alternative to the slot. Reuses the SwapMachineModal "choose"
 // stage — pick an existing tracked machine (pulls its history) or type a new
 // movement (starts at zero) — but adding is always a persisted plan-slot
@@ -2499,37 +2585,12 @@ function AddAlternativeModal({
           always defaults back to the original.
         </p>
 
-        <div className="mt-4 h-[42vh] min-h-0 overflow-y-auto">
-          {machines === null ? (
-            <div className="py-6 text-center text-sm text-muted">Loading…</div>
-          ) : machines.length === 0 ? (
-            <div className="py-2 text-center text-xs text-muted">
-              No other machines for this body part yet — add a new exercise
-              below.
-            </div>
-          ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
-              {machines.map((m) => (
-                <li key={m.normalizedName}>
-                  <button
-                    onClick={() => submit(m.displayName, m.normalizedName)}
-                    disabled={submitting}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed disabled:opacity-50"
-                  >
-                    <span className="text-sm font-semibold text-ink">
-                      {m.displayName}
-                    </span>
-                    {m.setCount > 0 && (
-                      <span className="text-label font-semibold uppercase tracking-wider text-muted">
-                        history
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <MachinePickerList
+          machines={machines}
+          disabled={submitting}
+          onPick={(m) => submit(m.displayName, m.normalizedName)}
+          onUseAsNew={setNewName}
+        />
 
         <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
           Add a new exercise
@@ -2659,36 +2720,11 @@ function SwapMachineModal({
               or add a brand-new exercise.
             </p>
 
-            <div className="mt-4 h-[42vh] min-h-0 overflow-y-auto">
-              {machines === null ? (
-                <div className="py-6 text-center text-sm text-muted">Loading…</div>
-              ) : machines.length === 0 ? (
-                <div className="py-2 text-center text-xs text-muted">
-                  No other machines for this body part yet — add a new exercise
-                  below.
-                </div>
-              ) : (
-                <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-paper-card">
-                  {machines.map((m) => (
-                    <li key={m.normalizedName}>
-                      <button
-                        onClick={() => chooseExisting(m)}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed"
-                      >
-                        <span className="text-sm font-semibold text-ink">
-                          {m.displayName}
-                        </span>
-                        {m.setCount > 0 && (
-                          <span className="text-label font-semibold uppercase tracking-wider text-muted">
-                            history
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <MachinePickerList
+              machines={machines}
+              onPick={chooseExisting}
+              onUseAsNew={setNewName}
+            />
 
             <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
               Add a new exercise
