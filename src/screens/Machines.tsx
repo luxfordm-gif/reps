@@ -33,6 +33,7 @@ import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
 import { SheetPanel } from '../components/SheetPanel';
 import ExerciseName from '../components/ExerciseName';
+import { BRAND_LIST_ID, BrandSuggestions } from '../components/ExerciseNameFields';
 import { editedName, splitBrand } from '../lib/exerciseBrand';
 import { rememberNewBrand } from '../lib/brandsApi';
 
@@ -941,8 +942,10 @@ function MachineEditModal({
               }}
               placeholder="e.g. Prime"
               autoCapitalize="words"
+              list={BRAND_LIST_ID}
               className="w-full rounded-control border border-line bg-paper px-3 py-2.5 text-sm font-semibold text-ink placeholder:font-normal placeholder:text-muted focus:border-ink focus:outline-none"
             />
+            <BrandSuggestions />
           </Field>
 
           <Field label="Body part">

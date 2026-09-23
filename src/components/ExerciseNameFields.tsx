@@ -1,3 +1,6 @@
+import { customBrandList } from '../lib/exerciseBrand';
+import { brandSuggestions } from '../lib/machineCatalogue';
+
 const INPUT =
   'w-full rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none';
 
@@ -37,8 +40,25 @@ export default function ExerciseNameFields({
         placeholder="Brand (optional), e.g. Prime"
         aria-label="Brand (optional)"
         autoCapitalize="words"
+        list={BRAND_LIST_ID}
         className={INPUT}
       />
+      <BrandSuggestions />
     </div>
+  );
+}
+
+export const BRAND_LIST_ID = 'reps-machine-brands';
+
+/** The makers and lines a brand field offers as you type, plus any brand typed
+ *  before. Render one beside any input with list={BRAND_LIST_ID}. */
+export function BrandSuggestions() {
+  const options = [...new Set([...brandSuggestions(), ...customBrandList()])];
+  return (
+    <datalist id={BRAND_LIST_ID}>
+      {options.map((b) => (
+        <option key={b} value={b} />
+      ))}
+    </datalist>
   );
 }

@@ -8,31 +8,33 @@
 // put back on the front of the name.
 
 import { normalizeExerciseName } from './normalizeExerciseName';
+import { MACHINE_MAKERS } from './machineCatalogue';
 
-// Gym-equipment makers as they spell themselves. Only brands that can't be read
-// as part of a movement: "Hammer" alone is a curl, so only "Hammer Strength"
-// counts, and "Pulse" is left out for the same reason.
-export const KNOWN_BRANDS = [
-  'Arsenal Strength',
-  'Atlantis',
-  'BodyMaster',
-  'Cybex',
-  'Eleiko',
-  'Freemotion',
-  'Gym80',
-  'Hammer Strength',
-  'Hoist',
-  'Keiser',
-  'Life Fitness',
-  'Matrix',
-  'Nautilus',
-  'Panatta',
-  'Precor',
-  'Prime',
-  'Star Trac',
-  'Technogym',
-  'Watson',
-] as const;
+interface BrandPattern {
+  /** Lower-cased, as it's looked for in a name. */
+  text: string;
+  /** How it's shown. */
+  spelling: string;
+  startOnly: boolean;
+}
+
+// Every way a known maker can be written — its name or an alias, alone or
+// followed by one of its lines — mapped to how it's shown. "Hammer" alone is a
+// curl, so it isn't here; only "Hammer Strength" is.
+const KNOWN_PATTERNS: BrandPattern[] = MACHINE_MAKERS.flatMap((maker) => {
+  const names = [maker.name, ...(maker.aliases ?? [])];
+  const startOnly = !!maker.startOnly;
+  return names.flatMap((n) => [
+    { text: n.toLowerCase(), spelling: maker.name, startOnly },
+    ...(maker.lines ?? []).map((line) => ({
+      text: `${n} ${line}`.toLowerCase(),
+      spelling: `${maker.name} ${line}`,
+      startOnly,
+    })),
+  ]);
+});
+
+const KNOWN_BY_TEXT = new Map(KNOWN_PATTERNS.map((p) => [p.text, p.spelling]));
 
 const CUSTOM_KEY = 'reps.customBrands';
 
@@ -64,19 +66,26 @@ export function cleanBrand(brand: string | null | undefined): string | null {
   return b ? b : null;
 }
 
+/** The catalogue's spelling of a maker, or a maker and line, if it knows it. */
 function knownSpelling(brand: string): string | undefined {
-  const key = brand.toLowerCase();
-  return KNOWN_BRANDS.find((k) => k.toLowerCase() === key);
+  return KNOWN_BY_TEXT.get(brand.toLowerCase().replace(/\s+/g, ' '));
 }
 
-/** Every brand the app will split off a name: the known makers plus any the
- *  user has typed into a brand field. */
-export function allBrands(): string[] {
-  return [...KNOWN_BRANDS, ...customBrands];
+// Built once per change to the typed brands: every name on screen is split
+// on each render, and there are a few hundred patterns.
+let patternCache: BrandPattern[] | null = null;
+
+function allPatterns(): BrandPattern[] {
+  if (patternCache) return patternCache;
+  const custom = customBrands.map((b) => ({ text: b.toLowerCase(), spelling: b, startOnly: false }));
+  // Longest first, so "Cybex Eagle" is tried before "Cybex" and "Hammer
+  // Strength" as a whole before anything shorter could claim part of it.
+  patternCache = [...KNOWN_PATTERNS, ...custom].sort((a, b) => b.text.length - a.text.length);
+  return patternCache;
 }
 
-/** Adds brands the user typed so names carrying them split too. Known makers
- *  aren't stored — they already split. True when the list grew. */
+/** Adds brands the user typed so names carrying them split too. Makers in the
+ *  catalogue aren't stored — they already split. True when the list grew. */
 export function rememberBrands(brands: Iterable<string | null | undefined>): boolean {
   let changed = false;
   for (const raw of brands) {
@@ -84,6 +93,7 @@ export function rememberBrands(brands: Iterable<string | null | undefined>): boo
     if (!b || knownSpelling(b)) continue;
     if (customBrands.some((c) => c.toLowerCase() === b.toLowerCase())) continue;
     customBrands = [...customBrands, b];
+    patternCache = null;
     changed = true;
   }
   if (changed) writeCustomBrands();
@@ -98,6 +108,7 @@ export function customBrandList(): string[] {
 /** Test hook: forgets the typed brands. */
 export function resetCustomBrands(): void {
   customBrands = [];
+  patternCache = null;
   writeCustomBrands();
 }
 
@@ -119,25 +130,19 @@ export interface SplitName {
  *   "Reverse pec deck prime"   → { movement: "Reverse pec deck", brand: "Prime" }
  *   "Rope hammer curl"         → { movement: "Rope hammer curl", brand: null }
  */
-export function splitBrand(name: string, brands: readonly string[] = allBrands()): SplitName {
+export function splitBrand(name: string): SplitName {
   const trimmed = name.trim().replace(/\s+/g, ' ');
   const lower = trimmed.toLowerCase();
-  // Longest first, so "Hammer Strength" is tried as a whole before anything
-  // shorter could claim part of it.
-  const ordered = [...brands].sort((a, b) => b.length - a.length);
-  for (const raw of ordered) {
-    const brand = cleanBrand(raw);
-    if (!brand) continue;
-    const b = brand.toLowerCase();
-    if (lower.length <= b.length + 1) continue;
-    const spelling = knownSpelling(brand) ?? brand;
+  for (const p of allPatterns()) {
+    const b = p.text;
+    if (!b || lower.length <= b.length + 1) continue;
     if (lower.startsWith(b + ' ')) {
-      return { movement: capitalise(trimmed.slice(b.length + 1).trim()), brand: spelling };
+      return { movement: capitalise(trimmed.slice(b.length + 1).trim()), brand: p.spelling };
     }
-    if (lower.endsWith(' ' + b)) {
+    if (!p.startOnly && lower.endsWith(' ' + b)) {
       return {
         movement: capitalise(trimmed.slice(0, trimmed.length - b.length - 1).trim()),
-        brand: spelling,
+        brand: p.spelling,
       };
     }
   }

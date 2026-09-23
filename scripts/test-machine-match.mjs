@@ -153,13 +153,40 @@ console.log('\n=== a machine brand, split from the movement ===');
   check('adding a brand to a plain name', editedName('Chest press', 'Chest press', 'Prime'), 'Prime chest press');
   check('clearing the movement leaves nothing', editedName('Chest press', ' ', 'Prime'), '');
 
-  check('an unknown brand stays in the name', splitBrand('Newtech chest press').brand, null);
-  rememberBrands(['Newtech']);
-  check('until it has been typed as one', splitBrand('Newtech chest press'), {
+  check('an unknown brand stays in the name', splitBrand('Kraftwerk chest press').brand, null);
+  rememberBrands(['Kraftwerk']);
+  check('until it has been typed as one', splitBrand('Kraftwerk chest press'), {
     movement: 'Chest press',
-    brand: 'Newtech',
+    brand: 'Kraftwerk',
   });
   resetCustomBrands();
+}
+
+console.log('\n=== the machine catalogue ===');
+{
+  check('an old American line shows with its maker', splitBrand('Cybex eagle leg extension'), {
+    movement: 'Leg extension',
+    brand: 'Cybex Eagle',
+  });
+  check('a line at the end too', splitBrand('Seated row nautilus nitro'), {
+    movement: 'Seated row',
+    brand: 'Nautilus Nitro',
+  });
+  check('an alias is shown as the maker writes it', splitBrand('Bodymaster pec deck').brand, 'Body Masters');
+  check('as is a two-word maker', splitBrand('Flex fitness chest press').brand, 'Flex Fitness');
+  check('"Flex" on the front is the maker', splitBrand('Flex leg curl').brand, 'Flex Fitness');
+  check('but not at the end, where it is a word', splitBrand('Hip flex').brand, null);
+  check(
+    'a word after the maker that is not a line stays in the movement',
+    splitBrand('Nautilus one arm row'),
+    { movement: 'One arm row', brand: 'Nautilus' },
+  );
+  check('the plate-loaded brand hardcore gyms buy', splitBrand('Arsenal reloaded hack squat'), {
+    movement: 'Hack squat',
+    brand: 'Arsenal Strength Reloaded',
+  });
+  check('a cardio name is the exercise, not a brand', splitBrand('Assault bike').brand, null);
+  check('a pendulum squat is a movement', splitBrand('Pendulum squat').brand, null);
 }
 {
   // A real coach's plan: brands at either end, and a rope hammer curl.
