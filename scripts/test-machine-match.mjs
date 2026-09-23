@@ -187,6 +187,32 @@ console.log('\n=== the machine catalogue ===');
     brand: 'Arsenal Strength Reloaded',
   });
   check('a cardio name is the exercise, not a brand', splitBrand('Assault bike').brand, null);
+  check('a brand after a comma', splitBrand('Cable shoulder press, Nautilus'), {
+    movement: 'Cable shoulder press',
+    brand: 'Nautilus',
+  });
+  check('even a front-only maker, when the comma sets it off', splitBrand('Cable shoulder press, flex'), {
+    movement: 'Cable shoulder press',
+    brand: 'Flex Fitness',
+  });
+  check('a brand before a comma', splitBrand('Flex, Dip machine'), {
+    movement: 'Dip machine',
+    brand: 'Flex Fitness',
+  });
+  check('a note after a comma stays in the movement', splitBrand('JM press, smith machine').brand, null);
+  check('a comma note after a brand at the front', splitBrand('Hammer strength incline, plate'), {
+    movement: 'Incline, plate',
+    brand: 'Hammer Strength',
+  });
+  check('the Dorian Yates row', splitBrand('Hammer strength dy underhand row'), {
+    movement: 'Underhand row',
+    brand: 'Hammer Strength DY',
+  });
+  check('an original Cybex', splitBrand('Cybex og leg press'), { movement: 'Leg press', brand: 'Cybex OG' });
+  check('a maker in the middle', splitBrand('Incline gymleco lying fly machine'), {
+    movement: 'Incline lying fly machine',
+    brand: 'Gymleco',
+  });
   check('makers from a real coach\'s plan', [
     splitBrand('Teca lateral raise'),
     splitBrand('Mfg high wide row'),

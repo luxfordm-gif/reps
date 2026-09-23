@@ -23,7 +23,7 @@ export interface MachineMaker {
 
 export const MACHINE_MAKERS: MachineMaker[] = [
   // Old American commercial and bodybuilding-gym makers
-  { name: 'Cybex', lines: ['Eagle NX', 'Eagle', 'VR1', 'VR2', 'VR3', 'Prestige', 'Bravo', 'Ion', 'Plate Loaded'] },
+  { name: 'Cybex', lines: ['OG', 'Eagle NX', 'Eagle', 'VR1', 'VR2', 'VR3', 'Prestige', 'Bravo', 'Ion', 'Plate Loaded'] },
   { name: 'Nautilus', lines: ['Nitro Plus', 'Nitro', 'Next Generation', 'Xpload', 'Evo', '2ST', 'Impact', 'Inspiration', 'Leverage'] },
   { name: 'Flex Fitness', aliases: ['Flex'], startOnly: true },
   { name: 'Universal', lines: ['Centurion', 'Power Pak'] },
@@ -46,7 +46,7 @@ export const MACHINE_MAKERS: MachineMaker[] = [
   { name: 'Ivanko' },
 
   // Commercial ranges
-  { name: 'Hammer Strength', lines: ['Iso-Lateral', 'Iso Lateral', 'Plate-Loaded', 'Plate Loaded', 'MTS', 'Select', 'Ground Base'] },
+  { name: 'Hammer Strength', lines: ['DY', 'Iso-Lateral', 'Iso Lateral', 'Plate-Loaded', 'Plate Loaded', 'MTS', 'Select', 'Ground Base'] },
   { name: 'Life Fitness', lines: ['Signature Series', 'Signature', 'Insignia', 'Optima', 'Circuit Series', 'Pro2', 'Axiom'] },
   { name: 'Precor', lines: ['Discovery', 'Vitality', 'Resolute', 'Icarian'] },
   { name: 'Matrix', lines: ['Aura', 'Ultra', 'Versa', 'Magnum', 'Varsity'] },
@@ -81,6 +81,10 @@ export const MACHINE_MAKERS: MachineMaker[] = [
   { name: 'MFG' },
   { name: 'Granite' },
   { name: 'Teca' },
+  { name: 'Citadel' },
+  { name: 'Gymleco' },
+  { name: 'Megamass' },
+  { name: 'Olympia' },
 ];
 
 /** Every maker's name, then every maker with each of its lines — the list a

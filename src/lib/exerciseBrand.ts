@@ -129,6 +129,7 @@ export interface SplitName {
  *   "Prime pec deck fly"                   → { movement: "Pec deck fly", brand: "Prime" }
  *   "Reverse pec deck prime"               → { movement: "Reverse pec deck", brand: "Prime" }
  *   "Single arm hammer strength pulldown"  → { movement: "Single arm pulldown", brand: "Hammer Strength" }
+ *   "Cable shoulder press, Nautilus"       → { movement: "Cable shoulder press", brand: "Nautilus" }
  *   "Rope hammer curl"                     → { movement: "Rope hammer curl", brand: null }
  *
  * A brand at either end is looked for first; one in the middle only when no
@@ -138,6 +139,19 @@ export function splitBrand(name: string): SplitName {
   const trimmed = name.trim().replace(/\s+/g, ' ');
   const lower = trimmed.toLowerCase();
   const patterns = allPatterns();
+  const byText = new Map(patterns.map((p) => [p.text, p.spelling]));
+
+  // A brand set off by a comma — "Cable shoulder press, Nautilus", "Flex, Dip
+  // machine". The comma says it's a label rather than part of the movement, so
+  // even makers that only count at the front are taken from the end here.
+  const parts = trimmed.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const last = byText.get(parts[parts.length - 1].toLowerCase());
+    if (last) return { movement: capitalise(parts.slice(0, -1).join(', ')), brand: last };
+    const first = byText.get(parts[0].toLowerCase());
+    if (first) return { movement: capitalise(parts.slice(1).join(', ')), brand: first };
+  }
+
   for (const p of patterns) {
     const b = p.text;
     if (!b || lower.length <= b.length + 1) continue;
