@@ -176,6 +176,22 @@ console.log('\n=== a brand at the other end of the name ===');
   );
 }
 
+{
+  const groups = findDuplicateGroups([
+    m('Adductor', 'Legs', 20),
+    m('Cybex adductor', 'Legs', 10),
+    m('Flex adductor', 'Legs', 8),
+  ]);
+  eq(
+    'two brands of one movement never share a group',
+    groups.every((g) => {
+      const names = [g.survivor, ...g.losers].map((x) => x.displayName);
+      return !(names.includes('Cybex adductor') && names.includes('Flex adductor'));
+    }),
+    true,
+  );
+}
+
 console.log('\n=== group dismissal and units ===');
 {
   const rows = [m('Assisted pullup', 'Back', 3), m('Assisted pullups', 'Back', 30)];

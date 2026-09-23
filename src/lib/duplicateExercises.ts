@@ -148,6 +148,12 @@ export function findDuplicatePairs<T extends DuplicateCandidate>(
       // it only rules a pair out when both are known.
       if (a.bodyPart && b.bodyPart && a.bodyPart !== b.bodyPart) continue;
 
+      // Two different brands are two machines, however alike the rest reads:
+      // a Cybex adductor and a Flex adductor load nothing alike.
+      const brandA = splitBrand(an).brand;
+      const brandB = splitBrand(bn).brand;
+      if (brandA && brandB && brandA !== brandB) continue;
+
       const [survivor, loser] = rank(a, b) <= 0 ? [a, b] : [b, a];
       pairs.push({
         key,
@@ -254,20 +260,29 @@ export function findDuplicateGroups<T extends DuplicateCandidate>(
     }
     return root;
   };
-  const union = (a: string, b: string) => {
+  // The one brand each group holds, if any. A pair that would put two brands
+  // in one group is left out: "Cybex adductor" and "Flex adductor" each pair
+  // with plain "Adductor", but joining both would merge two different
+  // machines. Pairs come most convincing first, so the stronger link wins.
+  const brandOf = new Map<string, string | null>();
+  const brandOfRoot = (x: string) => brandOf.get(find(x)) ?? splitBrand(x).brand;
+  const used: DuplicatePair<T>[] = [];
+  for (const p of pairs) {
+    const a = p.survivor.normalizedName;
+    const b = p.loser.normalizedName;
+    const ba = brandOfRoot(a);
+    const bb = brandOfRoot(b);
+    if (ba && bb && ba !== bb) continue;
     const ra = find(a);
     const rb = find(b);
     if (ra !== rb) parent.set(ra, rb);
-  };
-  for (const p of pairs) {
-    parent.set(p.survivor.normalizedName, find(p.survivor.normalizedName));
-    parent.set(p.loser.normalizedName, find(p.loser.normalizedName));
-    union(p.survivor.normalizedName, p.loser.normalizedName);
+    brandOf.set(rb, ba ?? bb);
+    used.push(p);
   }
 
   const members = new Map<string, Map<string, T>>();
   const pairKeys = new Map<string, string[]>();
-  for (const p of pairs) {
+  for (const p of used) {
     const root = find(p.survivor.normalizedName);
     let bucket = members.get(root);
     if (!bucket) {
