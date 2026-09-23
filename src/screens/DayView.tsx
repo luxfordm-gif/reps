@@ -356,10 +356,12 @@ export function DayView({
         {/* The day at a glance, one chip per figure. These carried the top of
             the screen as a single grey line of text, which left the title with
             nothing under it and read the same weight as the body copy below. */}
-        {/* Wraps rather than clips at the largest text sizes. */}
-        <div className="mt-4 flex flex-wrap gap-2">
+        {/* One line, always. Where the three don't fit — a wide font, the
+            largest text sizes — only the sets chip gives way, so the two short
+            figures are never cut. */}
+        <div className="mt-4 flex gap-2">
           <StatChip icon={<DumbbellIcon />}>{exercises.length} exercises</StatChip>
-          <StatChip icon={<LayersIcon />}>{totalSets} working sets</StatChip>
+          <StatChip icon={<LayersIcon />} shrink>{totalSets} working sets</StatChip>
           <StatChip icon={<ClockIcon />}>~{estimatedMinutes(totalSets)} min</StatChip>
         </div>
 
@@ -457,12 +459,7 @@ export function DayView({
           </div>
         )}
 
-        <div className="mt-8 flex items-baseline justify-between gap-3">
-          <h2 className="text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
-          <span className="shrink-0 text-label font-semibold uppercase tracking-eyebrow text-muted">
-            {groups.length} {groups.length === 1 ? 'group' : 'groups'}
-          </span>
-        </div>
+        <h2 className="mt-8 text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
         {bodyPartSummary && (
           <p className="mt-1.5 text-sm leading-relaxed text-muted">
             A focused session for {bodyPartSummary}.
@@ -864,13 +861,24 @@ function TickBadge() {
   );
 }
 
-function StatChip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+function StatChip({
+  icon,
+  shrink = false,
+  children,
+}: {
+  icon: React.ReactNode;
+  /** Let this chip truncate when the row runs out of room. */
+  shrink?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-1.5 whitespace-nowrap rounded-control bg-surface-strong px-2.5 py-2 text-xs font-medium text-ink">
+    <div
+      className={`flex ${shrink ? 'min-w-0' : 'shrink-0'} items-center gap-1.5 whitespace-nowrap rounded-control bg-surface-strong px-2.5 py-2 text-xs font-medium text-ink`}
+    >
       {/* Icons are drawn at 18px; at this size they sit at 14, which the
           viewBox handles. Kept small so all three chips fit one line. */}
       <span className="flex shrink-0 text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-      {children}
+      <span className="truncate">{children}</span>
     </div>
   );
 }
