@@ -144,25 +144,23 @@ export function splitBrand(name: string): SplitName {
   // A brand set off by a comma — "Cable shoulder press, Nautilus", "Flex, Dip
   // machine". The comma says it's a label rather than part of the movement, so
   // even makers that only count at the front are taken from the end here.
-  const parts = trimmed.split(',').map((part) => part.trim()).filter(Boolean);
+  // A dash does the same job: "Preacher curl - Gymleco".
+  const parts = trimmed.split(/,| [-–—] /).map((part) => part.trim()).filter(Boolean);
   if (parts.length >= 2) {
     const last = byText.get(parts[parts.length - 1].toLowerCase());
-    if (last) return { movement: capitalise(parts.slice(0, -1).join(', ')), brand: last };
+    if (last) return found(parts.slice(0, -1).join(', '), last);
     const first = byText.get(parts[0].toLowerCase());
-    if (first) return { movement: capitalise(parts.slice(1).join(', ')), brand: first };
+    if (first) return found(parts.slice(1).join(', '), first);
   }
 
   for (const p of patterns) {
     const b = p.text;
     if (!b || lower.length <= b.length + 1) continue;
     if (lower.startsWith(b + ' ')) {
-      return { movement: capitalise(trimmed.slice(b.length + 1).trim()), brand: p.spelling };
+      return found(trimmed.slice(b.length + 1), p.spelling);
     }
     if (!p.startOnly && lower.endsWith(' ' + b)) {
-      return {
-        movement: capitalise(trimmed.slice(0, trimmed.length - b.length - 1).trim()),
-        brand: p.spelling,
-      };
+      return found(trimmed.slice(0, trimmed.length - b.length - 1), p.spelling);
     }
   }
   for (const p of patterns) {
@@ -171,9 +169,17 @@ export function splitBrand(name: string): SplitName {
     if (at < 0) continue;
     const before = trimmed.slice(0, at);
     const after = trimmed.slice(at + p.text.length + 2);
-    return { movement: capitalise(`${before} ${after}`.trim()), brand: p.spelling };
+    return found(`${before} ${after}`, p.spelling);
   }
   return { movement: trimmed, brand: null };
+
+  // What's left has to read as a movement. "Teca 540" is a machine's model
+  // number, and "540" under a brand says nothing, so it stays one name.
+  function found(movement: string, brand: string): SplitName {
+    const m = movement.trim();
+    if (!/[a-z]{2}/i.test(m)) return { movement: trimmed, brand: null };
+    return { movement: capitalise(m), brand };
+  }
 }
 
 /** Puts a brand back on the front of a movement: ("Chest press", "Prime") →

@@ -80,8 +80,27 @@ function isPluralOf(a: string, b: string): boolean {
 function isExtensionOf(a: string, b: string): boolean {
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short.length < MIN_LENGTH) return false;
-  return long.startsWith(`${short} `) || long.endsWith(` ${short}`);
+  let extra: string;
+  if (long.startsWith(`${short} `)) extra = long.slice(short.length + 1);
+  else if (long.endsWith(` ${short}`)) extra = long.slice(0, long.length - short.length - 1);
+  else return false;
+  return !extra.split(/[\s,()-]+/).some((w) => CHANGES_THE_MOVEMENT.has(w));
 }
+
+/**
+ * Words that make a different exercise out of the same name: "Reverse pec
+ * deck" trains the rear delts, not the chest; "Side planks" are not planks; a
+ * single-arm or narrow-grip version is its own thing to track. An extension
+ * that adds one of these is not a duplicate.
+ */
+const CHANGES_THE_MOVEMENT = new Set([
+  'reverse', 'side', 'single', 'unilateral', 'one', 'dual', 'alternating',
+  'incline', 'decline', 'flat', 'close', 'narrow', 'wide', 'grip', 'neutral',
+  'underhand', 'overhand', 'seated', 'standing', 'lying', 'kneeling',
+  'overhead', 'front', 'rear', 'high', 'low', 'smith', 'cable', 'dumbbell',
+  'barbell', 'db', 'bb', 'ez', 'rope', 'weighted', 'assisted', 'banded',
+  'hyperextension', 'deficit', 'pause', 'paused',
+]);
 
 /**
  * The same brand and movement with the brand in a different place — "Prime

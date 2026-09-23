@@ -192,6 +192,25 @@ console.log('\n=== a brand at the other end of the name ===');
   );
 }
 
+console.log('\n=== a word that changes the exercise ===');
+{
+  const never = [
+    ['Pec deck', 'Reverse pec deck'],
+    ['Planks', 'Side planks'],
+    ['Preacher curl', 'Single arm preacher curl'],
+    ['JM press', 'Smith machine JM press'],
+    ['Lat pulldown', 'Narrow grip lat pulldown'],
+  ];
+  for (const [a, b] of never) {
+    eq(`${a} and ${b} are different exercises`, findDuplicatePairs([m(a, null, 5), m(b, null, 5)]).length, 0);
+  }
+  eq(
+    'a word that changes nothing still pairs',
+    findDuplicatePairs([m('Preacher curl', null, 5), m('Preacher curl machine', null, 5)]).length,
+    1,
+  );
+}
+
 console.log('\n=== group dismissal and units ===');
 {
   const rows = [m('Assisted pullup', 'Back', 3), m('Assisted pullups', 'Back', 30)];

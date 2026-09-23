@@ -204,6 +204,11 @@ console.log('\n=== the machine catalogue ===');
     movement: 'Incline, plate',
     brand: 'Hammer Strength',
   });
+  check('a brand after a dash', splitBrand('Preacher curl - Gymleco'), {
+    movement: 'Preacher curl',
+    brand: 'Gymleco',
+  });
+  check('a model number is not a movement', splitBrand('Teca 540'), { movement: 'Teca 540', brand: null });
   check('the Dorian Yates row', splitBrand('Hammer strength dy underhand row'), {
     movement: 'Underhand row',
     brand: 'Hammer Strength DY',
