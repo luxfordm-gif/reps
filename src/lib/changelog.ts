@@ -33,6 +33,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-09-23.2',
+    title: "What's new",
+    bullets: [
+      'Machines can show just the ones in your current plan',
+      'Keep one machine out when merging duplicates',
+      'A cleaner exercise screen, with the brand easier to read',
+    ],
+  },
+  {
     version: '2026-09-23.1',
     title: "What's new",
     bullets: [
