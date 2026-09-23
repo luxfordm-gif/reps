@@ -37,6 +37,7 @@ import {
   withUids,
   type ExerciseDraft,
 } from '../lib/planRepair';
+import ExerciseName from '../components/ExerciseName';
 
 /** What the red box shows: the sentence, and the block under it to send on. */
 interface UploadError {
@@ -1097,7 +1098,7 @@ function WeeklyAlternativeCard({
       ) : (
         <div className="mt-1 flex items-center justify-between gap-3">
           <span className="min-w-0 break-words text-sm font-semibold text-ink">
-            {alternative.name}
+            <ExerciseName name={alternative.name} variant="inline" />
           </span>
           <div className="flex shrink-0 gap-3 text-xs font-semibold">
             <button
@@ -1210,7 +1211,9 @@ function ExerciseReviewRow({
           line up with everything else and the names fit. */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-base font-semibold text-ink">{exercise.name}</div>
+          <div className="text-base font-semibold text-ink">
+            <ExerciseName name={exercise.name} />
+          </div>
           {exercise.bodyPart && (
             <div className="mt-0.5 text-xs text-muted">{exercise.bodyPart}</div>
           )}

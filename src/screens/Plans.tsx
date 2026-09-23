@@ -9,6 +9,7 @@ import {
   type PlanSummary,
   type FullPlan,
 } from '../lib/plansApi';
+import ExerciseName from '../components/ExerciseName';
 
 interface Props {
   onBack: () => void;
@@ -360,7 +361,9 @@ function DayRow({
         >
           {exercises.map((ex) => (
             <li key={ex.id} className="py-2">
-              <div className="font-medium">{ex.name}</div>
+              <div className="font-medium">
+                <ExerciseName name={ex.name} variant="inline" />
+              </div>
               <div
                 className={`mt-0.5 text-xs ${
                   dark ? 'text-white/60' : 'text-muted'

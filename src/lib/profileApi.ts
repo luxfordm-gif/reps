@@ -1,4 +1,5 @@
 import { supabase, currentUserId } from './supabase';
+import { adoptProfileBrands } from './brandsApi';
 
 export type Gender = 'male' | 'female' | 'other';
 export type TopGoal = 'build_muscle' | 'gain_strength' | 'fat_loss';
@@ -30,6 +31,7 @@ export async function getMyProfile(): Promise<Profile | null> {
     .eq('user_id', userId)
     .maybeSingle();
   if (error) throw error;
+  adoptProfileBrands(data);
   return (data as Profile) ?? null;
 }
 

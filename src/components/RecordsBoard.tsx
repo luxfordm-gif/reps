@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { groupByBodyPart, recordAchievedAt, type LiftRecord } from '../lib/records';
 import { fromKgFor } from '../lib/units';
+import ExerciseName from './ExerciseName';
 
 // Every movement you've ever logged — the library behind the Performance
 // tab's "See all".
@@ -445,7 +446,9 @@ function RecordRow({ record, isNew }: { record: LiftRecord; isNew: boolean }) {
     <div className="flex items-center justify-between gap-3 px-5 py-4">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-semibold text-ink">{record.displayName}</span>
+          <span className="truncate text-sm font-semibold text-ink">
+            <ExerciseName name={record.displayName} variant="inline" />
+          </span>
           {isNew && (
             <span className="shrink-0 rounded-pill bg-ink px-1.5 py-0.5 text-label font-bold uppercase tracking-wider text-white">
               New

@@ -67,6 +67,8 @@ import {
   type BodyWeightUnit,
   type MachineUnit,
 } from '../lib/units';
+import ExerciseName from '../components/ExerciseName';
+import { splitBrand } from '../lib/exerciseBrand';
 
 // The Performance tab.
 //
@@ -875,7 +877,9 @@ function MoverHero({
       </div>
       <div className="mt-2 flex items-end justify-between gap-4">
         <div className="min-w-0">
-          <div className="truncate text-base font-semibold">{move.displayName}</div>
+          <div className="truncate text-base font-semibold">
+            <ExerciseName name={move.displayName} variant="inline" />
+          </div>
           <div className="mt-1 text-display font-bold leading-none tracking-tight tabular-nums">
             {formatLoadShort(move.currentKg, unit)}
           </div>
@@ -932,7 +936,9 @@ function MoverRow({
   const down = move.deltaPct < -1;
   const body = (
     <div className="flex items-center gap-2 px-4 py-3.5">
-      <span className="min-w-0 flex-1 truncate text-sm text-ink">{move.displayName}</span>
+      <span className="min-w-0 flex-1 truncate text-sm text-ink">
+        <ExerciseName name={move.displayName} variant="inline" />
+      </span>
       <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-ink tabular-nums">
         {formatSetShort(move.currentKg, move.currentReps, unit)}
       </span>
@@ -1044,6 +1050,7 @@ function RecordDetail({
 }) {
   const [range, setRange] = useState<DetailRange>(30);
   const [showAll, setShowAll] = useState(false);
+  const recordName = splitBrand(record.displayName);
   const history = useMemo(
     () => buildExerciseHistory(sets, record.normalizedName),
     [sets, record.normalizedName],
@@ -1091,8 +1098,12 @@ function RecordDetail({
             sticky bar on scroll, so the movement's name is not repeated here.
             The body part stands in for the machine note the design asks for —
             there is nowhere in the schema to keep "the white one". */}
-        <PageHeader title={record.displayName} onBack={onBack} />
-        {record.bodyPart && <p className="mt-1 text-base text-muted">{record.bodyPart}</p>}
+        <PageHeader title={recordName.movement} onBack={onBack} />
+        {(recordName.brand || record.bodyPart) && (
+          <p className="mt-1 text-base text-muted">
+            {[recordName.brand, record.bodyPart].filter(Boolean).join(' · ')}
+          </p>
+        )}
 
         {/* Seven windows, from a week to everything. The old four started at a
             month, which is too coarse to see whether this week went well. */}

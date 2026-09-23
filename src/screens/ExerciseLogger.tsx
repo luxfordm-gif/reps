@@ -70,6 +70,10 @@ import {
   type LoadProfileKind,
   type MachineProfile,
 } from '../lib/weightProfile';
+import ExerciseName from '../components/ExerciseName';
+import ExerciseNameFields from '../components/ExerciseNameFields';
+import { composeName, editedName, splitBrand } from '../lib/exerciseBrand';
+import { rememberNewBrand } from '../lib/brandsApi';
 
 // Display: kg as stored; lb rounded to nearest 0.5 to match the input's step.
 // Pin units store and display the same number (1:1 — no physical conversion).
@@ -1435,7 +1439,7 @@ export function ExerciseLogger({
             className="block break-words text-2xl font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
             style={{ textWrap: 'balance' } as React.CSSProperties}
           >
-            {displayName}
+            <ExerciseName name={displayName} />
           </a>
           <div className="mt-1 flex items-center gap-2">
             <span className="text-sm text-muted">{exercise.body_part}</span>
@@ -2379,7 +2383,7 @@ function AlternativeSheet({
                     className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left active:bg-pressed"
                   >
                     <span className="block min-w-0 flex-1 break-words text-sm font-semibold text-ink">
-                      {alt.name}
+                      <ExerciseName name={alt.name} variant="inline" />
                     </span>
                     {active && (
                       <span className="shrink-0 text-ink">
@@ -2485,7 +2489,7 @@ function MachinePickerList({
                   className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-pressed disabled:opacity-50"
                 >
                   <span className="text-sm font-semibold text-ink">
-                    {m.displayName}
+                    <ExerciseName name={m.displayName} variant="inline" />
                   </span>
                   {m.setCount > 0 && (
                     <span className="text-label font-semibold uppercase tracking-wider text-muted">
@@ -2518,7 +2522,8 @@ function AddAlternativeModal({
   onConfirm: (name: string, normalizedName: string) => Promise<void>;
 }) {
   const [machines, setMachines] = useState<MachineRow[] | null>(null);
-  const [newName, setNewName] = useState('');
+  const [newMovement, setNewMovement] = useState('');
+  const [newBrand, setNewBrand] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -2561,10 +2566,19 @@ function AddAlternativeModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bodyPart, excludeNormalized.join('|')]);
 
-  const trimmedNew = newName.trim();
+  const trimmedNew = newMovement.trim() ? composeName(newMovement, newBrand) : '';
+
+  // A search that found nothing goes into the new-exercise fields, with any
+  // brand in it moved to the brand field.
+  function fillNewFrom(typed: string) {
+    const { movement, brand } = splitBrand(typed);
+    setNewMovement(movement);
+    setNewBrand(brand ?? '');
+  }
 
   function chooseNew() {
     if (!trimmedNew) return;
+    rememberNewBrand(newBrand);
     submit(trimmedNew, normalizeExerciseName(trimmedNew));
   }
 
@@ -2589,27 +2603,26 @@ function AddAlternativeModal({
           machines={machines}
           disabled={submitting}
           onPick={(m) => submit(m.displayName, m.normalizedName)}
-          onUseAsNew={setNewName}
+          onUseAsNew={fillNewFrom}
         />
 
         <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
           Add a new exercise
         </p>
-        <div className="mt-2 flex items-center gap-2">
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="New exercise name"
-            className="min-w-0 flex-1 rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
-          />
-          <button
-            onClick={chooseNew}
-            disabled={!trimmedNew || submitting}
-            className="pressable shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
-          >
-            {submitting ? 'Adding…' : 'Add'}
-          </button>
-        </div>
+        <ExerciseNameFields
+          className="mt-2"
+          movement={newMovement}
+          brand={newBrand}
+          onMovementChange={setNewMovement}
+          onBrandChange={setNewBrand}
+        />
+        <button
+          onClick={chooseNew}
+          disabled={!trimmedNew || submitting}
+          className="pressable mt-2 w-full rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+        >
+          {submitting ? 'Adding…' : 'Add'}
+        </button>
 
         {submitError && (
           <div className="mt-3 rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -2649,7 +2662,8 @@ function SwapMachineModal({
 }) {
   const [stage, setStage] = useState<'choose' | 'scope'>('choose');
   const [machines, setMachines] = useState<MachineRow[] | null>(null);
-  const [newName, setNewName] = useState('');
+  const [newMovement, setNewMovement] = useState('');
+  const [newBrand, setNewBrand] = useState('');
   const [pending, setPending] = useState<{
     name: string;
     normalizedName: string;
@@ -2681,7 +2695,15 @@ function SwapMachineModal({
     };
   }, [bodyPart, currentNormalized]);
 
-  const trimmedNew = newName.trim();
+  const trimmedNew = newMovement.trim() ? composeName(newMovement, newBrand) : '';
+
+  // A search that found nothing goes into the new-exercise fields, with any
+  // brand in it moved to the brand field.
+  function fillNewFrom(typed: string) {
+    const { movement, brand } = splitBrand(typed);
+    setNewMovement(movement);
+    setNewBrand(brand ?? '');
+  }
 
   function chooseExisting(m: MachineRow) {
     setPending({
@@ -2694,6 +2716,7 @@ function SwapMachineModal({
 
   function chooseNew() {
     if (!trimmedNew) return;
+    rememberNewBrand(newBrand);
     setPending({
       name: trimmedNew,
       normalizedName: normalizeExerciseName(trimmedNew),
@@ -2723,23 +2746,24 @@ function SwapMachineModal({
             <MachinePickerList
               machines={machines}
               onPick={chooseExisting}
-              onUseAsNew={setNewName}
+              onUseAsNew={fillNewFrom}
             />
 
             <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
               Add a new exercise
             </p>
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="New exercise name"
-                className="min-w-0 flex-1 rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
-              />
+            <ExerciseNameFields
+              className="mt-2"
+              movement={newMovement}
+              brand={newBrand}
+              onMovementChange={setNewMovement}
+              onBrandChange={setNewBrand}
+            />
+            <div className="mt-2">
               <button
                 onClick={chooseNew}
                 disabled={!trimmedNew}
-                className="pressable shrink-0 rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
+                className="pressable w-full rounded-pill bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
               >
                 Add
               </button>
@@ -2808,9 +2832,15 @@ function RenameExerciseModal({
   onCancel: () => void;
   onConfirm: (newName: string, resetBaseline: boolean) => void;
 }) {
-  const [name, setName] = useState(initialName);
-  const trimmed = name.trim();
+  const [initial] = useState(() => splitBrand(initialName));
+  const [movement, setMovement] = useState(initial.movement);
+  const [brand, setBrand] = useState(initial.brand ?? '');
+  const trimmed = editedName(initialName, movement, brand);
   const valid = trimmed.length > 0 && trimmed !== initialName.trim();
+  const confirm = (resetBaseline: boolean) => {
+    rememberNewBrand(brand);
+    onConfirm(trimmed, resetBaseline);
+  };
 
   // The field autofocuses, so the keyboard is up straight away: hold the page
   // behind still and sit in what the keyboard has left of the viewport.
@@ -2835,25 +2865,27 @@ function RenameExerciseModal({
           </>
         }
       >
-        <input
+        <ExerciseNameFields
           autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="mt-4 w-full rounded-control border border-line bg-paper-card px-3 py-3 text-base text-ink focus:border-ink focus:outline-none"
+          className="mt-4"
+          movement={movement}
+          brand={brand}
+          onMovementChange={setMovement}
+          onBrandChange={setBrand}
         />
         <p className="mt-5 text-label font-semibold uppercase tracking-wider text-muted">
           Is this the same machine?
         </p>
         <div className="mt-2 grid gap-2">
           <button
-            onClick={() => onConfirm(trimmed, false)}
+            onClick={() => confirm(false)}
             disabled={!valid}
             className="pressable w-full rounded-pill bg-ink py-3 text-sm font-semibold text-white disabled:opacity-40 active:opacity-80"
           >
             Same machine — keep history
           </button>
           <button
-            onClick={() => onConfirm(trimmed, true)}
+            onClick={() => confirm(true)}
             disabled={!valid}
             className="pressable w-full rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink disabled:opacity-40 active:bg-pressed"
           >
