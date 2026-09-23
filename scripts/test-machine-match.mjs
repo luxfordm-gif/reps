@@ -187,6 +187,15 @@ console.log('\n=== the machine catalogue ===');
     brand: 'Arsenal Strength Reloaded',
   });
   check('a cardio name is the exercise, not a brand', splitBrand('Assault bike').brand, null);
+  check('makers from a real coach\'s plan', [
+    splitBrand('Teca lateral raise'),
+    splitBrand('Mfg high wide row'),
+    splitBrand('Granite weighted hyperextension'),
+  ], [
+    { movement: 'Lateral raise', brand: 'Teca' },
+    { movement: 'High wide row', brand: 'MFG' },
+    { movement: 'Weighted hyperextension', brand: 'Granite' },
+  ]);
   check('a brand in the middle of the name', splitBrand('Single arm hammer strength pulldown'), {
     movement: 'Single arm pulldown',
     brand: 'Hammer Strength',

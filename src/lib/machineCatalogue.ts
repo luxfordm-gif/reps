@@ -78,6 +78,9 @@ export const MACHINE_MAKERS: MachineMaker[] = [
   { name: 'Strive', startOnly: true },
   { name: 'Pure Strength' },
   { name: 'Eleiko' },
+  { name: 'MFG' },
+  { name: 'Granite' },
+  { name: 'Teca' },
 ];
 
 /** Every maker's name, then every maker with each of its lines — the list a
