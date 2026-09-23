@@ -11,9 +11,12 @@ import { splitBrand } from '../lib/exerciseBrand';
 export default function ExerciseName({
   name,
   variant = 'stacked',
+  brandClassName = 'mt-0.5 text-xs font-medium',
 }: {
   name: string;
   variant?: 'stacked' | 'inline';
+  /** Size and spacing of the stacked brand line, for headings that need more. */
+  brandClassName?: string;
 }) {
   const { movement, brand } = splitBrand(name);
   if (!brand) return <>{name}</>;
@@ -28,7 +31,7 @@ export default function ExerciseName({
   return (
     <>
       {movement}
-      <span className="mt-0.5 block text-xs font-medium leading-tight text-muted">{brand}</span>
+      <span className={`block leading-tight text-muted ${brandClassName}`}>{brand}</span>
     </>
   );
 }

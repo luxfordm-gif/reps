@@ -1439,12 +1439,17 @@ export function ExerciseLogger({
             className="block break-words text-2xl font-bold leading-tight tracking-tight text-ink underline-offset-2 active:underline"
             style={{ textWrap: 'balance' } as React.CSSProperties}
           >
-            <ExerciseName name={displayName} />
+            <ExerciseName
+              name={displayName}
+              brandClassName="mt-0.5 text-base font-semibold tracking-normal"
+            />
           </a>
-          <div className="mt-1 flex items-center gap-2">
-            <span className="text-sm text-muted">{exercise.body_part}</span>
-            <UnitBadge unit={unit} isOverride={unitIsOverride} />
-            {profile.kind != null && (
+          {/* Body part and unit used to sit here. The unit is inside every
+              weight field and the body part is plain from the movement, so the
+              only tag left is the one nothing else on the screen says: how a
+              profile machine loads. */}
+          {profile.kind != null && (
+            <div className="mt-2 flex items-center gap-2">
               <span
                 title={
                   profile.kind === 'pegs'
@@ -1457,8 +1462,8 @@ export function ExerciseLogger({
                   ? `${profile.positions} pegs`
                   : `curve 1–${profile.positions}`}
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {alternatives.length > 0 && (
@@ -1495,7 +1500,7 @@ export function ExerciseLogger({
           />
         )}
 
-        <div className="mt-5 grid grid-cols-3 gap-3">
+        <div className="mt-5 grid grid-cols-3 gap-2">
           <Stat label="Target sets" value={String(targetSets)} />
           <Stat label="Rep range" value={exercise.rep_range} />
           <Stat
@@ -1505,7 +1510,10 @@ export function ExerciseLogger({
           />
         </div>
 
-        {lastSets.length > 0 && lastTopSet && (
+        {/* The set rows already show last time's weights and reps as their
+            placeholders. What they can't show is which peg or cam position
+            each set was loaded at, so the row stays for profile machines. */}
+        {profile.kind != null && lastSets.length > 0 && lastTopSet && (
           <LastTimeRow
             lastSets={lastSets}
             lastTopSet={lastTopSet}
@@ -3112,27 +3120,6 @@ function unitSuffix(unit: MachineUnit): string {
 // under the letters than over them, and the letter spacing puts a gap after the
 // last letter with nothing to balance it. Every chip in here is nudged the same
 // way — down a pixel, right a pixel.
-function UnitBadge({
-  unit,
-  isOverride,
-}: {
-  unit: MachineUnit;
-  isOverride: boolean;
-}) {
-  return (
-    <span
-      title={`${
-        unit === 'pin' ? 'Logged as pin numbers' : `Logged in ${unit}`
-      }${isOverride ? ' — not your default unit' : ''}`}
-      className={`inline-flex items-center rounded-pill pb-0.5 pl-[9px] pr-2 pt-[3px] text-label font-bold uppercase tracking-[0.12em] ${
-        isOverride ? 'bg-ink text-white' : 'bg-line text-muted'
-      }`}
-    >
-      {unit}
-    </span>
-  );
-}
-
 function SetGroup({
   rows,
   activeIndex,

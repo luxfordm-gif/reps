@@ -1,7 +1,7 @@
 // Tests the duplicate-exercise detector — in particular what it refuses to
 // suggest, since accepting a wrong pair merges two histories irreversibly.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-duplicate-exercises.mjs
-import { findDuplicatePairs, findDuplicateGroups } from '../src/lib/duplicateExercises.ts';
+import { duplicatePairKey, findDuplicatePairs, findDuplicateGroups } from '../src/lib/duplicateExercises.ts';
 
 let failures = 0;
 function eq(label, got, want) {
@@ -208,6 +208,20 @@ console.log('\n=== a word that changes the exercise ===');
     'a word that changes nothing still pairs',
     findDuplicatePairs([m('Preacher curl', null, 5), m('Preacher curl machine', null, 5)]).length,
     1,
+  );
+}
+
+console.log('\n=== keeping one machine out of a merge ===');
+{
+  const rows = [m('Pec deck fly', 'Chest', 4), m('Prime pec deck fly', 'Chest', 18), m('Pec deck', 'Chest', 15)];
+  // What the merge sheet dismisses when Prime is kept apart from the other two.
+  const keys = ['pec deck fly', 'pec deck'].map((n) => duplicatePairKey('prime pec deck fly', n));
+  eq('the key is the same either way round', duplicatePairKey('a', 'b'), duplicatePairKey('b', 'a'));
+  const [g] = findDuplicateGroups(rows, new Set(keys));
+  eq(
+    'the machine kept apart is not suggested with them again',
+    [g.survivor, ...g.losers].map((x) => x.displayName).sort(),
+    ['Pec deck', 'Pec deck fly'],
   );
 }
 
