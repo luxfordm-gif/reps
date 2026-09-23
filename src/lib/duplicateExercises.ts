@@ -117,6 +117,11 @@ function isBrandMovedOf(a: string, b: string): boolean {
   );
 }
 
+/** The key a pair is dismissed under, whichever way round it's given. */
+export function duplicatePairKey(a: string, b: string): string {
+  return pairKey(a, b);
+}
+
 function pairKey(a: string, b: string): string {
   return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`;
 }

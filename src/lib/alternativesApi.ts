@@ -125,3 +125,15 @@ export async function removeAlternative(id: string): Promise<void> {
     .eq('id', id);
   if (error) throw error;
 }
+
+/** The names of every alternative attached to these plan rows — the machines a
+ *  plan can be trained on besides the ones it names. */
+export async function listAlternativeNames(planExerciseIds: string[]): Promise<string[]> {
+  if (planExerciseIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('plan_exercise_alternatives')
+    .select('normalized_name')
+    .in('plan_exercise_id', planExerciseIds);
+  if (error) throw error;
+  return (data ?? []).map((r: { normalized_name: string }) => r.normalized_name);
+}
