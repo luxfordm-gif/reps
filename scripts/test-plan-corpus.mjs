@@ -192,6 +192,21 @@ const CORPUS = [
     floor: 1,
     note: 'A filled-in log, not a prescription: each column is one set written as load x reps.',
   },
+  {
+    name: 'plan-14 spreadsheet rotation (tall rows, stacked set schemes)',
+    kind: 'pdf',
+    source: 'plan-14-sheet-rotation.pdf',
+    days: ['Pull R1', 'Lower R1', 'Pull R2', 'Lower R2'],
+    exercises: 25,
+    rows: [
+      { name: 'Lat pulldown', sets: 2, reps: '8-10' },
+      { name: 'Single d-handle cable curl', sets: 3, reps: '5-8' },
+      { name: 'Standing DB curl', sets: 2, reps: '6-10 each' },
+      { name: 'Chest supported seated d-handle lat pulldown', sets: 2, reps: '8-12 each' },
+      { name: 'Pull ups', sets: 2, reps: '12-15' },
+    ],
+    floor: 1,
+  },
 ];
 
 async function pdfText(file) {
@@ -207,7 +222,7 @@ async function pdfText(file) {
     const positioned = [];
     for (const item of content.items) {
       if (!item.str || !item.str.trim()) continue;
-      positioned.push({ x: item.transform[4], y: item.transform[5], str: item.str });
+      positioned.push({ x: item.transform[4], y: item.transform[5], str: item.str, width: item.width });
     }
     lines.push(...reconstructRows(positioned));
   }

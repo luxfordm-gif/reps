@@ -863,5 +863,30 @@ function parseScore(plan: ParsedPlan): number {
 export function parseTrainingPlan(rawText: string): ParsedPlan {
   const tabular = parseTabularPlan(rawText);
   const general = planFromLayout(recogniseLayout(rawText, { bodyParts: BODY_PARTS }));
-  return parseScore(general) > parseScore(tabular) ? general : tabular;
+  return withoutVideoLinks(parseScore(general) > parseScore(tabular) ? general : tabular);
+}
+
+// youtube.com/watch?v=…, youtu.be/…, m.youtube.com/shorts/…
+const VIDEO_LINK_RE = /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/\S*/gi;
+
+/**
+ * Coaches paste a demo video beside most movements. Tapping an exercise's name
+ * already opens a search for it, and a long link is unreadable on a phone
+ * mid-set, so links to YouTube are taken out of the notes wherever they came
+ * from. Whatever the coach wrote around them stays.
+ */
+export function stripVideoLinks(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(VIDEO_LINK_RE, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function withoutVideoLinks(plan: ParsedPlan): ParsedPlan {
+  for (const day of plan.days) {
+    day.inlineNotes = day.inlineNotes.map(stripVideoLinks).filter(Boolean);
+    for (const e of day.exercises) e.notes = stripVideoLinks(e.notes);
+  }
+  return plan;
 }

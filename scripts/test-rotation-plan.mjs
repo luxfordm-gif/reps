@@ -4,6 +4,9 @@
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-rotation-plan.mjs
 import { parseTrainingPlan } from '../src/lib/parseTrainingPlan.ts';
 import { restSecondsFromNotes } from '../src/lib/restDefaults.ts';
+import { stripVideoLinks } from '../src/lib/parseTrainingPlan.ts';
+import { parseSetMods } from '../src/lib/parseSetMods.ts';
+import { toSentenceCase } from '../src/lib/textCase.ts';
 
 let failures = 0;
 function check(label, actual, expected) {
@@ -104,6 +107,33 @@ check(
   null
 );
 check('a plain rest note still counts', restSecondsFromNotes('45 SECONDS MAX REST'), 45);
+
+// A spreadsheet rotation writes each set's target on its own line in the cell
+// ("1 x 8-12" over "1 x 12-15"); the importer hands the later ones over as
+// "Set 2: 12-15 reps." — the full table is covered by plan-14 in the corpus.
+console.log('\n=== stacked set schemes ===');
+const stacked = parseSetMods('Set 2: 8-12 reps. Set 3: 20 reps.', 3).bySetIndex;
+check('a set with its own range', [stacked.get(2).repRangeOverride, stacked.get(2).repTarget], ['8-12', 12]);
+check('a set with its own count', stacked.get(3).repTarget, 20);
+check('the first set keeps the exercise range', stacked.has(1), false);
+check(
+  'a drop-set note still reads as before',
+  parseSetMods('Set 3: 50 reps, drop, 30 reps', 3).bySetIndex.get(3).drops.length,
+  1
+);
+
+console.log('\n=== video links ===');
+check(
+  'a YouTube link is taken out of a note',
+  stripVideoLinks('Mag grip. https://youtu.be/C2k8Qjj2W3U?si=1SWnnOlgcpe9Mbgu Slow negative'),
+  'Mag grip. Slow negative'
+);
+check('a note that was only a link ends up empty', stripVideoLinks('https://www.youtube.com/watch?v=abc123'), '');
+check(
+  'sentence case leaves a link exactly as written',
+  toSentenceCase('SEE https://example.com/Demo?ID=Xy FIRST. THEN GO'),
+  'See https://example.com/Demo?ID=Xy first. Then go'
+);
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exitCode = failures === 0 ? 0 : 1;
