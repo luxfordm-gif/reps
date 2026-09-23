@@ -71,7 +71,7 @@ async function extractLines(data) {
     const positioned = [];
     for (const item of content.items) {
       if (!item.str || !item.str.trim()) continue;
-      positioned.push({ x: item.transform[4], y: item.transform[5], str: item.str });
+      positioned.push({ x: item.transform[4], y: item.transform[5], str: item.str, width: item.width });
     }
     lines.push(...reconstructRows(positioned));
   }

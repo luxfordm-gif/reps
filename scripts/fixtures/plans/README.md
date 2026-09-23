@@ -36,6 +36,7 @@ which is how a plan that went in wrong becomes a test that keeps it right.
 | `plan-11-banded-body-part` | One shared header, body-part sections | Muscle groups *are* the days here |
 | `plan-12-vertical-labels` | Body-part labels down the left edge | The same captions are bands *inside* a session here |
 | `plan-13-per-set-log-grid` | `Exercise / Set 1 … Set 5 / Notes` | A filled-in log: each cell is `load x reps`, not a prescription |
+| `plan-14-sheet-rotation` | `Order / Exercise / Rest Period / Reps / Sets / Notes` | A spreadsheet export: tall rows with several lines per cell, `1 x 8-12` over `1 x 12-15`, a title block on every page |
 
 ## Known gap: plan 7
 
