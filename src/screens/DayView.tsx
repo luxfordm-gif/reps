@@ -648,19 +648,22 @@ export function DayView({
             const isOpen = editing || expanded.has(group.bodyPart);
             return (
               <div key={groupKey} className="overflow-hidden rounded-card bg-paper-card shadow-card">
+                {/* The group is a label, not a title: the exercises are what
+                    this screen is for, so they carry the weight and the body
+                    part sits above them the way a section label does. */}
                 <button
                   onClick={() => toggle(group.bodyPart)}
                   disabled={editing}
-                  className="flex w-full items-center justify-between px-5 py-4 text-left disabled:cursor-default"
+                  className="flex min-h-[52px] w-full items-center justify-between px-5 py-3 text-left disabled:cursor-default"
                 >
-                  <div>
-                    <div className="text-base font-bold tracking-tight text-ink">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink">
                       {group.bodyPart}
-                    </div>
-                    <div className="mt-0.5 text-xs text-muted">
+                    </span>
+                    <span className="text-caption text-muted">
                       {group.exercises.length}{' '}
                       {group.exercises.length === 1 ? 'exercise' : 'exercises'}
-                    </div>
+                    </span>
                   </div>
                   {!editing && (
                     <span className="text-muted" aria-label={isOpen ? 'Collapse' : 'Expand'}>
