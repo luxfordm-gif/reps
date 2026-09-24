@@ -419,7 +419,7 @@ export function DayView({
   }
 
   return (
-    <div className={`min-h-screen bg-paper ${referenceOnly ? 'pb-12' : 'pb-32'}`}>
+    <div className={`min-h-screen overflow-x-clip bg-paper ${referenceOnly ? 'pb-12' : 'pb-32'}`}>
       <div
         ref={barRef}
         className={`fixed inset-x-0 top-0 z-30 transition-[background-color,box-shadow] duration-pop ease-snap ${
@@ -430,13 +430,15 @@ export function DayView({
         <div className="relative mx-auto flex h-11 max-w-md items-center justify-center px-5">
           <button
             onClick={onBack}
-            className={`pressable absolute left-2 flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-pop ${
+            className={`pressable absolute left-3 flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-pop ${
               heroGone
                 ? 'text-ink active:bg-surface-strong'
-                : 'bg-black/30 text-white backdrop-blur-md active:bg-black/45'
+                : 'bg-white/20 text-white backdrop-blur-md active:bg-white/30'
             }`}
             aria-label="Back"
           >
+            {/* The circle is 40px; the tap area is 56, reaching into the corner. */}
+            <span className="absolute -inset-2" aria-hidden />
             <BackIcon />
           </button>
           <div
@@ -454,7 +456,12 @@ export function DayView({
         className="relative rounded-b-card bg-ink text-white shadow-lift"
         // Clipped to the rounded bottom but open above, so the photo can grow
         // up into the pull-down bounce rather than being cut at the hero's top.
-        style={{ clipPath: 'inset(-100vh 0 0 0 round 0 0 24px 24px)' }}
+        //
+        // clip-path only paints; it doesn't stop the scaled photo counting
+        // towards the page's width, which let the page scroll sideways and
+        // the phone zoom out. overflow-x: clip cuts the sides off for layout
+        // too, and unlike hidden it leaves the vertical axis open.
+        style={{ clipPath: 'inset(-100vh 0 0 0 round 0 0 24px 24px)', overflowX: 'clip' }}
       >
         {image && (
           <>
