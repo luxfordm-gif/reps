@@ -427,17 +427,20 @@ export function DayView({
         }`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="relative mx-auto flex h-11 max-w-md items-center justify-center px-5">
+        {/* Taller than the usual 44px bar: over the photo the back button is
+            the only way out, and jammed against the top edge it was easy to
+            miss. The extra height gives it room above and below. */}
+        <div className="relative mx-auto flex h-14 max-w-md items-center justify-center px-5">
           <button
             onClick={onBack}
-            className={`pressable absolute left-3 flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-pop ${
+            className={`pressable absolute left-3 flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-pop ${
               heroGone
                 ? 'text-ink active:bg-surface-strong'
                 : 'bg-white/20 text-white backdrop-blur-md active:bg-white/30'
             }`}
             aria-label="Back"
           >
-            {/* The circle is 40px; the tap area is 56, reaching into the corner. */}
+            {/* The circle is 44px; the tap area is 60, reaching into the corner. */}
             <span className="absolute -inset-2" aria-hidden />
             <BackIcon />
           </button>
