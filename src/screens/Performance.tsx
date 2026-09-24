@@ -351,31 +351,21 @@ export function Performance() {
 
             {data.perf.bodyWeights.length > 0 && (
               <Block>
-                <SectionHeader
-                  title="Body weight"
+                <BodyWeightCard
+                  rows={bodyWeightRange(data.perf.bodyWeights, bwRange)}
+                  bwUnit={bwUnit}
+                  rangeLabel={BW_RANGE_LABEL[bwRange]}
                   controls={
-                    <div className="flex rounded-pill bg-surface-strong p-0.5">
-                      {([84, 182, 365] as BwRange[]).map((r) => (
-                        <button
-                          key={r}
-                          onClick={() => setBwRange(r)}
-                          className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
-                            bwRange === r ? 'bg-ink text-white' : 'text-muted'
-                          }`}
-                        >
-                          {r === 84 ? '12w' : r === 182 ? '6m' : '1y'}
-                        </button>
-                      ))}
-                    </div>
+                    <Pills
+                      options={([84, 182, 365] as BwRange[]).map((r) => ({
+                        key: r,
+                        label: r === 84 ? '12w' : r === 182 ? '6m' : '1y',
+                      }))}
+                      value={bwRange}
+                      onChange={setBwRange}
+                    />
                   }
                 />
-                <div className="mt-3">
-                  <BodyWeightCard
-                    rows={bodyWeightRange(data.perf.bodyWeights, bwRange)}
-                    bwUnit={bwUnit}
-                    rangeLabel={BW_RANGE_LABEL[bwRange]}
-                  />
-                </div>
               </Block>
             )}
 
@@ -384,7 +374,7 @@ export function Performance() {
                 so a couple of missed days don't read as a collapse, and a
                 Monday with nothing written down yet doesn't blank the tile
                 entirely, which is what made steps look broken. */}
-            <Block tight>
+            <Block>
               <div className="grid grid-cols-3 gap-2.5">
                 <MiniTile
                   icon={<BoltIcon />}
@@ -416,7 +406,7 @@ export function Performance() {
             </Block>
 
             {derived.volume.some((p) => p.sets > 0) && (
-              <Block tight>
+              <Block>
                 <TrainingVolumeCard volume={derived.volume} />
               </Block>
             )}
@@ -533,8 +523,10 @@ function WeekIntro({ facts, unit }: { facts: WeekFacts; unit: MachineUnit }) {
   if (!line) return null;
   const against = comparisonLabel(facts);
   return (
-    <div className="mt-1">
-      <p className="text-base leading-snug text-ink-soft">{line}</p>
+    // Set like the subtitle under Home's greeting, so the two tabs open the
+    // same way, with a touch more room under the title.
+    <div className="mt-2">
+      <p className="text-base text-muted">{line}</p>
       <div className="mt-1.5 text-caption text-muted">
         {facts.which === 'this' ? 'This week' : 'Last week'}
         {against && ` · ${against}`}
@@ -544,30 +536,46 @@ function WeekIntro({ facts, unit }: { facts: WeekFacts; unit: MachineUnit }) {
 }
 
 /**
- * A section's name, on the page rather than inside the card.
+ * A section's name and its controls, along the top of its card.
  *
- * Used where a section has controls that act on the whole of it — the body
- * weight range, the movers period. Putting the heading and its pills above
- * the card says the controls govern everything below them, and gives the
- * screen a spine you can scan without reading a single number.
+ * Every section on the tab is one card, and it carries its own heading and
+ * pills. Some used to put theirs on the page above the card instead, so the
+ * tab switched between two patterns as you scrolled; now the pills always sit
+ * in the card they govern.
  */
-function SectionHeader({
-  title,
-  controls,
-  children,
+function CardHeader({ title, controls }: { title: string; controls?: React.ReactNode }) {
+  return (
+    <div className="flex min-h-8 items-center justify-between gap-3">
+      <SectionLabel>{title}</SectionLabel>
+      {controls && <div className="shrink-0">{controls}</div>}
+    </div>
+  );
+}
+
+/** The segmented pills a card's header uses to switch what it shows. */
+function Pills<T extends string | number>({
+  options,
+  value,
+  onChange,
 }: {
-  title: string;
-  controls?: React.ReactNode;
-  /** An optional short line under the title. Never a sentence. */
-  children?: React.ReactNode;
+  options: { key: T; label: string }[];
+  value: T;
+  onChange: (key: T) => void;
 }) {
   return (
-    <div className="flex items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-2xl font-bold tracking-tight text-ink">{title}</h2>
-        {children && <div className="mt-0.5 text-sm text-muted tabular-nums">{children}</div>}
-      </div>
-      {controls && <div className="shrink-0 pb-1">{controls}</div>}
+    <div className="flex rounded-pill bg-surface-strong p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
+            value === o.key ? 'bg-ink text-white' : 'text-muted'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -606,25 +614,19 @@ function TrainingVolumeCard({ volume }: { volume: WeeklyVolumePoint[] }) {
 
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
-      <div className="flex items-center justify-between gap-3">
-        <SectionLabel>Training volume</SectionLabel>
-        <div className="flex items-center gap-3">
-          <div className="flex rounded-pill bg-surface-strong p-0.5">
-            {(['kg', 'sets'] as VolumeMetric[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMetric(m)}
-                className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
-                  metric === m ? 'bg-ink text-white' : 'text-muted'
-                }`}
-              >
-                {m === 'kg' ? 'Volume' : 'Sets'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <CardHeader
+        title="Training volume"
+        controls={
+          <Pills
+            options={[
+              { key: 'kg' as VolumeMetric, label: 'Volume' },
+              { key: 'sets' as VolumeMetric, label: 'Sets' },
+            ]}
+            value={metric}
+            onChange={setMetric}
+          />
+        }
+      />
       <div className="mt-0.5 text-xs text-muted">Past 12 weeks</div>
 
       <div className="mt-1 flex items-baseline gap-1.5">
@@ -851,36 +853,29 @@ function MoversCard({
   const prose = periods.find((p) => p.key === period)?.prose ?? 'last week';
 
   return (
-    <div>
-      <SectionHeader
-        title="Strength trends"
-        controls={
-          <div className="flex rounded-pill bg-surface-strong p-0.5">
-            {periods.map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                onClick={() => onPeriod(p.key)}
-                className={`rounded-pill px-2.5 py-1 text-caption font-semibold ${
-                  period === p.key ? 'bg-ink text-white' : 'text-muted'
-                }`}
-              >
-                {p.pill}
-              </button>
-            ))}
-          </div>
-        }
-      />
+    <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+      <div className="p-4 pb-0">
+        <CardHeader
+          title="Strength trends"
+          controls={
+            <Pills
+              options={periods.map((p) => ({ key: p.key, label: p.pill }))}
+              value={period}
+              onChange={onPeriod}
+            />
+          }
+        />
+      </div>
 
       {movers.length === 0 ? (
-        <div className="mt-3 rounded-card bg-paper-card p-5 text-sm text-muted shadow-card">
+        <div className="px-4 pb-4 pt-3 text-sm text-muted">
           {previous.sets === 0
             ? `Nothing logged ${prose}.`
             : `Nothing trained in both ${period === 'season' ? 'windows' : 'weeks'}.`}
         </div>
       ) : (
         <>
-          <div className="mt-3">
+          <div className="px-4 py-3">
             <MoverHero
               move={lead}
               series={leadSeries}
@@ -889,7 +884,7 @@ function MoversCard({
             />
           </div>
           {rest.length > 0 && (
-            <ul className="mt-3 divide-y divide-line/60 overflow-hidden rounded-card bg-paper-card shadow-card">
+            <ul className="divide-y divide-line/60">
               {rest.slice(0, MOVERS_SHOWN - 1).map((m) => (
                 <MoverRow
                   key={m.normalizedName}
@@ -906,7 +901,7 @@ function MoversCard({
       <button
         type="button"
         onClick={onSeeAll}
-        className="mt-3 flex w-full items-center justify-center gap-1 rounded-card bg-surface-strong py-3.5 text-sm font-semibold text-muted active:bg-pressed active:text-ink"
+        className="flex w-full items-center justify-center gap-1 border-t border-line/60 py-3.5 text-sm font-semibold text-muted active:bg-surface active:text-ink"
       >
         See all exercises <ChevronRight />
       </button>
@@ -969,7 +964,9 @@ function MoverHero({
       </div>
     </>
   );
-  const cls = 'w-full rounded-card bg-ink p-5 text-left text-white shadow-card';
+  // A panel inside the Strength trends card, so a panel's corners and no
+  // shadow of its own.
+  const cls = 'w-full rounded-panel bg-ink p-4 text-left text-white';
   return onOpen ? (
     <button type="button" onClick={onOpen} className={`${cls} active:bg-ink-soft`}>
       {body}
@@ -1066,10 +1063,10 @@ function formatLoadShort(kg: number, unit: MachineUnit): string {
  * and over, and the stagger held the last card at zero opacity for 420ms after
  * the loading state had already cleared.
  */
-function Block({ children, tight }: { children: React.ReactNode; tight?: boolean }) {
-  // `tight` is for the row of small tiles and the card after it. Sections with
-  // a heading need the full gap to read as separate; three tiles don't.
-  return <div className={tight ? 'mt-6' : 'mt-9 first:mt-6'}>{children}</div>;
+function Block({ children }: { children: React.ReactNode }) {
+  // One gap for every card. Each carries its own heading, so none needs extra
+  // room above it to read as a new section.
+  return <div className="mt-6">{children}</div>;
 }
 
 // --- One movement, on its own screen ---------------------------------------
@@ -1430,12 +1427,15 @@ function BodyWeightCard({
   rows,
   bwUnit,
   rangeLabel,
+  controls,
 }: {
   /** Newest first, already filtered to the selected range. */
   rows: PerformanceData['bodyWeights'];
   bwUnit: BodyWeightUnit;
   /** "over 12 weeks" — names the window the change is measured across. */
   rangeLabel: string;
+  /** The range pills, for the card's header. */
+  controls: React.ReactNode;
 }) {
   // Sorted on the date the chart is keyed by, so no caller's ordering can
   // flip it — see bodyWeightChange, which had to learn this the hard way.
@@ -1461,10 +1461,9 @@ function BodyWeightCard({
 
   return (
     <div className="rounded-card bg-paper-card p-4 shadow-card">
-      {/* No heading of its own: the section is titled on the page above, where
-          the range pills that govern it also sit. */}
+      <CardHeader title="Body weight" controls={controls} />
       {latestKg != null && (
-        <div>
+        <div className="mt-1">
           <div className="flex items-baseline gap-1.5">
             <div className="text-display font-bold leading-none tracking-tight text-ink tabular-nums">
               {bwUnit === 'st' ? formatStoneLb(latestKg) : fmtNum(latestKg)}
