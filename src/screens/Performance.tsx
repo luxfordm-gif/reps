@@ -50,9 +50,7 @@ import {
   computeWeeklyVolume,
   weekVsAveragePct,
   computeWorkoutsPerWeek,
-  compareWeeks,
   compareWindow,
-  comparisonWeek,
   countSessionsByExercise,
   summarizeBodyWeight,
   type WeekStreak,
@@ -103,22 +101,24 @@ import { SectionLabel } from '../components/SectionLabel';
 // rather than invent a number.
 
 type View = 'dashboard' | 'records' | 'record';
-type BwRange = 84 | 182 | 365;
+type BwRange = 14 | 28 | 42 | 182 | 365;
 
-/** What the body-weight change is measured across, in words. */
-const BW_RANGE_LABEL: Record<BwRange, string> = {
-  84: 'over 12 weeks',
-  182: 'over 6 months',
-  365: 'over a year',
-};
+/** The body-weight range pills, with what the change is measured across. */
+const BW_RANGES: { days: BwRange; pill: string; label: string }[] = [
+  { days: 14, pill: '2w', label: 'over 2 weeks' },
+  { days: 28, pill: '4w', label: 'over 4 weeks' },
+  { days: 42, pill: '6w', label: 'over 6 weeks' },
+  { days: 182, pill: '6m', label: 'over 6 months' },
+  { days: 365, pill: '1y', label: 'over a year' },
+];
+
 /**
- * What the movers list is comparing against.
+ * What the movers list is comparing, in days: the last N against the N before.
  *
- * Two named weeks, or a rolling four — the plan runs on a fortnight's
- * rotation, so last week can be the wrong week to ask about, and over a month
- * which week it was stops mattering.
+ * All rolling windows. Even the shortest spans a whole two-week rotation, so
+ * it never sets one half of the plan against the other.
  */
-type MoverPeriod = 'week' | 'fortnight' | 'season';
+type MoverPeriod = 14 | 28 | 42;
 
 /** Which way the training-volume card is counting. */
 type VolumeMetric = 'kg' | 'sets';
@@ -170,8 +170,8 @@ export function Performance() {
   // back to the board. Without this every lift's Back led to the records
   // index, which is the screen you were trying not to visit.
   const [recordFrom, setRecordFrom] = useState<Exclude<View, 'record'>>('dashboard');
-  const [bwRange, setBwRange] = useState<BwRange>(84);
-  const [period, setPeriod] = useState<MoverPeriod>('week');
+  const [bwRange, setBwRange] = useState<BwRange>(42);
+  const [period, setPeriod] = useState<MoverPeriod>(14);
   const bwUnit = getBodyWeightUnit();
   const liftUnit = getLiftWeightUnit();
 
@@ -217,13 +217,6 @@ export function Performance() {
         target: weeklyTarget,
         streak: streak.current,
       }),
-      // On a rotating plan, the week to measure this one against is the last
-      // one that ran the same rotation week — not last week, which was the
-      // other half of the plan. Null on a plan that doesn't rotate.
-      rotationMatch: (() => {
-        const m = comparisonWeek(gymSessions, plan?.id ?? null, new Date());
-        return m && m.weekIndex != null ? m : null;
-      })(),
       water: dailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
       steps: dailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
       volume: computeWeeklyVolume(perf.sets),
@@ -244,11 +237,8 @@ export function Performance() {
   // "what did I do", not "did I hit the plan".
   const movers = useMemo(() => {
     if (!data) return null;
-    const { sets } = data.perf;
-    if (period === 'season') return compareWindow(sets, data.sessions, 28);
-    if (period === 'fortnight') return compareWeeks(sets, data.sessions, 2);
-    return compareWeeks(sets, data.sessions, derived?.rotationMatch?.weeksBack ?? 1);
-  }, [data, derived, period]);
+    return compareWindow(data.perf.sets, data.sessions, period);
+  }, [data, period]);
 
   // What the library's "Top increased" order sorts on. Built from the movers
   // the tab has already computed rather than by the board walking every set
@@ -354,13 +344,10 @@ export function Performance() {
                 <BodyWeightCard
                   rows={bodyWeightRange(data.perf.bodyWeights, bwRange)}
                   bwUnit={bwUnit}
-                  rangeLabel={BW_RANGE_LABEL[bwRange]}
+                  rangeLabel={BW_RANGES.find((r) => r.days === bwRange)?.label ?? ''}
                   controls={
                     <Pills
-                      options={([84, 182, 365] as BwRange[]).map((r) => ({
-                        key: r,
-                        label: r === 84 ? '12w' : r === 182 ? '6m' : '1y',
-                      }))}
+                      options={BW_RANGES.map((r) => ({ key: r.days, label: r.pill }))}
                       value={bwRange}
                       onChange={setBwRange}
                     />
@@ -418,7 +405,6 @@ export function Performance() {
                   leadSeries={leadSeries}
                   period={period}
                   onPeriod={setPeriod}
-                  rotationWeek={derived.rotationMatch?.weekIndex ?? null}
                   unit={liftUnit}
                   canOpen={(n) => derived.recordNames.has(n)}
                   onOpen={(n) => openRecord(n)}
@@ -791,9 +777,9 @@ function Sparkline({ values, stroke, fill }: { values: number[]; stroke: string;
 // --- What's moving ------------------------------------------------------------------
 
 const PERIODS: { key: MoverPeriod; pill: string; prose: string }[] = [
-  { key: 'week', pill: '1w', prose: 'last week' },
-  { key: 'fortnight', pill: '2w', prose: 'two weeks ago' },
-  { key: 'season', pill: '4w', prose: 'the four before' },
+  { key: 14, pill: '2w', prose: 'the two weeks before' },
+  { key: 28, pill: '4w', prose: 'the four weeks before' },
+  { key: 42, pill: '6w', prose: 'the six weeks before' },
 ];
 
 /** Top six, hero included. Beyond that it stops being a glance. */
@@ -823,7 +809,6 @@ function MoversCard({
   leadSeries,
   period,
   onPeriod,
-  rotationWeek,
   unit,
   canOpen,
   onOpen,
@@ -834,8 +819,6 @@ function MoversCard({
   leadSeries: number[];
   period: MoverPeriod;
   onPeriod: (p: MoverPeriod) => void;
-  /** On a rotating plan, the rotation week "1w" compares like for like. */
-  rotationWeek: number | null;
   unit: MachineUnit;
   canOpen: (normalizedName: string) => boolean;
   onOpen: (normalizedName: string) => void;
@@ -843,14 +826,7 @@ function MoversCard({
 }) {
   const { movers, previous } = comparison;
   const [lead, ...rest] = movers;
-  // On a rotating plan the first pill is this rotation week against the last
-  // time it ran, and says so; the calendar-week pill would be the other half.
-  const periods = PERIODS.map((p) =>
-    p.key === 'week' && rotationWeek != null
-      ? { ...p, pill: `Wk ${rotationWeek}`, prose: `the last time you ran week ${rotationWeek}` }
-      : p
-  );
-  const prose = periods.find((p) => p.key === period)?.prose ?? 'last week';
+  const prose = PERIODS.find((p) => p.key === period)?.prose ?? '';
 
   return (
     <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
@@ -859,7 +835,7 @@ function MoversCard({
           title="Strength trends"
           controls={
             <Pills
-              options={periods.map((p) => ({ key: p.key, label: p.pill }))}
+              options={PERIODS.map((p) => ({ key: p.key, label: p.pill }))}
               value={period}
               onChange={onPeriod}
             />
@@ -870,8 +846,8 @@ function MoversCard({
       {movers.length === 0 ? (
         <div className="px-4 pb-4 pt-3 text-sm text-muted">
           {previous.sets === 0
-            ? `Nothing logged ${prose}.`
-            : `Nothing trained in both ${period === 'season' ? 'windows' : 'weeks'}.`}
+            ? `Nothing logged in ${prose}.`
+            : 'Nothing trained in both windows.'}
         </div>
       ) : (
         <>
