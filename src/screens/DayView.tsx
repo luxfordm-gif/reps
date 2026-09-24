@@ -20,9 +20,7 @@ import {
   completeSession,
   createSession,
   getLastCompletedAtByTrainingDay,
-  lastSetsWarmth,
   mondayOfWeek,
-  warmLastSetsForPlan,
 } from '../lib/sessionsApi';
 import { clearHomeCache } from '../lib/homeCache';
 import { useNetStatus } from '../lib/offline/net';
@@ -252,9 +250,6 @@ export function DayView({
   } | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  // Bumped whenever a warm finishes, so the coverage line re-reads the device.
-  const [warmKey, setWarmKey] = useState(0);
-  const [warming, setWarming] = useState(false);
   const { reachable } = useNetStatus();
 
   useEffect(() => {
@@ -312,7 +307,6 @@ export function DayView({
         });
       }
       await prefetchLastSetsForDay(targets);
-      if (!cancelled) setWarmKey((k) => k + 1);
     })();
     return () => {
       cancelled = true;
@@ -321,31 +315,11 @@ export function DayView({
     // should be retried the moment the phone finds a connection again.
   }, [exercises, reachable]);
 
-  // What can be logged with no signal. Shown only when something is missing —
-  // when it's all there, there is nothing worth saying.
-  const warmth = useMemo(
-    () => lastSetsWarmth(exercises),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [exercises, warmKey]
-  );
-  const missingWarmth = warmth.total - warmth.covered;
-
   async function handleDiscard() {
     if (!inProgress) return;
     await deleteSession(inProgress.sessionId);
     setInProgress(null);
     setConfirmDiscard(false);
-  }
-
-  async function handleWarmNow() {
-    if (warming) return;
-    setWarming(true);
-    try {
-      await warmLastSetsForPlan({ force: true });
-    } finally {
-      setWarming(false);
-      setWarmKey((k) => k + 1);
-    }
   }
 
   function toggle(bp: string) {
@@ -367,6 +341,7 @@ export function DayView({
   const barRef = useRef<HTMLDivElement | null>(null);
   const [heroGone, setHeroGone] = useState(false);
   const heroImageRef = useRef<HTMLImageElement | null>(null);
+  const heroTextRef = useRef<HTMLDivElement | null>(null);
   const reduceMotion =
     typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -383,6 +358,15 @@ export function DayView({
       // the page's speed and eases in slightly, so the copy slides over it. On
       // iOS's pull-down bounce it grows from its bottom edge to fill the gap.
       // Written straight to the element: this runs every frame of a scroll.
+      // Each part of the copy fades as it slides up under the bar, so the
+      // back button never sits on top of half-read text — and the start
+      // button stays solid for as long as it's clear of the bar.
+      for (const el of [heroTextRef.current, heroCtaRef.current]) {
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        const p = (r.bottom - barHeight) / Math.max(1, r.height);
+        el.style.opacity = String(Math.min(1, Math.max(0, p)));
+      }
       const img = heroImageRef.current;
       if (img && !reduceMotion) {
         const y = window.scrollY;
@@ -490,48 +474,50 @@ export function DayView({
           className="relative mx-auto max-w-md px-5 pb-6"
           style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${image ? 140 : 68}px)` }}
         >
-          {siblingDay && day.week_index != null && onSwitchToSibling ? (
-            // Switches which workout the whole screen shows, so it sits above
-            // the title it changes.
-            <div className="mb-3 inline-flex rounded-pill bg-white/15 p-0.5 backdrop-blur-md">
-              {[day, siblingDay]
-                .sort((a, b) => (a.week_index ?? 0) - (b.week_index ?? 0))
-                .map((variant) => {
-                  const active = variant.id === day.id;
-                  return (
-                    <button
-                      key={variant.id}
-                      onClick={active ? undefined : onSwitchToSibling}
-                      className={`pressable rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors duration-150 ${
-                        active ? 'bg-white text-ink' : 'text-white/75'
-                      }`}
-                    >
-                      Week {variant.week_index}
-                    </button>
-                  );
-                })}
-            </div>
-          ) : day.week_index != null ? (
-            <div className="mb-3">
-              <span className="rounded-pill bg-white/15 px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow text-white/90">
-                Week {day.week_index}
-              </span>
-            </div>
-          ) : null}
+          <div ref={heroTextRef}>
+            {siblingDay && day.week_index != null && onSwitchToSibling ? (
+              // Switches which workout the whole screen shows, so it sits above
+              // the title it changes.
+              <div className="mb-3 inline-flex rounded-pill bg-white/15 p-0.5 backdrop-blur-md">
+                {[day, siblingDay]
+                  .sort((a, b) => (a.week_index ?? 0) - (b.week_index ?? 0))
+                  .map((variant) => {
+                    const active = variant.id === day.id;
+                    return (
+                      <button
+                        key={variant.id}
+                        onClick={active ? undefined : onSwitchToSibling}
+                        className={`pressable rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors duration-150 ${
+                          active ? 'bg-white text-ink' : 'text-white/75'
+                        }`}
+                      >
+                        Week {variant.week_index}
+                      </button>
+                    );
+                  })}
+              </div>
+            ) : day.week_index != null ? (
+              <div className="mb-3">
+                <span className="rounded-pill bg-white/15 px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow text-white/90">
+                  Week {day.week_index}
+                </span>
+              </div>
+            ) : null}
 
-          <h1 className="text-display font-bold leading-tight tracking-title">{title}</h1>
+            <h1 className="text-display font-bold leading-tight tracking-title">{title}</h1>
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-medium text-white/80">
-            <HeroStat icon={<DumbbellIcon />}>{exercises.length} exercises</HeroStat>
-            <HeroStat icon={<LayersIcon />}>{totalSets} sets</HeroStat>
-            <HeroStat icon={<ClockIcon />}>~{estimatedMinutes(totalSets)} min</HeroStat>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-medium text-white/80">
+              <HeroStat icon={<DumbbellIcon />}>{exercises.length} exercises</HeroStat>
+              <HeroStat icon={<LayersIcon />}>{totalSets} sets</HeroStat>
+              <HeroStat icon={<ClockIcon />}>~{estimatedMinutes(totalSets)} min</HeroStat>
+            </div>
+
+            {bodyPartSummary && (
+              <p className="mt-3 text-sm leading-relaxed text-white/65">
+                A focused session for {bodyPartSummary}.
+              </p>
+            )}
           </div>
-
-          {bodyPartSummary && (
-            <p className="mt-3 text-sm leading-relaxed text-white/65">
-              A focused session for {bodyPartSummary}.
-            </p>
-          )}
 
           {!referenceOnly && (
             <div ref={heroCtaRef} className="mt-5">
@@ -560,23 +546,6 @@ export function DayView({
       </header>
 
       <div className="mx-auto max-w-md px-5">
-        {missingWarmth > 0 && reachable && !referenceOnly && (
-          <button
-            onClick={handleWarmNow}
-            disabled={warming}
-            className="mt-4 flex w-full items-center gap-2 rounded-pill bg-surface-strong px-3 py-1.5 text-left text-xs font-medium text-muted disabled:opacity-60"
-          >
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted" />
-            <span className="truncate">
-              {warming
-                ? 'Saving last time\u2019s weights\u2026'
-                : `Last time\u2019s weights aren\u2019t saved for ${missingWarmth} ${
-                    missingWarmth === 1 ? 'exercise' : 'exercises'
-                  } \u2014 tap to load now`}
-            </span>
-          </button>
-        )}
-
         {referenceOnly && (
           <div className="mt-6 rounded-card bg-paper-card px-5 py-4 shadow-card">
             <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
