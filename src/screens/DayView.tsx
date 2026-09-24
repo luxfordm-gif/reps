@@ -171,52 +171,60 @@ export function DayView({
     new Set(groups[0] ? [groups[0].bodyPart] : [])
   );
 
-  // Reorder state. `editingKey` is the id of the first exercise in the group
-  // being edited (unique per group even if a body part repeats); `draft` is the
-  // working order for that group while the user shuffles rows. `saving` guards
-  // the Done tap from double-fires.
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [draft, setDraft] = useState<PlanExerciseRow[]>([]);
+  // Reorder state. One Edit for the whole plan: every group opens at once and
+  // each can be shuffled within itself. `drafts` holds the working order per
+  // group, keyed by the id of the group's first exercise (unique even when a
+  // body part repeats). `saving` guards the Done tap from double-fires.
+  const [editing, setEditing] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, PlanExerciseRow[]>>({});
   const [saving, setSaving] = useState(false);
+  const canReorder = !referenceOnly && groups.some((g) => g.exercises.length > 1);
 
-  function startEdit(group: BodyPartGroup) {
+  function groupKeyOf(group: BodyPartGroup): string {
+    return group.exercises[0]?.id ?? group.bodyPart;
+  }
+
+  function startEdit() {
     haptics.tap();
-    setExpanded((prev) => new Set(prev).add(group.bodyPart));
-    setEditingKey(group.exercises[0]?.id ?? null);
-    setDraft(group.exercises);
+    setDrafts(Object.fromEntries(groups.map((g) => [groupKeyOf(g), g.exercises])));
+    setEditing(true);
   }
 
   function cancelEdit() {
-    setEditingKey(null);
-    setDraft([]);
+    setEditing(false);
+    setDrafts({});
   }
 
-  function moveDraft(from: number, to: number) {
-    if (to < 0 || to >= draft.length) return;
+  function moveDraft(key: string, from: number, to: number) {
+    const rows = drafts[key];
+    if (!rows || to < 0 || to >= rows.length) return;
     haptics.tap();
-    setDraft((prev) => {
-      const next = [...prev];
-      const [row] = next.splice(from, 1);
-      next.splice(to, 0, row);
-      return next;
-    });
+    const next = [...rows];
+    const [row] = next.splice(from, 1);
+    next.splice(to, 0, row);
+    setDrafts((prev) => ({ ...prev, [key]: next }));
   }
 
-  async function saveEdit(group: BodyPartGroup) {
-    const original = group.exercises;
-    const changed = draft.some((ex, i) => ex.id !== original[i]?.id);
-    if (!changed) {
+  async function saveEdit() {
+    // Only groups whose order actually moved are written, so an untouched
+    // group keeps its baseline.
+    const updates: { id: string; position: number }[] = [];
+    for (const group of groups) {
+      const draft = drafts[groupKeyOf(group)] ?? group.exercises;
+      const original = group.exercises;
+      if (!draft.some((ex, i) => ex.id !== original[i]?.id)) continue;
+      // Reuse the slots' existing position values (sorted) so the group stays
+      // contiguous within the day and neighbouring groups aren't shifted.
+      const slots = original.map((e) => e.position).sort((a, b) => a - b);
+      draft.forEach((ex, i) => updates.push({ id: ex.id, position: slots[i] }));
+    }
+    if (updates.length === 0) {
       cancelEdit();
       return;
     }
     setSaving(true);
     try {
-      // Reuse the slots' existing position values (sorted) so the group stays
-      // contiguous within the day and neighbouring groups aren't shifted.
-      const slots = original.map((e) => e.position).sort((a, b) => a - b);
-      const updates = draft.map((ex, i) => ({ id: ex.id, position: slots[i] }));
       const resetAt = await reorderPlanExercises(updates);
-
       const posById = new Map(updates.map((u) => [u.id, u.position]));
       const nextExercises = exercises
         .map((ex) =>
@@ -590,81 +598,80 @@ export function DayView({
           </div>
         )}
 
-        <h2 className="mt-7 text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
-        <p className="mt-1 text-sm text-muted">
-          {groups.length} {groups.length === 1 ? 'group' : 'groups'} · {exercises.length}{' '}
-          {exercises.length === 1 ? 'exercise' : 'exercises'}
-        </p>
+        <div className="mt-7 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
+            <p className="mt-1 text-sm text-muted">
+              {groups.length} {groups.length === 1 ? 'group' : 'groups'} · {exercises.length}{' '}
+              {exercises.length === 1 ? 'exercise' : 'exercises'}
+            </p>
+          </div>
+          {canReorder && (
+            <div className="flex shrink-0 items-center gap-3 pb-0.5">
+              {editing ? (
+                <>
+                  <button
+                    onClick={cancelEdit}
+                    disabled={saving}
+                    className="text-sm font-medium text-muted active:text-ink disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    disabled={saving}
+                    className="pressable rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : 'Done'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={startEdit}
+                  className="pressable rounded-pill bg-surface-strong px-4 py-1.5 text-sm font-semibold text-ink active:opacity-70"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        {editing && (
+          <p className="mt-3 text-xs leading-relaxed text-muted">
+            Reordering a group resets its weight and reps to base.
+          </p>
+        )}
 
         <div className="mt-4 space-y-3">
           {groups.map((group) => {
-            const isOpen = expanded.has(group.bodyPart);
-            const groupKey = group.exercises[0]?.id ?? group.bodyPart;
-            const isEditing = editingKey === groupKey;
-            const canReorder = group.exercises.length > 1 && !referenceOnly;
+            const groupKey = groupKeyOf(group);
+            const draft = editing ? drafts[groupKey] : undefined;
+            const isOpen = editing || expanded.has(group.bodyPart);
             return (
               <div key={groupKey} className="overflow-hidden rounded-card bg-paper-card shadow-card">
-                <div className="flex w-full items-center justify-between px-5 py-4">
-                  <button
-                    onClick={() => toggle(group.bodyPart)}
-                    disabled={isEditing}
-                    className="flex flex-1 items-center gap-3 text-left disabled:cursor-default"
-                  >
-                    <div>
-                      <div className="text-base font-bold tracking-tight text-ink">
-                        {group.bodyPart}
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted">
-                        {group.exercises.length}{' '}
-                        {group.exercises.length === 1 ? 'exercise' : 'exercises'}
-                      </div>
+                <button
+                  onClick={() => toggle(group.bodyPart)}
+                  disabled={editing}
+                  className="flex w-full items-center justify-between px-5 py-4 text-left disabled:cursor-default"
+                >
+                  <div>
+                    <div className="text-base font-bold tracking-tight text-ink">
+                      {group.bodyPart}
                     </div>
-                  </button>
-                  <div className="flex items-center gap-3">
-                    {isEditing ? (
-                      <>
-                        <button
-                          onClick={cancelEdit}
-                          disabled={saving}
-                          className="text-sm font-medium text-muted active:text-ink disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => saveEdit(group)}
-                          disabled={saving}
-                          className="pressable rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
-                        >
-                          {saving ? 'Saving…' : 'Done'}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        {isOpen && canReorder && (
-                          <button
-                            onClick={() => startEdit(group)}
-                            className="text-sm font-semibold text-ink active:opacity-60"
-                          >
-                            Edit
-                          </button>
-                        )}
-                        <button
-                          onClick={() => toggle(group.bodyPart)}
-                          className="text-muted"
-                          aria-label={isOpen ? 'Collapse' : 'Expand'}
-                        >
-                          <Chevron rotate={isOpen ? -90 : 0} />
-                        </button>
-                      </>
-                    )}
+                    <div className="mt-0.5 text-xs text-muted">
+                      {group.exercises.length}{' '}
+                      {group.exercises.length === 1 ? 'exercise' : 'exercises'}
+                    </div>
                   </div>
-                </div>
+                  {!editing && (
+                    <span className="text-muted" aria-label={isOpen ? 'Collapse' : 'Expand'}>
+                      <Chevron rotate={isOpen ? -90 : 0} />
+                    </span>
+                  )}
+                </button>
 
-                {isOpen && isEditing && (
+                {draft && (
                   <div className="border-t border-line">
-                    <p className="px-5 pt-3 text-xs leading-relaxed text-muted">
-                      Reordering resets weight &amp; reps to base for {group.bodyPart}.
-                    </p>
                     {draft.map((ex, i) => (
                       <ReorderRow
                         key={ex.id}
@@ -672,14 +679,14 @@ export function DayView({
                         isFirst={i === 0}
                         isLast={i === draft.length - 1}
                         disabled={saving}
-                        onUp={() => moveDraft(i, i - 1)}
-                        onDown={() => moveDraft(i, i + 1)}
+                        onUp={() => moveDraft(groupKey, i, i - 1)}
+                        onDown={() => moveDraft(groupKey, i, i + 1)}
                       />
                     ))}
                   </div>
                 )}
 
-                {isOpen && !isEditing && (
+                {isOpen && !draft && (
                   <div className="border-t border-line">
                     {group.exercises.map((ex, i) => (
                       <ExerciseRow
