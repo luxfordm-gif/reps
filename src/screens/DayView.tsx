@@ -715,7 +715,6 @@ export function DayView({
                       <ExerciseRow
                         key={ex.id}
                         exercise={ex}
-                        index={i + 1}
                         partnerNames={supersetPartnerNames(ex, exercises)}
                         readOnly={referenceOnly}
                         isLast={i === group.exercises.length - 1}
@@ -775,15 +774,12 @@ export function DayView({
 
 function ExerciseRow({
   exercise,
-  index,
   partnerNames,
   isLast,
   onTap,
   readOnly,
 }: {
   exercise: PlanExerciseRow;
-  // Its place in its body-part group, counting from 1 — the order it's done in.
-  index: number;
   // The rest of this exercise's superset / tri-set / giant set, if it's in one.
   partnerNames: string[];
   isLast: boolean;
@@ -805,9 +801,6 @@ function ExerciseRow({
   return (
     <div className={`px-5 py-4 ${!isLast ? 'border-b border-line' : ''}`}>
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-strong text-xs font-semibold text-muted">
-          {index}
-        </span>
         <div className="min-w-0 flex-1">
           <button
             type="button"
@@ -854,8 +847,7 @@ function ExerciseRow({
       </div>
 
       {hasNotes && (
-        // Indented to the row's text column, clear of the number.
-        <div className="mt-2.5 pl-10">
+        <div className="mt-2.5">
           <button
             onClick={() => setNotesOpen((v) => !v)}
             className="flex items-center gap-1.5 text-xs font-medium text-muted active:text-ink"
