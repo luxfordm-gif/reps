@@ -366,6 +366,10 @@ export function DayView({
   const heroRef = useRef<HTMLElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const [heroGone, setHeroGone] = useState(false);
+  const heroImageRef = useRef<HTMLImageElement | null>(null);
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   useEffect(() => {
     let frame = 0;
     const measure = () => {
@@ -373,7 +377,22 @@ export function DayView({
       const hero = heroRef.current;
       if (!hero) return;
       const barHeight = barRef.current?.getBoundingClientRect().height ?? 44;
-      setHeroGone(hero.getBoundingClientRect().bottom <= barHeight + 8);
+      const rect = hero.getBoundingClientRect();
+      setHeroGone(rect.bottom <= barHeight + 8);
+      // The photo moves at its own pace. Scrolling up, it drifts at a third of
+      // the page's speed and eases in slightly, so the copy slides over it. On
+      // iOS's pull-down bounce it grows from its bottom edge to fill the gap.
+      // Written straight to the element: this runs every frame of a scroll.
+      const img = heroImageRef.current;
+      if (img && !reduceMotion) {
+        const y = window.scrollY;
+        if (y < 0) {
+          img.style.transform = `scale(${1 + -y / rect.height})`;
+        } else {
+          const t = Math.min(y, rect.height);
+          img.style.transform = `translate3d(0, ${t * 0.35}px, 0) scale(${1 + (t / rect.height) * 0.12})`;
+        }
+      }
     };
     const schedule = () => {
       if (frame === 0) frame = window.requestAnimationFrame(measure);
@@ -386,7 +405,7 @@ export function DayView({
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
     };
-  }, []);
+  }, [reduceMotion]);
   // Status bar matches whatever is under it: ink over the hero, paper after.
   useThemeColor(heroGone ? '#FAFAFA' : '#0A0A0A');
 
@@ -448,7 +467,10 @@ export function DayView({
 
       <header
         ref={heroRef}
-        className="relative overflow-hidden rounded-b-card bg-ink text-white shadow-lift"
+        className="relative rounded-b-card bg-ink text-white shadow-lift"
+        // Clipped to the rounded bottom but open above, so the photo can grow
+        // up into the pull-down bounce rather than being cut at the hero's top.
+        style={{ clipPath: 'inset(-100vh 0 0 0 round 0 0 24px 24px)' }}
       >
         {image && (
           <>
@@ -456,7 +478,8 @@ export function DayView({
               src={image}
               alt=""
               aria-hidden
-              className="absolute inset-0 h-full w-full object-cover opacity-60"
+              ref={heroImageRef}
+              className="absolute inset-0 h-full w-full origin-bottom object-cover opacity-60 will-change-transform"
             />
             {/* Light at the top so the photo reads, near-solid by the copy so
                 the words sit on ink rather than on someone's shoulder. */}
@@ -465,7 +488,7 @@ export function DayView({
         )}
         <div
           className="relative mx-auto max-w-md px-5 pb-6"
-          style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${image ? 180 : 96}px)` }}
+          style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${image ? 140 : 68}px)` }}
         >
           {siblingDay && day.week_index != null && onSwitchToSibling ? (
             // Switches which workout the whole screen shows, so it sits above
