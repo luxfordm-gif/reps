@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { PageHeader } from '../components/PageHeader';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { reorderPlanExercises, type FullPlan, type PlanExerciseRow } from '../lib/plansApi';
 import { haptics } from '../lib/haptics';
@@ -21,14 +20,14 @@ import {
   completeSession,
   createSession,
   getLastCompletedAtByTrainingDay,
-  lastSetsWarmth,
   mondayOfWeek,
-  warmLastSetsForPlan,
 } from '../lib/sessionsApi';
 import { clearHomeCache } from '../lib/homeCache';
 import { useNetStatus } from '../lib/offline/net';
 import ExerciseName from '../components/ExerciseName';
 import { DumbbellIcon } from '../components/Tile';
+import { imageForDay } from '../lib/dayImages';
+import { useThemeColor } from '../lib/useThemeColor';
 
 type TrainingDay = FullPlan['training_days'][number];
 
@@ -170,52 +169,60 @@ export function DayView({
     new Set(groups[0] ? [groups[0].bodyPart] : [])
   );
 
-  // Reorder state. `editingKey` is the id of the first exercise in the group
-  // being edited (unique per group even if a body part repeats); `draft` is the
-  // working order for that group while the user shuffles rows. `saving` guards
-  // the Done tap from double-fires.
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [draft, setDraft] = useState<PlanExerciseRow[]>([]);
+  // Reorder state. One Edit for the whole plan: every group opens at once and
+  // each can be shuffled within itself. `drafts` holds the working order per
+  // group, keyed by the id of the group's first exercise (unique even when a
+  // body part repeats). `saving` guards the Done tap from double-fires.
+  const [editing, setEditing] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, PlanExerciseRow[]>>({});
   const [saving, setSaving] = useState(false);
+  const canReorder = !referenceOnly && groups.some((g) => g.exercises.length > 1);
 
-  function startEdit(group: BodyPartGroup) {
+  function groupKeyOf(group: BodyPartGroup): string {
+    return group.exercises[0]?.id ?? group.bodyPart;
+  }
+
+  function startEdit() {
     haptics.tap();
-    setExpanded((prev) => new Set(prev).add(group.bodyPart));
-    setEditingKey(group.exercises[0]?.id ?? null);
-    setDraft(group.exercises);
+    setDrafts(Object.fromEntries(groups.map((g) => [groupKeyOf(g), g.exercises])));
+    setEditing(true);
   }
 
   function cancelEdit() {
-    setEditingKey(null);
-    setDraft([]);
+    setEditing(false);
+    setDrafts({});
   }
 
-  function moveDraft(from: number, to: number) {
-    if (to < 0 || to >= draft.length) return;
+  function moveDraft(key: string, from: number, to: number) {
+    const rows = drafts[key];
+    if (!rows || to < 0 || to >= rows.length) return;
     haptics.tap();
-    setDraft((prev) => {
-      const next = [...prev];
-      const [row] = next.splice(from, 1);
-      next.splice(to, 0, row);
-      return next;
-    });
+    const next = [...rows];
+    const [row] = next.splice(from, 1);
+    next.splice(to, 0, row);
+    setDrafts((prev) => ({ ...prev, [key]: next }));
   }
 
-  async function saveEdit(group: BodyPartGroup) {
-    const original = group.exercises;
-    const changed = draft.some((ex, i) => ex.id !== original[i]?.id);
-    if (!changed) {
+  async function saveEdit() {
+    // Only groups whose order actually moved are written, so an untouched
+    // group keeps its baseline.
+    const updates: { id: string; position: number }[] = [];
+    for (const group of groups) {
+      const draft = drafts[groupKeyOf(group)] ?? group.exercises;
+      const original = group.exercises;
+      if (!draft.some((ex, i) => ex.id !== original[i]?.id)) continue;
+      // Reuse the slots' existing position values (sorted) so the group stays
+      // contiguous within the day and neighbouring groups aren't shifted.
+      const slots = original.map((e) => e.position).sort((a, b) => a - b);
+      draft.forEach((ex, i) => updates.push({ id: ex.id, position: slots[i] }));
+    }
+    if (updates.length === 0) {
       cancelEdit();
       return;
     }
     setSaving(true);
     try {
-      // Reuse the slots' existing position values (sorted) so the group stays
-      // contiguous within the day and neighbouring groups aren't shifted.
-      const slots = original.map((e) => e.position).sort((a, b) => a - b);
-      const updates = draft.map((ex, i) => ({ id: ex.id, position: slots[i] }));
       const resetAt = await reorderPlanExercises(updates);
-
       const posById = new Map(updates.map((u) => [u.id, u.position]));
       const nextExercises = exercises
         .map((ex) =>
@@ -243,9 +250,6 @@ export function DayView({
   } | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  // Bumped whenever a warm finishes, so the coverage line re-reads the device.
-  const [warmKey, setWarmKey] = useState(0);
-  const [warming, setWarming] = useState(false);
   const { reachable } = useNetStatus();
 
   useEffect(() => {
@@ -303,7 +307,6 @@ export function DayView({
         });
       }
       await prefetchLastSetsForDay(targets);
-      if (!cancelled) setWarmKey((k) => k + 1);
     })();
     return () => {
       cancelled = true;
@@ -312,31 +315,11 @@ export function DayView({
     // should be retried the moment the phone finds a connection again.
   }, [exercises, reachable]);
 
-  // What can be logged with no signal. Shown only when something is missing —
-  // when it's all there, there is nothing worth saying.
-  const warmth = useMemo(
-    () => lastSetsWarmth(exercises),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [exercises, warmKey]
-  );
-  const missingWarmth = warmth.total - warmth.covered;
-
   async function handleDiscard() {
     if (!inProgress) return;
     await deleteSession(inProgress.sessionId);
     setInProgress(null);
     setConfirmDiscard(false);
-  }
-
-  async function handleWarmNow() {
-    if (warming) return;
-    setWarming(true);
-    try {
-      await warmLastSetsForPlan({ force: true });
-    } finally {
-      setWarming(false);
-      setWarmKey((k) => k + 1);
-    }
   }
 
   function toggle(bp: string) {
@@ -348,73 +331,231 @@ export function DayView({
     });
   }
 
+  const title = baseDayName(day.name);
+  const image = imageForDay(day.name);
+
+  // The hero is dark and runs up under the status bar, so the bar over it is
+  // see-through with a white back button. Once the hero has scrolled away the
+  // bar turns back into the ordinary paper one with the day's name in it.
+  const heroRef = useRef<HTMLElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [heroGone, setHeroGone] = useState(false);
+  const heroImageRef = useRef<HTMLImageElement | null>(null);
+  const heroTextRef = useRef<HTMLDivElement | null>(null);
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const hero = heroRef.current;
+      if (!hero) return;
+      const barHeight = barRef.current?.getBoundingClientRect().height ?? 44;
+      const rect = hero.getBoundingClientRect();
+      setHeroGone(rect.bottom <= barHeight + 8);
+      // The photo moves at its own pace. Scrolling up, it drifts at a third of
+      // the page's speed and eases in slightly, so the copy slides over it. On
+      // iOS's pull-down bounce it grows from its bottom edge to fill the gap.
+      // Written straight to the element: this runs every frame of a scroll.
+      // Each part of the copy fades as it slides up under the bar, so the
+      // back button never sits on top of half-read text — and the start
+      // button stays solid for as long as it's clear of the bar.
+      for (const el of [heroTextRef.current, heroCtaRef.current]) {
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        const p = (r.bottom - barHeight) / Math.max(1, r.height);
+        el.style.opacity = String(Math.min(1, Math.max(0, p)));
+      }
+      const img = heroImageRef.current;
+      if (img && !reduceMotion) {
+        const y = window.scrollY;
+        if (y < 0) {
+          img.style.transform = `scale(${1 + -y / rect.height})`;
+        } else {
+          const t = Math.min(y, rect.height);
+          img.style.transform = `translate3d(0, ${t * 0.35}px, 0) scale(${1 + (t / rect.height) * 0.12})`;
+        }
+      }
+    };
+    const schedule = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [reduceMotion]);
+  // Status bar matches whatever is under it: ink over the hero, paper after.
+  useThemeColor(heroGone ? '#FAFAFA' : '#0A0A0A');
+
+  // The start button lives in the hero. When it scrolls out of sight a copy
+  // rises from the bottom, so the action is never more than a thumb away on a
+  // long plan — but the screen doesn't open with the same button twice.
+  const heroCtaRef = useRef<HTMLDivElement | null>(null);
+  const [heroCtaVisible, setHeroCtaVisible] = useState(true);
+  useEffect(() => {
+    const el = heroCtaRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([entry]) => setHeroCtaVisible(entry.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, [referenceOnly]);
+
+  const ctaLabel = loadingSession ? 'Loading…' : inProgress ? 'Continue workout' : 'Start workout';
+  function startOrContinue() {
+    haptics.commit();
+    if (inProgress) {
+      const target = exercises[inProgress.lastExerciseIdx] ?? groups[0]?.exercises[0];
+      if (target) onTapExercise?.(target, inProgress.sessionId);
+    } else {
+      const first = groups[0]?.exercises[0];
+      if (first) onTapExercise?.(first);
+    }
+  }
+
   return (
-    <div className={`min-h-screen bg-paper ${referenceOnly ? 'pb-12' : 'pb-32'}`}>
-      <div className="mx-auto max-w-md px-5 pt-3">
-        <PageHeader title={baseDayName(day.name)} onBack={onBack} />
-
-        {/* The day at a glance, one chip per figure. These carried the top of
-            the screen as a single grey line of text, which left the title with
-            nothing under it and read the same weight as the body copy below. */}
-        {/* One line, always. Where the three don't fit — a wide font, the
-            largest text sizes — only the sets chip gives way, so the two short
-            figures are never cut. */}
-        <div className="mt-4 flex gap-2">
-          <StatChip icon={<DumbbellIcon />}>{exercises.length} exercises</StatChip>
-          <StatChip icon={<LayersIcon />} shrink>{totalSets} working sets</StatChip>
-          <StatChip icon={<ClockIcon />}>~{estimatedMinutes(totalSets)} min</StatChip>
-        </div>
-
-        {day.week_index != null && !siblingDay && (
-          <div className="mt-3 text-sm text-muted">Week {day.week_index}</div>
-        )}
-
-        {siblingDay && day.week_index != null && onSwitchToSibling && (
-          // Set off by a hairline either side: it changes which workout the
-          // whole screen below shows, so it's a band of its own rather than
-          // another line of detail under the title.
-          <div className="mt-5 flex items-center justify-between border-y border-line py-3">
-            <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
-              Rotation
-            </span>
-            <div className="flex rounded-pill bg-surface-strong p-0.5">
-              {[day, siblingDay]
-                .sort((a, b) => (a.week_index ?? 0) - (b.week_index ?? 0))
-                .map((variant) => {
-                  const active = variant.id === day.id;
-                  return (
-                    <button
-                      key={variant.id}
-                      onClick={active ? undefined : onSwitchToSibling}
-                      className={`pressable rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors duration-150 ${
-                        active ? 'bg-ink text-white shadow-card' : 'text-muted'
-                      }`}
-                    >
-                      Week {variant.week_index}
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-        )}
-
-        {missingWarmth > 0 && reachable && !referenceOnly && (
+    <div className={`min-h-screen overflow-x-clip bg-paper ${referenceOnly ? 'pb-12' : 'pb-32'}`}>
+      <div
+        ref={barRef}
+        className={`fixed inset-x-0 top-0 z-30 transition-[background-color,box-shadow] duration-pop ease-snap ${
+          heroGone ? 'bg-paper shadow-hairline' : 'bg-transparent'
+        }`}
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        {/* Taller than the usual 44px bar: over the photo the back button is
+            the only way out, and jammed against the top edge it was easy to
+            miss. The extra height gives it room above and below. */}
+        <div className="relative mx-auto flex h-14 max-w-md items-center justify-center px-5">
           <button
-            onClick={handleWarmNow}
-            disabled={warming}
-            className="mt-3 flex w-full items-center gap-2 rounded-pill bg-surface-strong px-3 py-1.5 text-left text-xs font-medium text-muted disabled:opacity-60"
+            onClick={onBack}
+            className={`pressable absolute left-3 flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-pop ${
+              heroGone
+                ? 'text-ink active:bg-surface-strong'
+                : 'bg-white/20 text-white backdrop-blur-md active:bg-white/30'
+            }`}
+            aria-label="Back"
           >
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted" />
-            <span className="truncate">
-              {warming
-                ? 'Saving last time\u2019s weights\u2026'
-                : `Last time\u2019s weights aren\u2019t saved for ${missingWarmth} ${
-                    missingWarmth === 1 ? 'exercise' : 'exercises'
-                  } \u2014 tap to load now`}
-            </span>
+            {/* The circle is 44px; the tap area is 60, reaching into the corner. */}
+            <span className="absolute -inset-2" aria-hidden />
+            <BackIcon />
           </button>
-        )}
+          <div
+            className={`text-nav font-semibold leading-none tracking-title text-ink transition-opacity duration-pop ease-snap ${
+              heroGone ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            {title}
+          </div>
+        </div>
+      </div>
 
+      <header
+        ref={heroRef}
+        className="relative rounded-b-card bg-ink text-white shadow-lift"
+        // Clipped to the rounded bottom but open above, so the photo can grow
+        // up into the pull-down bounce rather than being cut at the hero's top.
+        //
+        // clip-path only paints; it doesn't stop the scaled photo counting
+        // towards the page's width, which let the page scroll sideways and
+        // the phone zoom out. overflow-x: clip cuts the sides off for layout
+        // too, and unlike hidden it leaves the vertical axis open.
+        style={{ clipPath: 'inset(-100vh 0 0 0 round 0 0 24px 24px)', overflowX: 'clip' }}
+      >
+        {image && (
+          <>
+            <img
+              src={image}
+              alt=""
+              aria-hidden
+              ref={heroImageRef}
+              className="absolute inset-0 h-full w-full origin-bottom object-cover opacity-60 will-change-transform"
+            />
+            {/* Light at the top so the photo reads, near-solid by the copy so
+                the words sit on ink rather than on someone's shoulder. */}
+            <div className="absolute inset-0 bg-gradient-to-b from-ink/20 via-ink/70 to-ink" />
+          </>
+        )}
+        <div
+          className="relative mx-auto max-w-md px-5 pb-6"
+          style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${image ? 140 : 68}px)` }}
+        >
+          <div ref={heroTextRef}>
+            {siblingDay && day.week_index != null && onSwitchToSibling ? (
+              // Switches which workout the whole screen shows, so it sits above
+              // the title it changes.
+              <div className="mb-3 inline-flex rounded-pill bg-white/15 p-0.5 backdrop-blur-md">
+                {[day, siblingDay]
+                  .sort((a, b) => (a.week_index ?? 0) - (b.week_index ?? 0))
+                  .map((variant) => {
+                    const active = variant.id === day.id;
+                    return (
+                      <button
+                        key={variant.id}
+                        onClick={active ? undefined : onSwitchToSibling}
+                        className={`pressable rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors duration-150 ${
+                          active ? 'bg-white text-ink' : 'text-white/75'
+                        }`}
+                      >
+                        Week {variant.week_index}
+                      </button>
+                    );
+                  })}
+              </div>
+            ) : day.week_index != null ? (
+              <div className="mb-3">
+                <span className="rounded-pill bg-white/15 px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow text-white/90">
+                  Week {day.week_index}
+                </span>
+              </div>
+            ) : null}
+
+            <h1 className="text-display font-bold leading-tight tracking-title">{title}</h1>
+
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-medium text-white/80">
+              <HeroStat icon={<DumbbellIcon />}>{exercises.length} exercises</HeroStat>
+              <HeroStat icon={<LayersIcon />}>{totalSets} sets</HeroStat>
+              <HeroStat icon={<ClockIcon />}>~{estimatedMinutes(totalSets)} min</HeroStat>
+            </div>
+
+            {bodyPartSummary && (
+              <p className="mt-3 text-sm leading-relaxed text-white/65">
+                A focused session for {bodyPartSummary}.
+              </p>
+            )}
+          </div>
+
+          {!referenceOnly && (
+            <div ref={heroCtaRef} className="mt-5">
+              <button
+                className="pressable w-full rounded-pill bg-white py-4 text-base font-semibold text-ink transition-opacity active:opacity-80 disabled:opacity-50"
+                disabled={loadingSession}
+                onClick={startOrContinue}
+              >
+                {ctaLabel}
+              </button>
+              {inProgress && (
+                <div className="mt-3 flex items-center justify-center gap-2 text-xs text-white/65">
+                  <span>{inProgress.setsLogged} sets logged so far</span>
+                  <span className="h-1 w-1 rounded-full bg-white/40" />
+                  <button
+                    onClick={() => setConfirmDiscard(true)}
+                    className="font-medium underline-offset-2 active:underline"
+                  >
+                    Discard workout
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-md px-5">
         {referenceOnly && (
           <div className="mt-6 rounded-card bg-paper-card px-5 py-4 shadow-card">
             <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
@@ -459,82 +600,83 @@ export function DayView({
           </div>
         )}
 
-        <h2 className="mt-8 text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
-        {bodyPartSummary && (
-          <p className="mt-1.5 text-sm leading-relaxed text-muted">
-            A focused session for {bodyPartSummary}.
+        <div className="mt-7 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-ink">Exercise plan</h2>
+            <p className="mt-1 text-sm text-muted">
+              {groups.length} {groups.length === 1 ? 'group' : 'groups'} · {exercises.length}{' '}
+              {exercises.length === 1 ? 'exercise' : 'exercises'}
+            </p>
+          </div>
+          {canReorder && (
+            <div className="flex shrink-0 items-center gap-3 pb-0.5">
+              {editing ? (
+                <>
+                  <button
+                    onClick={cancelEdit}
+                    disabled={saving}
+                    className="text-sm font-medium text-muted active:text-ink disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    disabled={saving}
+                    className="pressable rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : 'Done'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={startEdit}
+                  className="pressable rounded-pill bg-surface-strong px-4 py-1.5 text-sm font-semibold text-ink active:opacity-70"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        {editing && (
+          <p className="mt-3 text-xs leading-relaxed text-muted">
+            Reordering a group resets its weight and reps to base.
           </p>
         )}
 
         <div className="mt-4 space-y-3">
           {groups.map((group) => {
-            const isOpen = expanded.has(group.bodyPart);
-            const groupKey = group.exercises[0]?.id ?? group.bodyPart;
-            const isEditing = editingKey === groupKey;
-            const canReorder = group.exercises.length > 1 && !referenceOnly;
+            const groupKey = groupKeyOf(group);
+            const draft = editing ? drafts[groupKey] : undefined;
+            const isOpen = editing || expanded.has(group.bodyPart);
             return (
               <div key={groupKey} className="overflow-hidden rounded-card bg-paper-card shadow-card">
-                <div className="flex w-full items-center justify-between px-5 py-4">
-                  <button
-                    onClick={() => toggle(group.bodyPart)}
-                    disabled={isEditing}
-                    className="flex flex-1 items-center gap-3 text-left disabled:cursor-default"
-                  >
-                    <div>
-                      <div className="text-base font-bold tracking-tight text-ink">
-                        {group.bodyPart}
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted">
-                        {group.exercises.length}{' '}
-                        {group.exercises.length === 1 ? 'exercise' : 'exercises'}
-                      </div>
-                    </div>
-                  </button>
-                  <div className="flex items-center gap-3">
-                    {isEditing ? (
-                      <>
-                        <button
-                          onClick={cancelEdit}
-                          disabled={saving}
-                          className="text-sm font-medium text-muted active:text-ink disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => saveEdit(group)}
-                          disabled={saving}
-                          className="pressable rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
-                        >
-                          {saving ? 'Saving…' : 'Done'}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        {isOpen && canReorder && (
-                          <button
-                            onClick={() => startEdit(group)}
-                            className="text-sm font-semibold text-ink active:opacity-60"
-                          >
-                            Edit
-                          </button>
-                        )}
-                        <button
-                          onClick={() => toggle(group.bodyPart)}
-                          className="text-muted"
-                          aria-label={isOpen ? 'Collapse' : 'Expand'}
-                        >
-                          <Chevron rotate={isOpen ? -90 : 0} />
-                        </button>
-                      </>
-                    )}
+                {/* The group is a label, not a title: the exercises are what
+                    this screen is for, so they carry the weight and the body
+                    part sits above them the way a section label does. */}
+                <button
+                  onClick={() => toggle(group.bodyPart)}
+                  disabled={editing}
+                  className="flex min-h-[52px] w-full items-center justify-between px-5 py-3 text-left disabled:cursor-default"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink">
+                      {group.bodyPart}
+                    </span>
+                    <span className="text-caption text-muted">
+                      {group.exercises.length}{' '}
+                      {group.exercises.length === 1 ? 'exercise' : 'exercises'}
+                    </span>
                   </div>
-                </div>
+                  {!editing && (
+                    <span className="text-muted" aria-label={isOpen ? 'Collapse' : 'Expand'}>
+                      <Chevron rotate={isOpen ? -90 : 0} />
+                    </span>
+                  )}
+                </button>
 
-                {isOpen && isEditing && (
+                {draft && (
                   <div className="border-t border-line">
-                    <p className="px-5 pt-3 text-xs leading-relaxed text-muted">
-                      Reordering resets weight &amp; reps to base for {group.bodyPart}.
-                    </p>
                     {draft.map((ex, i) => (
                       <ReorderRow
                         key={ex.id}
@@ -542,20 +684,19 @@ export function DayView({
                         isFirst={i === 0}
                         isLast={i === draft.length - 1}
                         disabled={saving}
-                        onUp={() => moveDraft(i, i - 1)}
-                        onDown={() => moveDraft(i, i + 1)}
+                        onUp={() => moveDraft(groupKey, i, i - 1)}
+                        onDown={() => moveDraft(groupKey, i, i + 1)}
                       />
                     ))}
                   </div>
                 )}
 
-                {isOpen && !isEditing && (
+                {isOpen && !draft && (
                   <div className="border-t border-line">
                     {group.exercises.map((ex, i) => (
                       <ExerciseRow
                         key={ex.id}
                         exercise={ex}
-                        index={i + 1}
                         partnerNames={supersetPartnerNames(ex, exercises)}
                         readOnly={referenceOnly}
                         isLast={i === group.exercises.length - 1}
@@ -577,38 +718,24 @@ export function DayView({
           scrolling underneath reads as passing behind the button rather than
           being cut off by it — the same footer the completion screen uses. */}
       {!referenceOnly && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30">
+        <div
+          aria-hidden={heroCtaVisible}
+          className={`pointer-events-none fixed inset-x-0 bottom-0 z-30 transition-[opacity,transform] duration-sheet ease-snap ${
+            heroCtaVisible ? 'translate-y-4 opacity-0' : 'translate-y-0 opacity-100'
+          }`}
+        >
           <div className="h-10 bg-gradient-to-t from-paper to-transparent backdrop-blur-[2px]" />
           <div className="bg-paper px-5 pt-2 pb-[max(env(safe-area-inset-bottom),24px)]">
             <div className="mx-auto w-full max-w-md">
-              {inProgress && (
-                <div className="pointer-events-auto mb-2.5 flex items-center justify-center gap-2 text-xs text-muted">
-                  <span>{inProgress.setsLogged} sets logged so far</span>
-                  <span className="h-1 w-1 rounded-full bg-muted/50" />
-                  <button
-                    onClick={() => setConfirmDiscard(true)}
-                    className="font-medium underline-offset-2 active:underline"
-                  >
-                    Discard workout
-                  </button>
-                </div>
-              )}
               <button
-                className="pressable pointer-events-auto w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+                tabIndex={heroCtaVisible ? -1 : 0}
+                className={`pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50 ${
+                  heroCtaVisible ? '' : 'pointer-events-auto'
+                }`}
                 disabled={loadingSession}
-                onClick={() => {
-                  haptics.commit();
-                  if (inProgress) {
-                    const target =
-                      exercises[inProgress.lastExerciseIdx] ?? groups[0]?.exercises[0];
-                    if (target) onTapExercise?.(target, inProgress.sessionId);
-                  } else {
-                    const first = groups[0]?.exercises[0];
-                    if (first) onTapExercise?.(first);
-                  }
-                }}
+                onClick={startOrContinue}
               >
-                {loadingSession ? 'Loading…' : inProgress ? 'Continue workout' : 'Start workout'}
+                {ctaLabel}
               </button>
             </div>
           </div>
@@ -629,15 +756,12 @@ export function DayView({
 
 function ExerciseRow({
   exercise,
-  index,
   partnerNames,
   isLast,
   onTap,
   readOnly,
 }: {
   exercise: PlanExerciseRow;
-  // Its place in its body-part group, counting from 1 — the order it's done in.
-  index: number;
   // The rest of this exercise's superset / tri-set / giant set, if it's in one.
   partnerNames: string[];
   isLast: boolean;
@@ -659,9 +783,6 @@ function ExerciseRow({
   return (
     <div className={`px-5 py-4 ${!isLast ? 'border-b border-line' : ''}`}>
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-strong text-xs font-semibold text-muted">
-          {index}
-        </span>
         <div className="min-w-0 flex-1">
           <button
             type="button"
@@ -708,8 +829,7 @@ function ExerciseRow({
       </div>
 
       {hasNotes && (
-        // Indented to the row's text column, clear of the number.
-        <div className="mt-2.5 pl-10">
+        <div className="mt-2.5">
           <button
             onClick={() => setNotesOpen((v) => !v)}
             className="flex items-center gap-1.5 text-xs font-medium text-muted active:text-ink"
@@ -861,25 +981,26 @@ function TickBadge() {
   );
 }
 
-function StatChip({
-  icon,
-  shrink = false,
-  children,
-}: {
-  icon: React.ReactNode;
-  /** Let this chip truncate when the row runs out of room. */
-  shrink?: boolean;
-  children: React.ReactNode;
-}) {
+function HeroStat({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div
-      className={`flex ${shrink ? 'min-w-0' : 'shrink-0'} items-center gap-1.5 whitespace-nowrap rounded-control bg-surface-strong px-2.5 py-2 text-xs font-medium text-ink`}
-    >
-      {/* Icons are drawn at 18px; at this size they sit at 14, which the
-          viewBox handles. Kept small so all three chips fit one line. */}
-      <span className="flex shrink-0 text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-      <span className="truncate">{children}</span>
-    </div>
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <span className="flex text-white/55 [&>svg]:h-4 [&>svg]:w-4">{icon}</span>
+      {children}
+    </span>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M15 5l-7 7 7 7"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
