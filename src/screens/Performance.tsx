@@ -330,6 +330,9 @@ export function Performance() {
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
       >
         <PageHeader title="Performance" />
+        {!loading && hasAnyData && derived?.week && (
+          <WeekIntro facts={derived.week} unit={liftUnit} />
+        )}
 
         {loading ? (
           <LoadingState />
@@ -344,7 +347,6 @@ export function Performance() {
                 target={derived.weeklyTarget}
                 streak={derived.streak}
               />
-              {derived.week && <WeekCard facts={derived.week} unit={liftUnit} />}
             </Block>
 
             {data.perf.bodyWeights.length > 0 && (
@@ -382,7 +384,7 @@ export function Performance() {
                 so a couple of missed days don't read as a collapse, and a
                 Monday with nothing written down yet doesn't blank the tile
                 entirely, which is what made steps look broken. */}
-            <Block>
+            <Block tight>
               <div className="grid grid-cols-3 gap-2.5">
                 <MiniTile
                   icon={<BoltIcon />}
@@ -414,7 +416,7 @@ export function Performance() {
             </Block>
 
             {derived.volume.some((p) => p.sets > 0) && (
-              <Block>
+              <Block tight>
                 <TrainingVolumeCard volume={derived.volume} />
               </Block>
             )}
@@ -509,14 +511,16 @@ function PlanHero({
 }
 
 /**
- * The week in a sentence or two, under the plan card.
+ * The week in a sentence or two, straight under the page title.
  *
- * The figures around it on this tab each answer one question; this is the one
+ * The figures below it on this tab each answer one question; this is the one
  * place that says how they add up, the way Strava puts a line on an activity.
+ * It sits on the page rather than in a card: it's the tab's opening line, not
+ * another figure to weigh against the rest.
  * It's written from templates over the same facts (lib/summary), so it can
  * only say what the numbers do, and it reads the same with no signal.
  */
-function WeekCard({ facts, unit }: { facts: WeekFacts; unit: MachineUnit }) {
+function WeekIntro({ facts, unit }: { facts: WeekFacts; unit: MachineUnit }) {
   const line = weekLine(facts, {
     // Stable for a given week and count, so it doesn't reshuffle on every visit
     // but does move on once another workout is in.
@@ -529,14 +533,12 @@ function WeekCard({ facts, unit }: { facts: WeekFacts; unit: MachineUnit }) {
   if (!line) return null;
   const against = comparisonLabel(facts);
   return (
-    <div className="mt-3 rounded-card bg-paper-card p-5 shadow-card">
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="text-base font-semibold text-ink">
-          {facts.which === 'this' ? 'This week' : 'Last week'}
-        </div>
-        {against && <div className="shrink-0 text-caption text-muted">{against}</div>}
+    <div className="mt-1">
+      <p className="text-base leading-snug text-ink-soft">{line}</p>
+      <div className="mt-1.5 text-caption text-muted">
+        {facts.which === 'this' ? 'This week' : 'Last week'}
+        {against && ` · ${against}`}
       </div>
-      <p className="mt-1.5 text-sm leading-snug text-ink-soft">{line}</p>
     </div>
   );
 }
@@ -1064,8 +1066,10 @@ function formatLoadShort(kg: number, unit: MachineUnit): string {
  * and over, and the stagger held the last card at zero opacity for 420ms after
  * the loading state had already cleared.
  */
-function Block({ children }: { children: React.ReactNode }) {
-  return <div className="mt-9 first:mt-6">{children}</div>;
+function Block({ children, tight }: { children: React.ReactNode; tight?: boolean }) {
+  // `tight` is for the row of small tiles and the card after it. Sections with
+  // a heading need the full gap to read as separate; three tiles don't.
+  return <div className={tight ? 'mt-6' : 'mt-9 first:mt-6'}>{children}</div>;
 }
 
 // --- One movement, on its own screen ---------------------------------------
