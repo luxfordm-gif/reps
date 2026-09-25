@@ -429,18 +429,20 @@ export function DayView({
       >
         {/* Taller than the usual 44px bar: over the photo the back button is
             the only way out, and jammed against the top edge it was easy to
-            miss. The extra height gives it room above and below. */}
+            miss. The extra height gives it room above and below. It's a bare
+            chevron rather than a frosted circle, so it doesn't compete with
+            the title; a soft shadow keeps it legible on a bright photo. */}
         <div className="relative mx-auto flex h-14 max-w-md items-center justify-center px-5">
           <button
             onClick={onBack}
             className={`pressable absolute left-3 flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-pop ${
               heroGone
                 ? 'text-ink active:bg-surface-strong'
-                : 'bg-white/20 text-white backdrop-blur-md active:bg-white/30'
+                : 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] active:bg-white/15'
             }`}
             aria-label="Back"
           >
-            {/* The circle is 44px; the tap area is 60, reaching into the corner. */}
+            {/* The button is 44px; the tap area is 60, reaching into the corner. */}
             <span className="absolute -inset-2" aria-hidden />
             <BackIcon />
           </button>
@@ -532,11 +534,12 @@ export function DayView({
           {!referenceOnly && (
             <div ref={heroCtaRef} className="mt-5">
               <button
-                className="pressable w-full rounded-pill bg-white py-4 text-base font-semibold text-ink transition-opacity active:opacity-80 disabled:opacity-50"
+                className="pressable flex w-full items-center justify-center gap-2.5 rounded-pill bg-white py-4 text-base font-semibold text-ink transition-opacity active:opacity-80 disabled:opacity-50"
                 disabled={loadingSession}
                 onClick={startOrContinue}
               >
                 {ctaLabel}
+                {!loadingSession && <ForwardArrow />}
               </button>
               {inProgress && (
                 <div className="mt-3 flex items-center justify-center gap-2 text-xs text-white/65">
@@ -729,13 +732,14 @@ export function DayView({
             <div className="mx-auto w-full max-w-md">
               <button
                 tabIndex={heroCtaVisible ? -1 : 0}
-                className={`pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50 ${
+                className={`pressable flex w-full items-center justify-center gap-2.5 rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50 ${
                   heroCtaVisible ? '' : 'pointer-events-auto'
                 }`}
                 disabled={loadingSession}
                 onClick={startOrContinue}
               >
                 {ctaLabel}
+                {!loadingSession && <ForwardArrow />}
               </button>
             </div>
           </div>
@@ -997,6 +1001,21 @@ function BackIcon() {
         d="M15 5l-7 7 7 7"
         stroke="currentColor"
         strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// Points the start button forward, into the workout.
+function ForwardArrow() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path
+        d="M4 10h12M11 5l5 5-5 5"
+        stroke="currentColor"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
