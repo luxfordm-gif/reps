@@ -89,6 +89,31 @@ function normalise(dayName: string): string {
 }
 
 export function imageForDay(dayName: string): string | null {
+  const key = photoKey(dayName);
+  return key ? DAY_IMAGES[key] : null;
+}
+
+/**
+ * How far to slide a photo sideways in the workout day's hero, as a fraction
+ * of its width. Positive moves it right.
+ *
+ * The photos are square and were framed for the Home tiles, where all of each
+ * one shows. The hero crops them and fades their lower half to ink, so a
+ * subject that sat fine in the square can land off-centre: in the legs shot the
+ * empty barbell side ends up on the right. The hero zooms the photo in far
+ * enough to cover any shift listed here (up to 0.05).
+ */
+const HERO_SHIFT: Record<string, number> = {
+  legs: 0.05,
+};
+
+export function heroShiftForDay(dayName: string): number {
+  const key = photoKey(dayName);
+  return key ? (HERO_SHIFT[key] ?? 0) : 0;
+}
+
+/** The DAY_IMAGES key a day's photo is filed under, or null if it has none. */
+function photoKey(dayName: string): string | null {
   const key = normalise(dayName);
   const exact = lookup(key);
   if (exact) return exact;
@@ -105,5 +130,7 @@ export function imageForDay(dayName: string): string | null {
 }
 
 function lookup(key: string): string | null {
-  return DAY_IMAGES[key] ?? DAY_IMAGES[ALIASES[key] ?? ''] ?? null;
+  if (DAY_IMAGES[key]) return key;
+  const alias = ALIASES[key];
+  return alias && DAY_IMAGES[alias] ? alias : null;
 }

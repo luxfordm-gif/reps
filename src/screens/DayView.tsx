@@ -26,7 +26,7 @@ import { clearHomeCache } from '../lib/homeCache';
 import { useNetStatus } from '../lib/offline/net';
 import ExerciseName from '../components/ExerciseName';
 import { DumbbellIcon } from '../components/Tile';
-import { imageForDay } from '../lib/dayImages';
+import { heroShiftForDay, imageForDay } from '../lib/dayImages';
 import { useThemeColor } from '../lib/useThemeColor';
 
 type TrainingDay = FullPlan['training_days'][number];
@@ -67,10 +67,6 @@ function groupByBodyPart(exercises: PlanExerciseRow[]): BodyPartGroup[] {
     }
   }
   return groups;
-}
-
-function googleImagesUrl(name: string): string {
-  return `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(name + ' gym machine')}`;
 }
 
 function totalSetsForDay(exercises: PlanExerciseRow[]): number {
@@ -333,6 +329,7 @@ export function DayView({
 
   const title = baseDayName(day.name);
   const image = imageForDay(day.name);
+  const heroShift = heroShiftForDay(day.name);
 
   // The hero is dark and runs up under the status bar, so the bar over it is
   // see-through with a white back button. Once the hero has scrolled away the
@@ -354,10 +351,11 @@ export function DayView({
       const barHeight = barRef.current?.getBoundingClientRect().height ?? 44;
       const rect = hero.getBoundingClientRect();
       setHeroGone(rect.bottom <= barHeight + 8);
-      // The photo moves at its own pace. Scrolling up, it drifts at a third of
-      // the page's speed and eases in slightly, so the copy slides over it. On
-      // iOS's pull-down bounce it grows from its bottom edge to fill the gap.
-      // Written straight to the element: this runs every frame of a scroll.
+      // The photo moves at its own pace. Scrolling up, it drifts down at half
+      // the page's speed and shrinks back from its resting zoom, so it seems to
+      // fall away behind the copy sliding over it. On iOS's pull-down bounce it
+      // grows from its bottom edge to fill the gap. Written straight to the
+      // element: this runs every frame of a scroll.
       // Each part of the copy fades as it slides up under the bar, so the
       // back button never sits on top of half-read text — and the start
       // button stays solid for as long as it's clear of the bar.
@@ -371,10 +369,11 @@ export function DayView({
       if (img && !reduceMotion) {
         const y = window.scrollY;
         if (y < 0) {
-          img.style.transform = `scale(${1 + -y / rect.height})`;
+          img.style.transform = heroPhotoTransform(heroShift, HERO_ZOOM_REST + -y / rect.height, 0);
         } else {
-          const t = Math.min(y, rect.height);
-          img.style.transform = `translate3d(0, ${t * 0.35}px, 0) scale(${1 + (t / rect.height) * 0.12})`;
+          const t = Math.min(y, rect.height) / rect.height;
+          const zoom = HERO_ZOOM_REST - (HERO_ZOOM_REST - HERO_ZOOM_END) * t;
+          img.style.transform = heroPhotoTransform(heroShift, zoom, t * rect.height * 0.5);
         }
       }
     };
@@ -389,7 +388,7 @@ export function DayView({
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
     };
-  }, [reduceMotion]);
+  }, [reduceMotion, heroShift]);
   // Status bar matches whatever is under it: ink over the hero, paper after.
   useThemeColor(heroGone ? '#FAFAFA' : '#0A0A0A');
 
@@ -429,18 +428,20 @@ export function DayView({
       >
         {/* Taller than the usual 44px bar: over the photo the back button is
             the only way out, and jammed against the top edge it was easy to
-            miss. The extra height gives it room above and below. */}
+            miss. The extra height gives it room above and below. It's a bare
+            chevron rather than a frosted circle, so it doesn't compete with
+            the title; a soft shadow keeps it legible on a bright photo. */}
         <div className="relative mx-auto flex h-14 max-w-md items-center justify-center px-5">
           <button
             onClick={onBack}
             className={`pressable absolute left-3 flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-pop ${
               heroGone
                 ? 'text-ink active:bg-surface-strong'
-                : 'bg-white/20 text-white backdrop-blur-md active:bg-white/30'
+                : 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] active:bg-white/15'
             }`}
             aria-label="Back"
           >
-            {/* The circle is 44px; the tap area is 60, reaching into the corner. */}
+            {/* The button is 44px; the tap area is 60, reaching into the corner. */}
             <span className="absolute -inset-2" aria-hidden />
             <BackIcon />
           </button>
@@ -474,6 +475,15 @@ export function DayView({
               aria-hidden
               ref={heroImageRef}
               className="absolute inset-0 h-full w-full origin-bottom object-cover opacity-60 will-change-transform"
+              // The resting frame, so the first paint matches the first scroll
+              // and a reduced-motion phone still gets the photo centred.
+              style={{
+                transform: heroPhotoTransform(
+                  heroShift,
+                  reduceMotion ? HERO_ZOOM_END : HERO_ZOOM_REST,
+                  0,
+                ),
+              }}
             />
             {/* Light at the top so the photo reads, near-solid by the copy so
                 the words sit on ink rather than on someone's shoulder. */}
@@ -532,11 +542,12 @@ export function DayView({
           {!referenceOnly && (
             <div ref={heroCtaRef} className="mt-5">
               <button
-                className="pressable w-full rounded-pill bg-white py-4 text-base font-semibold text-ink transition-opacity active:opacity-80 disabled:opacity-50"
+                className="pressable flex w-full items-center justify-center gap-2.5 rounded-pill bg-white py-4 text-base font-semibold text-ink transition-opacity active:opacity-80 disabled:opacity-50"
                 disabled={loadingSession}
                 onClick={startOrContinue}
               >
                 {ctaLabel}
+                {!loadingSession && <ForwardArrow />}
               </button>
               {inProgress && (
                 <div className="mt-3 flex items-center justify-center gap-2 text-xs text-white/65">
@@ -729,13 +740,14 @@ export function DayView({
             <div className="mx-auto w-full max-w-md">
               <button
                 tabIndex={heroCtaVisible ? -1 : 0}
-                className={`pressable w-full rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50 ${
+                className={`pressable flex w-full items-center justify-center gap-2.5 rounded-pill bg-ink py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50 ${
                   heroCtaVisible ? '' : 'pointer-events-auto'
                 }`}
                 disabled={loadingSession}
                 onClick={startOrContinue}
               >
                 {ctaLabel}
+                {!loadingSession && <ForwardArrow />}
               </button>
             </div>
           </div>
@@ -775,61 +787,65 @@ function ExerciseRow({
   // exercise can have both, and only one used to show.
   const badges = exerciseBadges(partnerNames.length, exercise.set_scheme);
 
-  function openImages(e: React.MouseEvent) {
-    e.stopPropagation();
-    window.open(googleImagesUrl(exercise.name), '_blank', 'noopener,noreferrer');
-  }
+  // The whole row opens the exercise. The name used to open a Google Images
+  // search instead, so the biggest thing on the row took you out of the app
+  // mid-session; the exercise screen still has that link.
+  const body = (
+    <>
+      <span className="block min-w-0 flex-1">
+        <span className="block text-base font-semibold leading-tight text-ink">
+          <ExerciseName name={exercise.name} />
+        </span>
+        <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <span>
+            {exercise.total_sets ?? '–'} × {exercise.rep_range}
+          </span>
+          {badges.map((badge, i) => (
+            // The first badge keeps the weight it always had; a second one
+            // sits behind it so the pair reads as one thing and its detail,
+            // rather than two competing labels.
+            <span
+              key={badge}
+              className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow ${
+                i === 0 ? 'bg-ink text-white' : 'bg-ink/10 text-ink'
+              }`}
+            >
+              {badge}
+            </span>
+          ))}
+        </span>
+        {partnerNames.length > 0 && (
+          <span className="mt-1 block text-xs text-muted">
+            Alternates with{' '}
+            <span className="font-medium text-ink">{formatNameList(partnerNames)}</span>
+          </span>
+        )}
+      </span>
+      {!readOnly && (
+        <span className="self-center text-muted" aria-hidden>
+          <ChevronSmall />
+        </span>
+      )}
+    </>
+  );
+  const bodyClass = `flex w-full items-start gap-3 px-5 pt-4 text-left ${hasNotes ? 'pb-2.5' : 'pb-4'}`;
 
   return (
-    <div className={`px-5 py-4 ${!isLast ? 'border-b border-line' : ''}`}>
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <button
-            type="button"
-            onClick={openImages}
-            className="text-left text-base font-semibold leading-tight text-ink underline-offset-2 active:underline"
-          >
-            <ExerciseName name={exercise.name} />
-          </button>
-          <div
-            onClick={onTap}
-            className="mt-1 flex cursor-pointer flex-wrap items-center gap-1.5 text-xs text-muted"
-          >
-            <span>
-              {exercise.total_sets ?? '–'} × {exercise.rep_range}
-            </span>
-            {badges.map((badge, i) => (
-              // The first badge keeps the weight it always had; a second one
-              // sits behind it so the pair reads as one thing and its detail,
-              // rather than two competing labels.
-              <span
-                key={badge}
-                className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow ${
-                  i === 0 ? 'bg-ink text-white' : 'bg-ink/10 text-ink'
-                }`}
-              >
-                {badge}
-              </span>
-            ))}
-          </div>
-          {partnerNames.length > 0 && (
-            <div onClick={onTap} className="mt-1 cursor-pointer text-xs text-muted">
-              Alternates with{' '}
-              <span className="font-medium text-ink">
-                {formatNameList(partnerNames)}
-              </span>
-            </div>
-          )}
-        </div>
-        {!readOnly && (
-          <button onClick={onTap} className="self-center text-muted" aria-label="Open exercise">
-            <ChevronSmall />
-          </button>
-        )}
-      </div>
+    <div className={!isLast ? 'border-b border-line' : ''}>
+      {readOnly ? (
+        <div className={bodyClass}>{body}</div>
+      ) : (
+        <button
+          type="button"
+          onClick={onTap}
+          className={`${bodyClass} transition-colors duration-150 active:bg-paper`}
+        >
+          {body}
+        </button>
+      )}
 
       {hasNotes && (
-        <div className="mt-2.5">
+        <div className="px-5 pb-4">
           <button
             onClick={() => setNotesOpen((v) => !v)}
             className="flex items-center gap-1.5 text-xs font-medium text-muted active:text-ink"
@@ -981,6 +997,18 @@ function TickBadge() {
   );
 }
 
+// The hero's photo rests zoomed in and shrinks to HERO_ZOOM_END as the hero
+// scrolls away. Never below 1.1, so a sideways shift of up to 5% of the width
+// (see heroShiftForDay) still leaves no gap at either edge. Scaling from the
+// bottom edge keeps the bottom pinned and lets the extra height spill upwards,
+// out of sight above the page.
+const HERO_ZOOM_REST = 1.22;
+const HERO_ZOOM_END = 1.12;
+
+function heroPhotoTransform(shift: number, zoom: number, drop: number): string {
+  return `translate3d(${shift * 100}%, ${drop}px, 0) scale(${zoom})`;
+}
+
 function HeroStat({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
@@ -997,6 +1025,21 @@ function BackIcon() {
         d="M15 5l-7 7 7 7"
         stroke="currentColor"
         strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// Points the start button forward, into the workout.
+function ForwardArrow() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path
+        d="M4 10h12M11 5l5 5-5 5"
+        stroke="currentColor"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

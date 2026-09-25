@@ -1,7 +1,7 @@
 // Tests the day-name → photo lookup: which spellings of a training day find
 // their picture, and which correctly fall back to a letter tile.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-day-images.mjs
-import { imageForDay } from '../src/lib/dayImages.ts';
+import { heroShiftForDay, imageForDay } from '../src/lib/dayImages.ts';
 
 let failures = 0;
 function has(label, dayName) {
@@ -84,6 +84,28 @@ none('a day name we have never seen', 'Cardio');
 none('a rest day is not mobility', 'Rest Day');
 none('empty', '');
 none('a number on its own', '3');
+
+console.log('\n=== the hero nudges an off-centre photo ===');
+function shift(label, dayName, want) {
+  const got = heroShiftForDay(dayName);
+  if (got === want) {
+    console.log(`  ✓ ${label}`);
+  } else {
+    failures += 1;
+    console.log(`  ✗ ${label}\n      "${dayName}" shifted ${got}, wanted ${want}`);
+  }
+}
+shift('legs is moved right', 'Legs', 0.05);
+shift('by whatever name the legs photo is found', 'Quads / Calves', 0.05);
+shift('a centred photo stays put', 'Push', 0);
+shift('no photo, no shift', 'Cardio', 0);
+// The hero zooms in only far enough to cover 5% either way.
+for (const day of ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms', 'Abs', 'Upper', 'Lower', 'Push', 'Pull', 'Full Body', 'Mobility']) {
+  if (Math.abs(heroShiftForDay(day)) > 0.05) {
+    failures += 1;
+    console.log(`  ✗ ${day} shifts past the hero's zoom`);
+  }
+}
 
 console.log(failures === 0 ? '\nAll passed.\n' : `\n${failures} failed.\n`);
 process.exit(failures === 0 ? 0 : 1);
