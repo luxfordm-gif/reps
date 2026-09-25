@@ -26,7 +26,7 @@ import { clearHomeCache } from '../lib/homeCache';
 import { useNetStatus } from '../lib/offline/net';
 import ExerciseName from '../components/ExerciseName';
 import { DumbbellIcon } from '../components/Tile';
-import { imageForDay } from '../lib/dayImages';
+import { heroShiftForDay, imageForDay } from '../lib/dayImages';
 import { useThemeColor } from '../lib/useThemeColor';
 
 type TrainingDay = FullPlan['training_days'][number];
@@ -333,6 +333,7 @@ export function DayView({
 
   const title = baseDayName(day.name);
   const image = imageForDay(day.name);
+  const heroShift = heroShiftForDay(day.name);
 
   // The hero is dark and runs up under the status bar, so the bar over it is
   // see-through with a white back button. Once the hero has scrolled away the
@@ -354,10 +355,11 @@ export function DayView({
       const barHeight = barRef.current?.getBoundingClientRect().height ?? 44;
       const rect = hero.getBoundingClientRect();
       setHeroGone(rect.bottom <= barHeight + 8);
-      // The photo moves at its own pace. Scrolling up, it drifts at a third of
-      // the page's speed and eases in slightly, so the copy slides over it. On
-      // iOS's pull-down bounce it grows from its bottom edge to fill the gap.
-      // Written straight to the element: this runs every frame of a scroll.
+      // The photo moves at its own pace. Scrolling up, it drifts down at half
+      // the page's speed and shrinks back from its resting zoom, so it seems to
+      // fall away behind the copy sliding over it. On iOS's pull-down bounce it
+      // grows from its bottom edge to fill the gap. Written straight to the
+      // element: this runs every frame of a scroll.
       // Each part of the copy fades as it slides up under the bar, so the
       // back button never sits on top of half-read text — and the start
       // button stays solid for as long as it's clear of the bar.
@@ -371,10 +373,11 @@ export function DayView({
       if (img && !reduceMotion) {
         const y = window.scrollY;
         if (y < 0) {
-          img.style.transform = `scale(${1 + -y / rect.height})`;
+          img.style.transform = heroPhotoTransform(heroShift, HERO_ZOOM_REST + -y / rect.height, 0);
         } else {
-          const t = Math.min(y, rect.height);
-          img.style.transform = `translate3d(0, ${t * 0.35}px, 0) scale(${1 + (t / rect.height) * 0.12})`;
+          const t = Math.min(y, rect.height) / rect.height;
+          const zoom = HERO_ZOOM_REST - (HERO_ZOOM_REST - HERO_ZOOM_END) * t;
+          img.style.transform = heroPhotoTransform(heroShift, zoom, t * rect.height * 0.5);
         }
       }
     };
@@ -389,7 +392,7 @@ export function DayView({
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
     };
-  }, [reduceMotion]);
+  }, [reduceMotion, heroShift]);
   // Status bar matches whatever is under it: ink over the hero, paper after.
   useThemeColor(heroGone ? '#FAFAFA' : '#0A0A0A');
 
@@ -476,6 +479,15 @@ export function DayView({
               aria-hidden
               ref={heroImageRef}
               className="absolute inset-0 h-full w-full origin-bottom object-cover opacity-60 will-change-transform"
+              // The resting frame, so the first paint matches the first scroll
+              // and a reduced-motion phone still gets the photo centred.
+              style={{
+                transform: heroPhotoTransform(
+                  heroShift,
+                  reduceMotion ? HERO_ZOOM_END : HERO_ZOOM_REST,
+                  0,
+                ),
+              }}
             />
             {/* Light at the top so the photo reads, near-solid by the copy so
                 the words sit on ink rather than on someone's shoulder. */}
@@ -983,6 +995,18 @@ function TickBadge() {
       </svg>
     </span>
   );
+}
+
+// The hero's photo rests zoomed in and shrinks to HERO_ZOOM_END as the hero
+// scrolls away. Never below 1.1, so a sideways shift of up to 5% of the width
+// (see heroShiftForDay) still leaves no gap at either edge. Scaling from the
+// bottom edge keeps the bottom pinned and lets the extra height spill upwards,
+// out of sight above the page.
+const HERO_ZOOM_REST = 1.22;
+const HERO_ZOOM_END = 1.12;
+
+function heroPhotoTransform(shift: number, zoom: number, drop: number): string {
+  return `translate3d(${shift * 100}%, ${drop}px, 0) scale(${zoom})`;
 }
 
 function HeroStat({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
