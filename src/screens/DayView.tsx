@@ -69,10 +69,6 @@ function groupByBodyPart(exercises: PlanExerciseRow[]): BodyPartGroup[] {
   return groups;
 }
 
-function googleImagesUrl(name: string): string {
-  return `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(name + ' gym machine')}`;
-}
-
 function totalSetsForDay(exercises: PlanExerciseRow[]): number {
   return exercises.reduce((sum, e) => sum + (e.total_sets ?? 0), 0);
 }
@@ -791,61 +787,65 @@ function ExerciseRow({
   // exercise can have both, and only one used to show.
   const badges = exerciseBadges(partnerNames.length, exercise.set_scheme);
 
-  function openImages(e: React.MouseEvent) {
-    e.stopPropagation();
-    window.open(googleImagesUrl(exercise.name), '_blank', 'noopener,noreferrer');
-  }
+  // The whole row opens the exercise. The name used to open a Google Images
+  // search instead, so the biggest thing on the row took you out of the app
+  // mid-session; the exercise screen still has that link.
+  const body = (
+    <>
+      <span className="block min-w-0 flex-1">
+        <span className="block text-base font-semibold leading-tight text-ink">
+          <ExerciseName name={exercise.name} />
+        </span>
+        <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <span>
+            {exercise.total_sets ?? '–'} × {exercise.rep_range}
+          </span>
+          {badges.map((badge, i) => (
+            // The first badge keeps the weight it always had; a second one
+            // sits behind it so the pair reads as one thing and its detail,
+            // rather than two competing labels.
+            <span
+              key={badge}
+              className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow ${
+                i === 0 ? 'bg-ink text-white' : 'bg-ink/10 text-ink'
+              }`}
+            >
+              {badge}
+            </span>
+          ))}
+        </span>
+        {partnerNames.length > 0 && (
+          <span className="mt-1 block text-xs text-muted">
+            Alternates with{' '}
+            <span className="font-medium text-ink">{formatNameList(partnerNames)}</span>
+          </span>
+        )}
+      </span>
+      {!readOnly && (
+        <span className="self-center text-muted" aria-hidden>
+          <ChevronSmall />
+        </span>
+      )}
+    </>
+  );
+  const bodyClass = `flex w-full items-start gap-3 px-5 pt-4 text-left ${hasNotes ? 'pb-2.5' : 'pb-4'}`;
 
   return (
-    <div className={`px-5 py-4 ${!isLast ? 'border-b border-line' : ''}`}>
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <button
-            type="button"
-            onClick={openImages}
-            className="text-left text-base font-semibold leading-tight text-ink underline-offset-2 active:underline"
-          >
-            <ExerciseName name={exercise.name} />
-          </button>
-          <div
-            onClick={onTap}
-            className="mt-1 flex cursor-pointer flex-wrap items-center gap-1.5 text-xs text-muted"
-          >
-            <span>
-              {exercise.total_sets ?? '–'} × {exercise.rep_range}
-            </span>
-            {badges.map((badge, i) => (
-              // The first badge keeps the weight it always had; a second one
-              // sits behind it so the pair reads as one thing and its detail,
-              // rather than two competing labels.
-              <span
-                key={badge}
-                className={`rounded-pill px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow ${
-                  i === 0 ? 'bg-ink text-white' : 'bg-ink/10 text-ink'
-                }`}
-              >
-                {badge}
-              </span>
-            ))}
-          </div>
-          {partnerNames.length > 0 && (
-            <div onClick={onTap} className="mt-1 cursor-pointer text-xs text-muted">
-              Alternates with{' '}
-              <span className="font-medium text-ink">
-                {formatNameList(partnerNames)}
-              </span>
-            </div>
-          )}
-        </div>
-        {!readOnly && (
-          <button onClick={onTap} className="self-center text-muted" aria-label="Open exercise">
-            <ChevronSmall />
-          </button>
-        )}
-      </div>
+    <div className={!isLast ? 'border-b border-line' : ''}>
+      {readOnly ? (
+        <div className={bodyClass}>{body}</div>
+      ) : (
+        <button
+          type="button"
+          onClick={onTap}
+          className={`${bodyClass} transition-colors duration-150 active:bg-paper`}
+        >
+          {body}
+        </button>
+      )}
 
       {hasNotes && (
-        <div className="mt-2.5">
+        <div className="px-5 pb-4">
           <button
             onClick={() => setNotesOpen((v) => !v)}
             className="flex items-center gap-1.5 text-xs font-medium text-muted active:text-ink"
