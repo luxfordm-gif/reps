@@ -3226,13 +3226,10 @@ function SetGroup({
               className={`relative flex items-center gap-2.5 px-4 py-3 transition-colors max-[360px]:gap-2 max-[360px]:px-3 ${
                 !isMain ? 'bg-surface' : ''
               } ${
-                // The group's outline already says which set is up; inside it,
-                // a second box around one row fought with it. A short bar on
-                // the left edge picks out the row without drawing another box.
-                isActive && rows.length > 1
-                  ? 'before:absolute before:inset-y-3 before:left-0 before:w-[3px] before:rounded-r-full before:bg-ink'
-                  : ''
-              } ${!isLastInGroup ? 'border-b border-line/60' : ''} ${shaking ? 'animate-shake' : ''}`}
+                // The group's outline already says which set is up, so rows
+                // inside it get no marker of their own beyond a darker label.
+                !isLastInGroup ? 'border-b border-line/60' : ''
+              } ${shaking ? 'animate-shake' : ''}`}
             >
               <div
                 className={`w-11 shrink-0 text-xs font-semibold uppercase tracking-eyebrow ${
