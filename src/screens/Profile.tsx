@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { PageHeader } from '../components/PageHeader';
 import { DateOfBirthInput } from '../components/DateOfBirthInput';
@@ -50,10 +50,11 @@ import {
   getWeeklyWorkoutSummary,
   hasAnySessionsBefore,
   mondayOfWeek,
-  type WeeklyWorkoutSummary,
-  type ExerciseWeekBest,
 } from '../lib/sessionsApi';
 import { kgToLb } from '../lib/units';
+import { buildCoachSummary } from '../lib/coachSummary';
+import { copyTextWhenReady } from '../lib/copyText';
+import { haptics } from '../lib/haptics';
 
 interface Props {
   onUploadPlan: () => void;
@@ -394,7 +395,7 @@ export function Profile({
             <div className="border-t border-line" />
             <CoachExportRow />
             <div className="border-t border-line" />
-            <CoachWeeklySummaryRow />
+            <CoachWeeklySummaryRow name={profile?.display_name ?? null} plan={plan} />
           </div>
         </Section>
 
@@ -558,37 +559,107 @@ function ChevronRight() {
   );
 }
 
-function CoachExportRow() {
-  const [copied, setCopied] = useState(false);
+type CopyState = 'idle' | 'working' | 'copied' | 'empty' | 'failed';
 
-  async function exportWeek() {
-    try {
-      const rows = await getRecentSessionNotes(7);
-      const withNotes = rows.filter((r) => (r.notesToCoach ?? '').trim().length > 0);
-      if (withNotes.length === 0) return;
-      const md = buildCoachExport(withNotes);
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(md);
-      } else {
-        downloadFile(`coach-notes-${todayIso()}.md`, md);
-      }
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // silent — copy is best-effort
-    }
+/** Thrown by a row's builder when there's nothing to copy, so the row can say
+ *  so instead of copying an empty summary. */
+class NothingToCopy extends Error {}
+
+/**
+ * A settings row that copies something for the coach, and says what happened
+ * on the row itself: a tick and "Copied", or why nothing was. It used to swap
+ * its label for a moment and otherwise stay quiet — on a phone that read as a
+ * tap that hadn't landed.
+ */
+function CoachCopyRow({
+  label,
+  hint,
+  emptyHint,
+  build,
+}: {
+  label: string;
+  hint: string;
+  /** What the row says when there's nothing to copy. */
+  emptyHint: string;
+  /** Resolves to the text, or rejects with NothingToCopy. */
+  build: () => Promise<string>;
+}) {
+  const [state, setState] = useState<CopyState>('idle');
+  const timer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    []
+  );
+
+  function copy() {
+    if (state === 'working') return;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    setState('working');
+    // Started inside the tap, before the fetch, so Safari lets it through.
+    const text = build();
+    const copied = copyTextWhenReady(text);
+    void Promise.all([copied, text.then(() => null, (e: unknown) => e)]).then(([ok, err]) => {
+      const next: CopyState = err instanceof NothingToCopy ? 'empty' : ok ? 'copied' : 'failed';
+      setState(next);
+      if (next === 'copied') haptics.commit();
+      else haptics.alert();
+      timer.current = window.setTimeout(() => setState('idle'), next === 'copied' ? 2500 : 3500);
+    });
   }
+
+  const title = state === 'copied' ? 'Copied' : label;
+  const sub =
+    state === 'working'
+      ? 'Putting it together…'
+      : state === 'copied'
+        ? 'Paste it into a message to your coach'
+        : state === 'empty'
+          ? emptyHint
+          : state === 'failed'
+            ? "Couldn't copy. Try again."
+            : hint;
 
   return (
     <button
-      onClick={exportWeek}
-      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-pressed"
+      onClick={copy}
+      aria-live="polite"
+      className="flex w-full items-center justify-between gap-3 py-4 pl-5 pr-6 text-left active:bg-pressed"
     >
-      <div className="text-sm font-semibold text-ink">
-        {copied ? 'Copied' : "Copy this week's notes for coach"}
+      <div className="min-w-0">
+        <div className={`text-sm font-semibold ${state === 'copied' ? 'text-good' : 'text-ink'}`}>
+          {title}
+        </div>
+        <div
+          className={`mt-0.5 text-xs ${
+            state === 'failed' ? 'text-danger' : state === 'copied' ? 'text-good' : 'text-muted'
+          }`}
+        >
+          {sub}
+        </div>
       </div>
-      <CopyIcon />
+      <span className={state === 'copied' ? 'text-good-bright' : 'text-ink'}>
+        {state === 'copied' ? <CheckIcon /> : <CopyIcon />}
+      </span>
     </button>
+  );
+}
+
+function CoachExportRow() {
+  return (
+    <CoachCopyRow
+      label="Copy this week's notes for coach"
+      hint="The notes you left after each workout"
+      emptyHint="No notes for your coach in the last 7 days"
+      build={async () => {
+        const rows = await getRecentSessionNotes(7);
+        const withNotes = rows.filter((r) => (r.notesToCoach ?? '').trim().length > 0);
+        if (withNotes.length === 0) throw new NothingToCopy();
+        return buildCoachExport(withNotes);
+      }}
+    />
   );
 }
 
@@ -601,9 +672,23 @@ function CopyIcon() {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M5 12.5l4.5 4.5L19 7.5"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function buildCoachExport(rows: Awaited<ReturnType<typeof getRecentSessionNotes>>): string {
   const out: string[] = [];
-  out.push(`# Notes for coach`);
+  out.push(`Notes for coach`);
   out.push(`Week ending ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`);
   out.push('');
   for (const r of rows) {
@@ -612,160 +697,66 @@ function buildCoachExport(rows: Awaited<ReturnType<typeof getRecentSessionNotes>
       day: 'numeric',
       month: 'short',
     });
-    out.push(`## ${r.dayName} — ${date}`);
+    out.push(`${r.dayName}, ${date}`);
     if (r.notesToCoach) out.push(r.notesToCoach.trim());
     out.push('');
-  }
-  return out.join('\n');
-}
-
-function CoachWeeklySummaryRow() {
-  const [copied, setCopied] = useState(false);
-
-  async function exportSummary() {
-    try {
-      const thisWeekStart = mondayOfWeek(0);
-      const [thisWeek, hasHistory] = await Promise.all([
-        getWeeklyWorkoutSummary(thisWeekStart),
-        hasAnySessionsBefore(thisWeekStart.toISOString()),
-      ]);
-      if (thisWeek.workoutsDone === 0) return;
-      const prevWeek = hasHistory
-        ? await getWeeklyWorkoutSummary(mondayOfWeek(-1))
-        : null;
-      const md = buildCoachWeeklySummary(thisWeek, prevWeek);
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(md);
-      } else {
-        downloadFile(`coach-weekly-summary-${todayIso()}.md`, md);
-      }
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // silent — copy is best-effort
-    }
-  }
-
-  return (
-    <button
-      onClick={exportSummary}
-      className="flex w-full items-center justify-between px-5 py-4 text-left active:bg-pressed"
-    >
-      <div className="text-sm font-semibold text-ink">
-        {copied ? 'Copied' : "Copy weekly summary for coach"}
-      </div>
-      <CopyIcon />
-    </button>
-  );
-}
-
-function buildCoachWeeklySummary(
-  current: WeeklyWorkoutSummary,
-  previous: WeeklyWorkoutSummary | null
-): string {
-  const unit = getLiftWeightUnit();
-  // Keeps a single decimal so micro-loading (e.g. +2.5 kg on bench) isn't
-  // rounded away — important for hard-to-progress lifts.
-  const fmtW = (kg: number) => {
-    const v = unit === 'lb' ? kgToLb(kg) : kg;
-    const r = Math.round(v * 10) / 10;
-    return `${Number.isInteger(r) ? String(r) : r.toFixed(1)} ${unit}`;
-  };
-  const setStr = (e: { topWeightKg: number; topReps: number }) =>
-    `${fmtW(e.topWeightKg)} × ${e.topReps}`;
-  const dateLong = (d: Date) =>
-    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  const dayAndDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    });
-
-  // Last day of the week is the day before weekEnd (Sunday).
-  const lastDay = new Date(current.weekEnd);
-  lastDay.setDate(lastDay.getDate() - 1);
-
-  const out: string[] = [];
-  out.push(`# Weekly progress`);
-  out.push(`Week of ${dateLong(current.weekStart)} – ${dateLong(lastDay)}`);
-  out.push('');
-
-  if (current.sessions.length > 0) {
-    const list = current.sessions
-      .map((s) => `${s.trainingDayName} (${dayAndDate(s.completedAt)})`)
-      .join(', ');
-    out.push(
-      `${current.workoutsDone} workout${current.workoutsDone === 1 ? '' : 's'}: ${list}`
-    );
-    out.push('');
-  }
-
-  // First week: no comparison yet — give the coach a baseline of best sets.
-  if (!previous) {
-    out.push(`First week of data — no comparison yet. Best set per exercise:`);
-    out.push('');
-    for (const e of current.exerciseBests.slice(0, 8)) {
-      out.push(`- **${e.displayName}** — ${setStr(e)}`);
-    }
-    return out.join('\n').trimEnd() + '\n';
-  }
-
-  // Rank repeated lifts by % gain in estimated 1RM so a small, hard-won PR on a
-  // heavy/stubborn lift (e.g. bench) can outrank a big jump on an easier one.
-  const prevByName = new Map(previous.exerciseBests.map((e) => [e.normalizedName, e]));
-  const wins: { cur: ExerciseWeekBest; prev: ExerciseWeekBest; pct: number }[] = [];
-  for (const cur of current.exerciseBests) {
-    const prev = prevByName.get(cur.normalizedName);
-    if (!prev || cur.bestE1RMkg <= prev.bestE1RMkg) continue;
-    wins.push({ cur, prev, pct: ((cur.bestE1RMkg - prev.bestE1RMkg) / prev.bestE1RMkg) * 100 });
-  }
-  wins.sort((a, b) => b.pct - a.pct);
-
-  out.push(`## Biggest improvements vs last week`);
-  if (wins.length === 0) {
-    out.push(`No measured gains on repeated lifts this week — held steady or building back.`);
-  } else {
-    for (const w of wins.slice(0, 5)) {
-      out.push(formatWin(w.cur, w.prev, w.pct, fmtW, setStr));
-    }
   }
   return out.join('\n').trimEnd() + '\n';
 }
 
-/** One bullet describing an exercise's week-over-week win, e.g.
- *  "- **Deadlift** — 100 kg × 5 → 105 kg × 5  (+5 kg · est. 1RM +3%)". */
-function formatWin(
-  cur: ExerciseWeekBest,
-  prev: ExerciseWeekBest,
-  pct: number,
-  fmtW: (kg: number) => string,
-  setStr: (e: { topWeightKg: number; topReps: number }) => string
-): string {
-  const parts: string[] = [];
-  const dW = cur.topWeightKg - prev.topWeightKg;
-  const dR = cur.topReps - prev.topReps;
-  if (Math.abs(dW) >= 0.05) parts.push(`${dW > 0 ? '+' : '−'}${fmtW(Math.abs(dW))}`);
-  if (dR !== 0) parts.push(`${dR > 0 ? '+' : '−'}${Math.abs(dR)} rep${Math.abs(dR) === 1 ? '' : 's'}`);
-  parts.push(`est. 1RM +${pct < 0.5 ? '<1' : Math.round(pct)}%`);
-  return `- **${cur.displayName}** — ${setStr(prev)} → ${setStr(cur)}  (${parts.join(' · ')})`;
+/** How many weeks a plan rotates over — 2 for a week A / week B plan, 0 if it
+ *  runs the same sessions every week. */
+function rotationLength(plan: FullPlan | null): number {
+  if (!plan) return 0;
+  const weeks = new Set<number>();
+  for (const d of plan.training_days) if (d.week_index != null) weeks.add(d.week_index);
+  return weeks.size >= 2 ? weeks.size : 0;
 }
 
-function todayIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: FullPlan | null }) {
+  return (
+    <CoachCopyRow
+      label="Copy weekly summary for coach"
+      hint="Workouts, strength and top lifts vs last week"
+      emptyHint="No workouts logged this week or last"
+      build={async () => {
+        // Early in the week there may be nothing yet — then the week just
+        // finished is the one worth sending.
+        let offset = 0;
+        let current = await getWeeklyWorkoutSummary(mondayOfWeek(0));
+        if (current.workoutsDone === 0) {
+          offset = -1;
+          current = await getWeeklyWorkoutSummary(mondayOfWeek(-1));
+        }
+        if (current.workoutsDone === 0) throw new NothingToCopy();
 
-function downloadFile(filename: string, content: string) {
-  const blob = new Blob([content], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+        const rotation = rotationLength(plan);
+        const [hasHistory, lastWeek, rotationWeek] = await Promise.all([
+          hasAnySessionsBefore(current.weekStart.toISOString()),
+          getWeeklyWorkoutSummary(mondayOfWeek(offset - 1)),
+          rotation >= 2 ? getWeeklyWorkoutSummary(mondayOfWeek(offset - rotation)) : null,
+        ]);
+
+        const unit = getLiftWeightUnit();
+        // One decimal, so micro-loading (+2.5 kg on bench) isn't rounded away.
+        const weight = (kg: number) => {
+          const v = unit === 'lb' ? kgToLb(kg) : kg;
+          const r = Math.round(v * 10) / 10;
+          return `${Number.isInteger(r) ? String(r) : r.toFixed(1)} ${unit}`;
+        };
+        return buildCoachSummary({
+          name,
+          current,
+          lastWeek: hasHistory ? lastWeek : null,
+          rotation:
+            hasHistory && rotationWeek && rotationWeek.workoutsDone > 0
+              ? { weeksBack: rotation, week: rotationWeek }
+              : null,
+          weight,
+        });
+      }}
+    />
+  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

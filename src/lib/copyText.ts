@@ -52,3 +52,36 @@ export async function copyText(text: string): Promise<boolean> {
     document.body.removeChild(area);
   }
 }
+
+/**
+ * Copy text that isn't ready yet — a summary still being fetched.
+ *
+ * Safari only lets a page write to the clipboard inside the tap that asked for
+ * it, and a network round trip in between is enough for it to refuse. So where
+ * the browser allows, the write is started straight away with a ClipboardItem
+ * that's handed the promise, and it fills in when the text arrives. Anywhere
+ * else it waits for the text and copies as usual.
+ *
+ * Call it synchronously from the tap handler. If `text` rejects, nothing is
+ * copied and this resolves false.
+ */
+export async function copyTextWhenReady(text: Promise<string>): Promise<boolean> {
+  if (
+    typeof ClipboardItem !== 'undefined' &&
+    typeof navigator !== 'undefined' &&
+    navigator.clipboard?.write
+  ) {
+    try {
+      const blob = text.then((t) => new Blob([t], { type: 'text/plain' }));
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+      return true;
+    } catch {
+      // Refused, or the text never came — fall through.
+    }
+  }
+  try {
+    return await copyText(await text);
+  } catch {
+    return false;
+  }
+}

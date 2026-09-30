@@ -2,6 +2,7 @@
 // on Performance. What each says for a given set of facts, and the voice every
 // template has to keep whatever the facts are.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-summary.mjs
+import { buildCoachSummary, weekRange } from '../src/lib/coachSummary.ts';
 import { buildWeekFacts, comparisonLabel, count, mid, sessionLine, weekLine } from '../src/lib/summary.ts';
 
 let failures = 0;
@@ -209,6 +210,61 @@ console.log('\n=== every template keeps the voice ===');
   ok('each ends with a full stop', lines.every((l) => l.endsWith('.')), lines.find((l) => !l.endsWith('.')));
   ok('no template left unfilled', lines.every((l) => !/undefined|null|NaN|\{|\}/.test(l)), lines.find((l) => /undefined|null|NaN|\{|\}/.test(l)));
   ok('short enough to read at a glance', lines.every((l) => l.length <= 200), lines.find((l) => l.length > 200));
+}
+
+console.log('\nCoach summary (copied from Profile)');
+{
+  const week = (start, sessions, bests) => {
+    const weekStart = new Date(start);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    return {
+      weekStart, weekEnd, workoutsDone: sessions.length, totalVolume: 0, totalSets: 0,
+      sessions: sessions.map(([trainingDayName, completedAt]) => ({ trainingDayName, completedAt })),
+      byBodyPart: [],
+      exerciseBests: bests.map(([displayName, w, r]) => ({
+        normalizedName: displayName.toLowerCase(), displayName, bodyPart: null,
+        topWeightKg: w, topReps: r, bestE1RMkg: r <= 1 ? w : w * (1 + r / 30),
+      })),
+    };
+  };
+  const cur = week('2026-09-21T00:00:00', [['Push', '2026-09-21T18:00:00'], ['Pull', '2026-09-23T18:00:00'], ['Legs', '2026-09-25T18:00:00']],
+    [['Squat', 100, 8], ['Bench press', 82.5, 5], ['Row', 60, 10], ['Curl', 15, 10]]);
+  const last = week('2026-09-14T00:00:00', [['Push', '2026-09-14T18:00:00'], ['Pull', '2026-09-16T18:00:00']],
+    [['Squat', 100, 5], ['Bench press', 80, 5], ['Row', 60, 10], ['Curl', 16, 10]]);
+  const two = week('2026-09-07T00:00:00', [['Legs', '2026-09-07T18:00:00']], [['Squat', 90, 5]]);
+
+  eq('week range in one month', weekRange(new Date('2026-09-21T00:00:00')), '21–27 September');
+  eq('week range across a month end', weekRange(new Date('2026-09-28T00:00:00')), '28 September – 4 October');
+
+  const text = buildCoachSummary({ name: 'Matt Luxford', current: cur, lastWeek: last, weight: kg });
+  const lines = text.trim().split('\n');
+  eq('opens with first name and the week', lines[0], "Matt's week, 21–27 September");
+  eq('says how often, and on which days', lines[2], 'Matt trained 3 times: Push (Mon), Pull (Wed), Legs (Fri).');
+  eq('compares the count with last week', lines[3], 'Up from 2 last week.');
+  eq('averages strength across the repeated lifts', lines[4], 'Strength up 1% on last week (estimated 1RM, same lifts).');
+  eq('top lifts, biggest gain first, only the ones that went up',
+    lines.slice(6),
+    ['Top lifts vs last week', '• Squat: 100 kg × 5 → 100 kg × 8 (+9%)', '• Bench press: 80 kg × 5 → 82.5 kg × 5 (+3%)']);
+  ok('no comparison with 2 weeks ago on a plan that repeats weekly', !text.includes('2 weeks ago'));
+  ok('plain text, no markdown', !/[*#]/.test(text), text);
+
+  const rotating = buildCoachSummary({
+    name: null, current: cur, lastWeek: last, rotation: { weeksBack: 2, week: two }, weight: kg,
+  });
+  ok('a two-week plan also compares with 2 weeks ago', rotating.includes('Strength up 1% on last week and up 21% on 2 weeks ago'), rotating);
+  ok('…and lists its top lifts', rotating.includes('Top lifts vs 2 weeks ago\n• Squat: 90 kg × 5 → 100 kg × 8 (+21%)'), rotating);
+  ok('no name reads as a plain heading', rotating.startsWith('Training week, 21–27 September\n\nTrained 3 times'), rotating);
+
+  const first = buildCoachSummary({ name: 'Sam', current: cur, lastWeek: null, weight: kg });
+  ok('first week says there is nothing to compare against', first.includes('First week logged, so nothing to compare against yet.'), first);
+  ok('…and gives best sets instead', first.includes('Best sets\n• Squat: 100 kg × 8'), first);
+  ok('…with no strength line', !first.includes('Strength'), first);
+
+  const flat = buildCoachSummary({ name: 'Sam', current: week('2026-09-21T00:00:00', [['Push', '2026-09-22T18:00:00']], [['Curl', 15, 10]]), lastWeek: last, weight: kg });
+  ok('once, and down on last week', flat.includes('Sam trained once: Push (Tue).\nDown from 2 last week.'), flat);
+  ok('a lift that dropped is reported as down', flat.includes('Strength down 6% on last week'), flat);
+  ok('nothing up is said plainly', flat.includes('• Nothing up on the same lifts — held steady.'), flat);
 }
 
 console.log(failures === 0 ? '\nAll summary tests passed.' : `\n${failures} failed.`);
