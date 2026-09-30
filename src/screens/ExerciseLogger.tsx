@@ -1775,6 +1775,7 @@ export function ExerciseLogger({
           remainingMs={restRemainingMs}
           totalMs={restTotalSeconds * 1000}
           onExpand={() => setRestMinimised(false)}
+          onSkip={clearRest}
         />
       )}
 
@@ -3809,10 +3810,13 @@ function MiniRestBar({
   remainingMs,
   totalMs,
   onExpand,
+  onSkip,
 }: {
   remainingMs: number;
   totalMs: number;
   onExpand: () => void;
+  /** Ends this rest early. The rest length set for the exercise is kept. */
+  onSkip: () => void;
 }) {
   const seconds = Math.ceil(remainingMs / 1000);
   const mins = Math.floor(seconds / 60);
@@ -3823,34 +3827,48 @@ function MiniRestBar({
       className="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-4"
       style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
     >
-      <button
-        onClick={onExpand}
-        aria-label="Expand rest timer"
-        className="pressable pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-pill bg-ink py-2 pl-4 pr-3 text-white shadow-card active:opacity-80"
-      >
-        <span className="text-label font-semibold uppercase tracking-eyebrow text-white/60">
-          Rest
-        </span>
-        <span className="font-mono text-base font-bold tabular-nums">
-          {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
-        </span>
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M6 15l6-6 6 6"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
+      <div className="pointer-events-auto relative flex items-center overflow-hidden rounded-pill bg-ink text-white shadow-card">
+        <button
+          onClick={onExpand}
+          aria-label="Expand rest timer"
+          className="pressable flex items-center gap-3 py-2 pl-4 pr-2 active:opacity-80"
+        >
+          <span className="text-label font-semibold uppercase tracking-eyebrow text-white/60">
+            Rest
+          </span>
+          <span className="font-mono text-base font-bold tabular-nums">
+            {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+          </span>
+          {/* Points down: the full timer opens below the pill. */}
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        </button>
+        <span aria-hidden="true" className="h-5 w-px bg-white/15" />
+        <button
+          onClick={() => {
+            haptics.tick();
+            onSkip();
+          }}
+          aria-label="Skip this rest"
+          className="pressable flex h-11 w-11 items-center justify-center text-white/80 active:bg-white/10 active:text-white"
+        >
+          <TrashGlyph />
+        </button>
         <span
           aria-hidden="true"
-          className="absolute inset-x-0 bottom-0 h-[2px] bg-white/70"
+          className="absolute bottom-0 left-0 h-[2px] bg-white/70"
           style={{ width: `${progress * 100}%`, transition: 'width 250ms linear' }}
         />
-      </button>
+      </div>
     </div>
   );
 }
