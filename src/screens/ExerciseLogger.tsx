@@ -850,7 +850,7 @@ export function ExerciseLogger({
       // without the profile columns won't, so say so rather than leave sets
       // logging a breakdown that can never be saved.
       if (isMissingSidesColumn(e)) {
-        setError('Two-sided machines need migration 0021 run first.');
+        setError('Two sides needs migration 0021 run first.');
       } else if (isMissingProfileColumn(e)) {
         setError('Weight profiles need migrations 0017 and 0018 run first.');
       }
@@ -1470,14 +1470,14 @@ export function ExerciseLogger({
                 title={
                   profile.kind === 'pegs'
                     ? `Loads at ${profile.positions} numbered pegs${
-                        sidesOf(profile) === 2 ? ' on each side' : ''
+                        sidesOf(profile) === 2 ? ', the same on both sides' : ''
                       }`
                     : `Has ${profile.positions} cam positions`
                 }
                 className="inline-flex items-center rounded-pill bg-line px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow text-muted"
               >
                 {profile.kind === 'pegs'
-                  ? `${profile.positions} pegs${sidesOf(profile) === 2 ? ' · 2 sides' : ''}`
+                  ? `${profile.positions} pegs`
                   : `curve 1–${profile.positions}`}
               </span>
             </div>
@@ -1568,6 +1568,13 @@ export function ExerciseLogger({
                 onComplete={handleComplete}
                 onEdit={handleEdit}
                 onSelectCurve={selectCurve}
+                onToggleBothSides={() =>
+                  handleSelectProfile({
+                    kind: profile.kind,
+                    positions: profile.positions,
+                    ...(sidesOf(profile) === 2 ? {} : { sides: 2 as const }),
+                  })
+                }
                 onOpenCalculator={(idx, point) => setCalcOpen({ idx, point })}
               />
             ));
@@ -2127,32 +2134,6 @@ function ExerciseMenu({
                   >
                     +
                   </StepperButton>
-                </div>
-              </div>
-            )}
-            {profile.kind === 'pegs' && (
-              // An arm each side, loaded the same: the pegs take one side and
-              // the set logs both.
-              <div className="mt-2.5 flex items-center justify-between">
-                <span className="text-caption font-semibold text-muted">Sides</span>
-                <div className="flex rounded-pill bg-line p-0.5">
-                  {([1, 2] as const).map((n) => (
-                    <button
-                      key={n}
-                      onClick={() =>
-                        onSelectProfile({
-                          kind: profile.kind,
-                          positions: profile.positions,
-                          ...(n === 2 ? { sides: 2 as const } : {}),
-                        })
-                      }
-                      className={`rounded-pill px-3 py-1 text-xs font-semibold uppercase tracking-eyebrow ${
-                        sidesOf(profile) === n ? 'bg-ink text-white' : 'text-muted'
-                      }`}
-                    >
-                      {n === 1 ? 'One' : 'Two'}
-                    </button>
-                  ))}
                 </div>
               </div>
             )}
@@ -3168,6 +3149,29 @@ function unitSuffix(unit: MachineUnit): string {
 // under the letters than over them, and the letter spacing puts a gap after the
 // last letter with nothing to balance it. Every chip in here is nudged the same
 // way — down a pixel, right a pixel.
+function BothSidesSwitch({ on, onChange }: { on: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label="Two sides"
+      onClick={onChange}
+      className={`relative h-6 w-10 shrink-0 rounded-pill transition-colors ${
+        on ? 'bg-ink' : 'bg-line'
+      }`}
+    >
+      <span
+        className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-card"
+        style={{
+          left: on ? '18px' : '2px',
+          transition: 'left 180ms cubic-bezier(.22,.85,.36,1)',
+        }}
+      />
+    </button>
+  );
+}
+
 function SetGroup({
   rows,
   activeIndex,
@@ -3181,6 +3185,7 @@ function SetGroup({
   onChange,
   onChangePoint,
   onSelectCurve,
+  onToggleBothSides,
   onComplete,
   onEdit,
   onOpenCalculator,
@@ -3204,6 +3209,9 @@ function SetGroup({
   onChange: (idx: number, patch: Partial<SetState>) => void;
   onChangePoint: (idx: number, point: number, value: string) => void;
   onSelectCurve: (idx: number, point: number) => void;
+  // Flips the machine between counting the pegs once and counting them for
+  // each side. Belongs to the machine, so every set follows.
+  onToggleBothSides: () => void;
   onComplete: (idx: number) => void;
   onEdit: (idx: number) => void;
   onOpenCalculator: (idx: number, point: number) => void;
@@ -3434,11 +3442,8 @@ function SetGroup({
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
-                {/* A two-sided machine is loaded the same both sides and counted
-                    by one, so that's what the pegs take; the total doubles it. */}
-                <div className="flex items-center justify-between text-label font-semibold uppercase tracking-eyebrow text-muted">
-                  <span>Points</span>
-                  {sides === 2 && <span>One side</span>}
+                <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+                  Points
                 </div>
                 <div className="mt-2 space-y-2">
                   {pointValues.map((value, point) => {
@@ -3486,9 +3491,10 @@ function SetGroup({
                             {unitSuffix(unit)}
                           </span>
                         </div>
-                        {row.completed ? (
-                          <div className="h-9 w-9" aria-hidden />
-                        ) : (
+                        {/* A logged set has nothing left to work out, so its
+                            pegs take the calculator's room rather than leaving
+                            an empty column beside them. */}
+                        {!row.completed && (
                           <button
                             onClick={() => onOpenCalculator(idx, point)}
                             aria-label={`Open the plate calculator for point ${point + 1}`}
@@ -3501,13 +3507,30 @@ function SetGroup({
                     );
                   })}
                 </div>
+                {/* Machines with an arm each side are loaded the same on both and
+                    counted by one, so the pegs take one side and this doubles
+                    the total. Said the way it looks on the machine, right where
+                    a total that's half what was lifted gets noticed. */}
+                {!row.completed && (
+                  <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-line/60 pt-2.5">
+                    <span className="text-caption font-semibold text-ink">Two sides</span>
+                    <BothSidesSwitch on={sides === 2} onChange={onToggleBothSides} />
+                  </div>
+                )}
                 {/* The number the set actually logs, on a row of its own. */}
-                <div className="mt-2.5 flex items-center justify-between border-t border-line/60 pt-2">
+                <div className="mt-2.5 flex items-start justify-between border-t border-line/60 pt-2">
                   <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
-                    {sides === 2 ? 'Total, both sides' : 'Total'}
+                    Total
                   </span>
-                  <span className="text-sm font-bold text-ink">
-                    {totalStr === '' ? '–' : `${totalStr} ${unitSuffix(unit)}`}
+                  <span className="text-right">
+                    <span className="block text-sm font-bold text-ink">
+                      {totalStr === '' ? '–' : `${totalStr} ${unitSuffix(unit)}`}
+                    </span>
+                    {sides === 2 && points.total != null && (
+                      <span className="block text-caption text-muted">
+                        {`${points.total} ${unitSuffix(unit)} a side`}
+                      </span>
+                    )}
                   </span>
                 </div>
               </div>
