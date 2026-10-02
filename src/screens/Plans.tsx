@@ -40,7 +40,17 @@ export function Plans({ onBack, onUpload, onAfterActivate }: Props) {
   }
 
   useEffect(() => {
-    refresh();
+    let cancelled = false;
+    listPlans()
+      .then((list) => {
+        if (!cancelled) setPlans(list);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load plans');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function commitRename(planId: string) {

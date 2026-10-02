@@ -9,12 +9,10 @@ export function Splash({ visible }: Props) {
   // Keep the overlay mounted briefly after `visible` flips false so we can
   // play the fade-out before unmount.
   const [mounted, setMounted] = useState(visible);
+  if (visible && !mounted) setMounted(true);
 
   useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      return;
-    }
+    if (visible) return;
     const t = window.setTimeout(() => setMounted(false), 320);
     return () => window.clearTimeout(t);
   }, [visible]);

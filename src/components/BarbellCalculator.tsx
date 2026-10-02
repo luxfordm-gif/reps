@@ -80,15 +80,27 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
     haptics.tick();
   }
 
-  useEffect(() => {
-    if (open) {
-      // Opening on a peg means no bar to account for, so the picker starts on
-      // None rather than whatever bar was last used on a barbell lift — and
-      // going back to a barbell exercise picks that bar up again.
+  // Each opening picks its bar while it renders, so the sheet never shows a
+  // frame of the last one. Opening on a peg means no bar to account for, so
+  // the picker starts on None rather than whatever bar was last used on a
+  // barbell lift — and going back to a barbell exercise picks that bar up again.
+  const opening = open ? (barless ? 'barless' : 'bar') : null;
+  const [lastOpening, setLastOpening] = useState<string | null>(null);
+  if (opening !== lastOpening) {
+    setLastOpening(opening);
+    if (opening) {
       const wanted = barless ? 'none' : (getLastBarId() ?? 'mens');
       setBarId(wanted);
       setOutputMode((m) => (validModesFor(wanted).includes(m) ? m : defaultModeFor(wanted)));
       setRender(true);
+    } else {
+      // Closing starts the slide out; the effect unmounts once it's done.
+      setVisible(false);
+    }
+  }
+
+  useEffect(() => {
+    if (open) {
   // Two frames, not one: a single requestAnimationFrame fires before the browser
   // has painted the closed state, so the transition can start from wherever the
   // style recalc landed — which looks like the sheet jumping in partway.
@@ -101,7 +113,6 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         cancelAnimationFrame(inner);
       };
     }
-    setVisible(false);
     const t = setTimeout(() => setRender(false), 300);
     return () => clearTimeout(t);
   }, [open, barless]);
@@ -735,8 +746,14 @@ function BarVisualisation({
       )}
 
       {(() => {
-        let x = plateStart;
+        // Each plate starts where the one before it ended.
+        const starts: number[] = [];
+        for (let i = 0, edge = plateStart; i < plates.length; i++) {
+          starts.push(edge);
+          edge += plateWidth(plates[i]) + plateGap;
+        }
         return plates.map((kg, i) => {
+          const x = starts[i];
           const w = plateWidth(kg);
           const h = plateHeight(kg);
           const y = cy - h / 2;
@@ -783,7 +800,6 @@ function BarVisualisation({
               )}
             </g>
           );
-          x += w + plateGap;
           return node;
         });
       })()}

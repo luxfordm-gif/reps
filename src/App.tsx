@@ -9,7 +9,8 @@ import {
   writeSeenVersion,
   type PlanPresence,
 } from './lib/whatsNew';
-import { AuthProvider, useAuth } from './lib/auth';
+import { AuthProvider } from './lib/auth';
+import { useAuth } from './lib/useAuth';
 import { isSupabaseConfigured } from './lib/supabase';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
@@ -168,6 +169,23 @@ function Root() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
 
+  // Signing out clears what the app knew about the last person, while the
+  // render that notices it is still happening — no frame of their profile,
+  // plan or release notes on the way to the login screen.
+  const signedIn = !!session;
+  const [wasSignedIn, setWasSignedIn] = useState(signedIn);
+  if (signedIn !== wasSignedIn) {
+    setWasSignedIn(signedIn);
+    if (!signedIn) {
+      setProfile(null);
+      setOnboardingDismissedThisSession(false);
+      // Someone else may sign in on this phone; what Home last knew about a
+      // plan isn't about them.
+      setPlanPresence('unknown');
+      setShowWhatsNew(false);
+    }
+  }
+
   // Fetch profile when the user signs in. Brand-new accounts — no profile row,
   // and no offer made on this device yet — get shown the setup flow once. An
   // unfinished profile is never chased again after that: nothing in the app
@@ -175,14 +193,7 @@ function Root() {
   // wants. A failed fetch must not block sign-in, so we swallow errors and
   // just leave profile=null.
   useEffect(() => {
-    if (!session) {
-      setProfile(null);
-      setOnboardingDismissedThisSession(false);
-      // Someone else may sign in on this phone; what Home last knew about a
-      // plan isn't about them.
-      setPlanPresence('unknown');
-      return;
-    }
+    if (!session) return;
     let cancelled = false;
     getMyProfile()
       .then((p) => {
@@ -209,10 +220,7 @@ function Root() {
   // the day you arrive, and the dialog was landing on top of the upload screen
   // before the first PDF was even in.
   useEffect(() => {
-    if (!session) {
-      setShowWhatsNew(false);
-      return;
-    }
+    if (!session) return;
     switch (
       decideWhatsNew({
         planPresence,
@@ -227,13 +235,28 @@ function Root() {
       case 'baseline':
         writeSeenVersion(LATEST_CHANGELOG_ENTRY.version);
         break;
-      case 'show':
-        setShowWhatsNew(true);
-        break;
       default:
+        // 'show' is acted on as the render happens, below; nothing to store.
         break;
     }
   }, [session, planPresence]);
+
+  const whatsNewKey = session ? planPresence : null;
+  const [whatsNewCheckedFor, setWhatsNewCheckedFor] = useState<PlanPresence | null>(null);
+  if (whatsNewKey !== whatsNewCheckedFor) {
+    setWhatsNewCheckedFor(whatsNewKey);
+    if (
+      whatsNewKey &&
+      decideWhatsNew({
+        planPresence: whatsNewKey,
+        seen: readSeenVersion(),
+        latest: LATEST_CHANGELOG_ENTRY.version,
+        withdrawn: WITHDRAWN_VERSIONS,
+      }) === 'show'
+    ) {
+      setShowWhatsNew(true);
+    }
+  }
 
   const screenKey = loading
     ? 'loading'
@@ -340,7 +363,7 @@ function Root() {
     };
   }, [barVisible]);
 
-  let body: React.ReactNode = null;
+  let body: React.ReactNode;
 
   if (loading) {
     body = (

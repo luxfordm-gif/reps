@@ -104,7 +104,17 @@ export function Machines({ onBack }: Props) {
     }
   }
   useEffect(() => {
-    reload();
+    let cancelled = false;
+    listMachines()
+      .then((rows) => {
+        if (!cancelled) setMachines(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) setError((e as Error)?.message ?? 'Failed to load machines');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Which machines the plan you are on right now calls for. Everything else in

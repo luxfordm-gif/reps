@@ -12,7 +12,9 @@ interface Props {
 }
 
 export function PageHeader({ title, onBack, rightAction, large = true, bottomSlot }: Props) {
-  const [collapsed, setCollapsed] = useState(!large);
+  // A small header has no large title to scroll away, so it's always collapsed.
+  const [scrolledPast, setScrolledPast] = useState(false);
+  const collapsed = !large || scrolledPast;
   const largeTitleRef = useRef<HTMLHeadingElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
 
@@ -31,17 +33,14 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
   // both deterministic and self-correcting: whatever the layout does after
   // mount, the next frame puts it right.
   useEffect(() => {
-    if (!large) {
-      setCollapsed(true);
-      return;
-    }
+    if (!large) return;
     let frame = 0;
     const measure = () => {
       frame = 0;
       const el = largeTitleRef.current;
       if (!el) return;
       const barHeight = barRef.current?.getBoundingClientRect().height ?? 44;
-      setCollapsed(el.getBoundingClientRect().bottom <= barHeight);
+      setScrolledPast(el.getBoundingClientRect().bottom <= barHeight);
     };
     const schedule = () => {
       if (frame === 0) frame = window.requestAnimationFrame(measure);

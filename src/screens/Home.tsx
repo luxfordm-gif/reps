@@ -151,7 +151,7 @@ function getNextDayName(
 // Hide the "Up next" banner once the user has clearly stopped following plan
 // order, so they don't get a suggestion that doesn't match what they're
 // actually about to do. recentPositions is newest-first.
-export function shouldShowUpNext(recentPositions: number[], planLength: number): boolean {
+function shouldShowUpNext(recentPositions: number[], planLength: number): boolean {
   if (planLength <= 0 || recentPositions.length < 2) return true;
   const inOrder: boolean[] = [];
   for (let i = 0; i < recentPositions.length - 1; i++) {
