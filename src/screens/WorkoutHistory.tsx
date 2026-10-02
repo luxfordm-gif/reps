@@ -10,7 +10,7 @@ import {
   type CompletedSessionSummary,
   type LoggedSet,
 } from '../lib/sessionsApi';
-import { describePoints, parsePositionWeights } from '../lib/weightProfile';
+import { describePoints, isOneSideOf, parsePositionWeights } from '../lib/weightProfile';
 import ExerciseName from '../components/ExerciseName';
 
 interface Props {
@@ -459,6 +459,7 @@ function EditableSetRow({
       {points && (
         <div className="mt-1 pl-20 text-caption text-muted">
           {describePoints(points, (kg) => `${kg} kg`)}
+          {isOneSideOf(points, set.weight) && ' a side'}
           {weightChanged && ' · a new total clears the split'}
         </div>
       )}

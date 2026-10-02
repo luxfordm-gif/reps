@@ -379,7 +379,7 @@ export async function mergeMachines(
   // Units, for the rewrite decision and so the survivor can inherit one.
   const { data: prefRows } = await supabase
     .from('exercise_unit_prefs')
-    .select('normalized_name, weight_unit, body_part_override, load_profile, load_positions')
+    .select('*')
     .eq('user_id', userId)
     .in('normalized_name', [survivorNormalized, ...loserNormalizeds]);
   type PrefSlim = {
@@ -388,6 +388,8 @@ export async function mergeMachines(
     body_part_override: string | null;
     load_profile: string | null;
     load_positions: number | null;
+    // Absent on a database that hasn't had 0021, which is why the select is *.
+    load_sides?: number | null;
   };
   const prefs = new Map(
     ((prefRows ?? []) as PrefSlim[]).map((r) => [r.normalized_name, r]),
@@ -503,6 +505,7 @@ export async function mergeMachines(
       if (!survivorPref?.load_profile && loserPref.load_profile) {
         inherited.load_profile = loserPref.load_profile;
         inherited.load_positions = loserPref.load_positions;
+        if (loserPref.load_sides != null) inherited.load_sides = loserPref.load_sides;
       }
     }
     if (Object.keys(inherited).length > 0) {

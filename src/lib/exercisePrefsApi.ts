@@ -101,7 +101,14 @@ export function isMissingProfileColumn(e: unknown): boolean {
   const err = e as { code?: string; message?: string };
   if (err.code === '42703' || err.code === 'PGRST204') return true;
   const message = err.message ?? '';
-  return /load_profile|load_positions|position_weights/.test(message);
+  return /load_profile|load_positions|load_sides|position_weights/.test(message);
+}
+
+/** The same, narrowed to 0021's column: a database that has pegs but not sides
+ *  yet. Everything else about the profile can still be read and saved. */
+export function isMissingSidesColumn(e: unknown): boolean {
+  if (!isMissingProfileColumn(e)) return false;
+  return /load_sides/.test((e as { message?: string }).message ?? '');
 }
 
 // A machine's weight profile — whether it loads at several pegs or picks a cam
@@ -113,8 +120,8 @@ export function getCachedExerciseProfile(normalizedName: string): MachineProfile
   const raw = window.localStorage.getItem(profileCacheKey(normalizedName));
   if (raw) {
     try {
-      const parsed = JSON.parse(raw) as { kind?: unknown; positions?: unknown };
-      return parseProfile(parsed.kind, parsed.positions);
+      const parsed = JSON.parse(raw) as { kind?: unknown; positions?: unknown; sides?: unknown };
+      return parseProfile(parsed.kind, parsed.positions, parsed.sides);
     } catch {
       // Fall through to the older key.
     }
@@ -134,18 +141,35 @@ export async function getExerciseProfile(
 ): Promise<MachineProfile> {
   const userId = await currentUserId();
   if (!userId) return getCachedExerciseProfile(normalizedName);
-  const { data, error } = await supabase
-    .from('exercise_unit_prefs')
-    .select('load_profile, load_positions')
-    .eq('user_id', userId)
-    .eq('normalized_name', normalizedName)
-    .maybeSingle();
+  const read = (columns: string) =>
+    supabase
+      .from('exercise_unit_prefs')
+      .select(columns)
+      .eq('user_id', userId)
+      .eq('normalized_name', normalizedName)
+      .maybeSingle();
+  let { data, error } = await read('load_profile, load_positions, load_sides');
+  // Before 0021 there's no load_sides to read; the rest of the profile still is,
+  // and the side count stays whatever this device last knew.
+  let sidesKnown = true;
+  if (error && isMissingSidesColumn(error)) {
+    ({ data, error } = await read('load_profile, load_positions'));
+    sidesKnown = false;
+  }
   // A profile is an opt-in extra: any trouble reading it (offline, or a database
   // that hasn't had 0017/0018 run against it yet) leaves the machine as whatever
   // the device last knew, never mid-edit with a position that can't be saved.
   if (error) return getCachedExerciseProfile(normalizedName);
-  const row = data as { load_profile?: unknown; load_positions?: unknown } | null;
-  const profile = parseProfile(row?.load_profile, row?.load_positions);
+  const row = data as {
+    load_profile?: unknown;
+    load_positions?: unknown;
+    load_sides?: unknown;
+  } | null;
+  const profile = parseProfile(
+    row?.load_profile,
+    row?.load_positions,
+    sidesKnown ? row?.load_sides : getCachedExerciseProfile(normalizedName).sides
+  );
   cacheProfile(normalizedName, profile);
   return profile;
 }
@@ -158,9 +182,29 @@ export async function setExerciseProfile(
   cacheProfile(normalizedName, profile);
   const userId = await currentUserId();
   if (!userId) throw new Error('Not signed in');
+  const twoSided = profile.kind === 'pegs' && profile.sides === 2;
+  try {
+    await writeProfile(userId, normalizedName, profile, true);
+  } catch (e) {
+    // A database without 0021 can still hold a one-sided machine — only a
+    // two-sided one actually needs the new column.
+    if (twoSided || !isMissingSidesColumn(e)) throw e;
+    await writeProfile(userId, normalizedName, profile, false);
+  }
+}
+
+async function writeProfile(
+  userId: string,
+  normalizedName: string,
+  profile: MachineProfile,
+  withSides: boolean
+): Promise<void> {
   const patch = {
     load_profile: profile.kind,
     load_positions: profile.kind ? profile.positions : null,
+    ...(withSides
+      ? { load_sides: profile.kind === 'pegs' && profile.sides === 2 ? 2 : null }
+      : {}),
     updated_at: new Date().toISOString(),
   };
   // Update in place where the machine already has a preferences row — an upsert

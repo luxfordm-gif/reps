@@ -16,8 +16,12 @@ import {
   parseProfileKind,
   parsePositionWeights,
   readPointInputs,
+  isOneSideOf,
   resizePoints,
+  sameProfile,
+  sidesOf,
   sumPoints,
+  totalAcrossSides,
 } from '../src/lib/weightProfile.ts';
 
 let failures = 0;
@@ -147,6 +151,47 @@ console.log('\n=== changing the profile ===');
 {
   check('widening leaves the new positions empty', resizePoints(['10'], 3, ''), ['10', '', '']);
   check('narrowing drops what it cannot hold', resizePoints(['10', '5', '20'], 2, ''), ['10', '5']);
+}
+
+console.log('\n=== two-sided machines ===');
+{
+  check(
+    'pegs can be tagged two-sided',
+    parseProfile('pegs', 3, 2),
+    { kind: 'pegs', positions: 3, sides: 2 }
+  );
+  check('a side count read back as text still counts', parseProfile('pegs', 3, '2').sides, 2);
+  check('one side is left off, as on every machine before', parseProfile('pegs', 3, 1), {
+    kind: 'pegs',
+    positions: 3,
+  });
+  check('a curve has no sides to speak of', parseProfile('curve', 6, 2), {
+    kind: 'curve',
+    positions: 6,
+  });
+  check('an untagged machine is one side', sidesOf({ kind: null, positions: 1 }), 1);
+  check('a two-sided pegs machine is two', sidesOf({ kind: 'pegs', positions: 3, sides: 2 }), 2);
+  check(
+    'one side of 35 on peg 2 and 25 on peg 3 logs 120',
+    totalAcrossSides(sumPoints([null, 35, 25]), 2),
+    120
+  );
+  check('a one-sided machine logs what is typed', totalAcrossSides(60, 1), 60);
+  check('nothing typed is still nothing', totalAcrossSides(null, 2), null);
+  check('doubling keeps a tidy number', totalAcrossSides(1.1, 2), 2.2);
+  check('a breakdown half the weight is one side', isOneSideOf([null, 35, 25], 120), true);
+  check('a breakdown equal to the weight is the whole load', isOneSideOf([null, 35, 25], 60), false);
+  check('no weight, no side', isOneSideOf([null, 35, 25], null), false);
+  check(
+    'switching sides is a different profile',
+    sameProfile({ kind: 'pegs', positions: 3 }, { kind: 'pegs', positions: 3, sides: 2 }),
+    false
+  );
+  check(
+    'sides mean nothing off pegs',
+    sameProfile({ kind: 'curve', positions: 3 }, { kind: 'curve', positions: 3, sides: 2 }),
+    true
+  );
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
