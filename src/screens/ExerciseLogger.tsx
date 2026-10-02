@@ -850,7 +850,7 @@ export function ExerciseLogger({
       // without the profile columns won't, so say so rather than leave sets
       // logging a breakdown that can never be saved.
       if (isMissingSidesColumn(e)) {
-        setError('Same plates on both sides needs migration 0021 run first.');
+        setError('Two sides needs migration 0021 run first.');
       } else if (isMissingProfileColumn(e)) {
         setError('Weight profiles need migrations 0017 and 0018 run first.');
       }
@@ -3155,7 +3155,7 @@ function BothSidesSwitch({ on, onChange }: { on: boolean; onChange: () => void }
       type="button"
       role="switch"
       aria-checked={on}
-      aria-label="Same plates on both sides"
+      aria-label="Two sides"
       onClick={onChange}
       className={`relative h-6 w-10 shrink-0 rounded-pill transition-colors ${
         on ? 'bg-ink' : 'bg-line'
@@ -3491,9 +3491,10 @@ function SetGroup({
                             {unitSuffix(unit)}
                           </span>
                         </div>
-                        {row.completed ? (
-                          <div className="h-9 w-9" aria-hidden />
-                        ) : (
+                        {/* A logged set has nothing left to work out, so its
+                            pegs take the calculator's room rather than leaving
+                            an empty column beside them. */}
+                        {!row.completed && (
                           <button
                             onClick={() => onOpenCalculator(idx, point)}
                             aria-label={`Open the plate calculator for point ${point + 1}`}
@@ -3512,9 +3513,7 @@ function SetGroup({
                     a total that's half what was lifted gets noticed. */}
                 {!row.completed && (
                   <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-line/60 pt-2.5">
-                    <span className="text-caption font-semibold text-ink">
-                      Same plates on both sides
-                    </span>
+                    <span className="text-caption font-semibold text-ink">Two sides</span>
                     <BothSidesSwitch on={sides === 2} onChange={onToggleBothSides} />
                   </div>
                 )}
