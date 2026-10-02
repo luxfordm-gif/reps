@@ -33,6 +33,10 @@ export interface MachineProfile {
   kind: LoadProfileKind | null;
   /** How many pegs or curve positions. 1 whenever there's no profile. */
   positions: number;
+  /** 2 on a pegs machine with an arm each side (PRIME's Extreme row): the pegs
+   *  are typed as what hangs on one side and the set logs twice that. Left off
+   *  everywhere else — a leg extension has the one side. */
+  sides?: 2;
 }
 
 export const NO_PROFILE: MachineProfile = { kind: null, positions: 1 };
@@ -48,6 +52,33 @@ export function hasPegs(profile: MachineProfile): boolean {
 
 export function hasCurve(profile: MachineProfile): boolean {
   return profile.kind === 'curve' && profile.positions > 1;
+}
+
+/** Whether two profiles would load a set the same way. */
+export function sameProfile(a: MachineProfile, b: MachineProfile): boolean {
+  return a.kind === b.kind && a.positions === b.positions && sidesOf(a) === sidesOf(b);
+}
+
+/** How many sides a set's peg breakdown is loaded on: 2 only on a pegs machine
+ *  tagged two-sided. A curve's cam is one weight on one stack, whatever. */
+export function sidesOf(profile: MachineProfile): 1 | 2 {
+  return hasPegs(profile) && profile.sides === 2 ? 2 : 1;
+}
+
+/** The weight a set logs from what's typed on one side's pegs. */
+export function totalAcrossSides(oneSide: number | null, sides: 1 | 2): number | null {
+  if (oneSide == null) return null;
+  return Math.round(oneSide * sides * 1000) / 1000;
+}
+
+/** Whether a logged breakdown was one side of a two-sided load — its pegs add
+ *  up to half the weight logged. Read off the set itself so history needs no
+ *  profile to say "a side", and stays right if the machine is retagged later. */
+export function isOneSideOf(values: PositionWeights | null, weight: number | null): boolean {
+  if (!values || weight == null) return false;
+  const oneSide = sumPoints(values);
+  if (oneSide == null || oneSide <= 0) return false;
+  return Math.abs(oneSide * 2 - weight) < 0.01;
 }
 
 export function parseProfileKind(v: unknown): LoadProfileKind | null {
@@ -66,7 +97,17 @@ export function clampPositions(v: unknown, fallback = DEFAULT_PROFILE_POSITIONS)
 
 /** Reads a machine's stored profile. A count with no kind is a machine tagged
  *  before curves existed, when pegs were the only thing a profile could mean. */
-export function parseProfile(kind: unknown, positions: unknown): MachineProfile {
+export function parseProfile(
+  kind: unknown,
+  positions: unknown,
+  sides?: unknown
+): MachineProfile {
+  const profile = parseKindAndPositions(kind, positions);
+  const two = sides === 2 || sides === '2';
+  return two && profile.kind === 'pegs' ? { ...profile, sides: 2 } : profile;
+}
+
+function parseKindAndPositions(kind: unknown, positions: unknown): MachineProfile {
   const parsedKind = parseProfileKind(kind);
   const raw =
     typeof positions === 'string'

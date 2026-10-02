@@ -51,6 +51,7 @@ import {
   getExerciseProfile,
   getExerciseUnit,
   isMissingProfileColumn,
+  isMissingSidesColumn,
   setExerciseProfile,
   setExerciseUnit,
 } from '../lib/exercisePrefsApi';
@@ -64,9 +65,13 @@ import {
   describePoints,
   hasCurve,
   hasPegs,
+  isOneSideOf,
   loadedPoints,
   parsePositionWeights,
   readPointInputs,
+  sameProfile,
+  sidesOf,
+  totalAcrossSides,
   type LoadProfileKind,
   type MachineProfile,
 } from '../lib/weightProfile';
@@ -216,8 +221,16 @@ function seedFromLogged(
       curvePoint: point != null && point < profile.positions ? point : null,
     };
   }
-  if (!hasPegs(profile) || !breakdown) {
+  if (!hasPegs(profile)) {
     return { weight: fmt(logged.weight), extras: NO_EXTRA_POINTS, curvePoint: null };
+  }
+  if (!breakdown) {
+    // Pegs are typed a side, so a two-sided machine starts from half the total.
+    return {
+      weight: fmt(logged.weight / sidesOf(profile)),
+      extras: NO_EXTRA_POINTS,
+      curvePoint: null,
+    };
   }
   const strs = breakdown.map((n) => (n == null ? '' : fmt(n)));
   return {
@@ -793,7 +806,7 @@ export function ExerciseLogger({
   // position that the machine no longer has is dropped rather than re-pointed.
   function changeProfile(next: MachineProfile) {
     setProfile((prev) => {
-      if (prev.kind === next.kind && prev.positions === next.positions) return prev;
+      if (sameProfile(prev, next)) return prev;
       const leavingPegs = hasPegs(prev) && !hasPegs(next);
       const losingCurve =
         !hasCurve(next) || next.positions < prev.positions;
@@ -803,7 +816,7 @@ export function ExerciseLogger({
             // Completed rows fold too: what they logged was the total, so that's
             // the number the single weight field has to go back to showing.
             const folded = leavingPegs
-              ? (readPointInputs(pointInputsFor(r, prev)).total ?? null)
+              ? totalAcrossSides(readPointInputs(pointInputsFor(r, prev)).total, sidesOf(prev))
               : null;
             const weight = folded == null ? r.weight : String(folded);
             const curvePoint =
@@ -829,14 +842,16 @@ export function ExerciseLogger({
   }
 
   function handleSelectProfile(next: MachineProfile) {
-    if (next.kind === profile.kind && next.positions === profile.positions) return;
+    if (sameProfile(next, profile)) return;
     changeProfile(next);
     setExerciseProfile(effectiveNormalized, next).catch((e) => {
       // Cached first, so the profile holds on this device either way — an
       // ordinary failed write will sort itself out on the next one. A database
       // without the profile columns won't, so say so rather than leave sets
       // logging a breakdown that can never be saved.
-      if (isMissingProfileColumn(e)) {
+      if (isMissingSidesColumn(e)) {
+        setError('Two-sided machines need migration 0021 run first.');
+      } else if (isMissingProfileColumn(e)) {
         setError('Weight profiles need migrations 0017 and 0018 run first.');
       }
     });
@@ -1252,7 +1267,8 @@ export function ExerciseLogger({
   async function handleComplete(idx: number) {
     const set = sets[idx];
     const repsStr = set.reps.trim();
-    // On a pegs machine the set's weight is the sum of what's on each peg; on
+    // On a pegs machine the set's weight is the sum of what's on each peg (twice
+    // over on a two-sided one, where the pegs are typed a side); on
     // every other machine — a curve's cam changes the lift, not the load — there
     // is one weight to read.
     const points = readPointInputs(pointInputsFor(set, profile));
@@ -1261,7 +1277,7 @@ export function ExerciseLogger({
       ? 0
       : points.invalid || points.total == null
         ? NaN
-        : points.total;
+        : (totalAcrossSides(points.total, sidesOf(profile)) ?? NaN);
     const repsNum = repsStr === '' ? NaN : parseInt(repsStr, 10);
     if (repsStr === '' || Number.isNaN(repsNum)) {
       setError(timed ? 'Enter how long you held it, in seconds' : 'Enter your reps');
@@ -1453,13 +1469,15 @@ export function ExerciseLogger({
               <span
                 title={
                   profile.kind === 'pegs'
-                    ? `Loads at ${profile.positions} numbered pegs`
+                    ? `Loads at ${profile.positions} numbered pegs${
+                        sidesOf(profile) === 2 ? ' on each side' : ''
+                      }`
                     : `Has ${profile.positions} cam positions`
                 }
                 className="inline-flex items-center rounded-pill bg-line px-2 py-0.5 text-label font-semibold uppercase tracking-eyebrow text-muted"
               >
                 {profile.kind === 'pegs'
-                  ? `${profile.positions} pegs`
+                  ? `${profile.positions} pegs${sidesOf(profile) === 2 ? ' · 2 sides' : ''}`
                   : `curve 1–${profile.positions}`}
               </span>
             </div>
@@ -2087,6 +2105,7 @@ function ExerciseMenu({
                       onSelectProfile({
                         kind: profile.kind,
                         positions: clampPositions(profile.positions - 1),
+                        ...(profile.sides ? { sides: profile.sides } : {}),
                       })
                     }
                   >
@@ -2102,11 +2121,38 @@ function ExerciseMenu({
                       onSelectProfile({
                         kind: profile.kind,
                         positions: clampPositions(profile.positions + 1),
+                        ...(profile.sides ? { sides: profile.sides } : {}),
                       })
                     }
                   >
                     +
                   </StepperButton>
+                </div>
+              </div>
+            )}
+            {profile.kind === 'pegs' && (
+              // An arm each side, loaded the same: the pegs take one side and
+              // the set logs both.
+              <div className="mt-2.5 flex items-center justify-between">
+                <span className="text-caption font-semibold text-muted">Sides</span>
+                <div className="flex rounded-pill bg-line p-0.5">
+                  {([1, 2] as const).map((n) => (
+                    <button
+                      key={n}
+                      onClick={() =>
+                        onSelectProfile({
+                          kind: profile.kind,
+                          positions: profile.positions,
+                          ...(n === 2 ? { sides: 2 as const } : {}),
+                        })
+                      }
+                      className={`rounded-pill px-3 py-1 text-xs font-semibold uppercase tracking-eyebrow ${
+                        sidesOf(profile) === n ? 'bg-ink text-white' : 'text-muted'
+                      }`}
+                    >
+                      {n === 1 ? 'One' : 'Two'}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -3013,7 +3059,8 @@ function LastTimeRow({
       const point = curvePointOf(values);
       return point == null ? null : `Curve ${point + 1}`;
     }
-    return describePoints(values, (kg) => String(fromKg(kg, unit)));
+    const text = describePoints(values, (kg) => String(fromKg(kg, unit)));
+    return isOneSideOf(values, s.weight) ? `${text} a side` : text;
   };
 
   return (
@@ -3166,6 +3213,7 @@ function SetGroup({
   // to load and the ones behind it stay out of the way.
   const [pointsOverride, setPointsOverride] = useState<Record<number, boolean>>({});
   const multiPoint = hasPegs(profile) && !weightless;
+  const sides = sidesOf(profile);
   const curved = hasCurve(profile) && !weightless;
   const setIndex = rows[0].row.setIndex;
   const mainRow = rows[0].row;
@@ -3197,8 +3245,10 @@ function SetGroup({
         const pointValues = pointInputsFor(row, profile);
         const pointSuggestions = pointSuggestionsFor(row, profile);
         const points = readPointInputs(pointValues);
-        // What the set logs: every loaded point added together.
-        const totalStr = points.total == null ? '' : String(points.total);
+        // What the set logs: every loaded point added together, and doubled on
+        // a two-sided machine.
+        const total = totalAcrossSides(points.total, sides);
+        const totalStr = total == null ? '' : String(total);
         const pointsOpen =
           multiPoint && (pointsOverride[idx] ?? (idx === activeIndex && !row.completed));
         const loaded = loadedPoints(points.values);
@@ -3384,8 +3434,11 @@ function SetGroup({
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
-                <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
-                  Points
+                {/* A two-sided machine is loaded the same both sides and counted
+                    by one, so that's what the pegs take; the total doubles it. */}
+                <div className="flex items-center justify-between text-label font-semibold uppercase tracking-eyebrow text-muted">
+                  <span>Points</span>
+                  {sides === 2 && <span>One side</span>}
                 </div>
                 <div className="mt-2 space-y-2">
                   {pointValues.map((value, point) => {
@@ -3415,7 +3468,7 @@ function SetGroup({
                               if (isSuggestion) onChangePoint(idx, point, '');
                               e.target.select();
                             }}
-                            aria-label={`Weight on point ${point + 1} in ${unit}`}
+                            aria-label={`Weight on point ${point + 1}${sides === 2 ? ', one side,' : ''} in ${unit}`}
                             className={`no-spinner w-full rounded-control border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-pressed ${
                               row.completed
                                 ? 'text-ink/60'
@@ -3451,7 +3504,7 @@ function SetGroup({
                 {/* The number the set actually logs, on a row of its own. */}
                 <div className="mt-2.5 flex items-center justify-between border-t border-line/60 pt-2">
                   <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
-                    Total
+                    {sides === 2 ? 'Total, both sides' : 'Total'}
                   </span>
                   <span className="text-sm font-bold text-ink">
                     {totalStr === '' ? '–' : `${totalStr} ${unitSuffix(unit)}`}
@@ -3512,7 +3565,10 @@ function SetGroup({
                 }`}
               >
                 <Chevron rotate={0} />
-                <span>{describePoints(points.values, (n) => String(n))}</span>
+                <span>
+                  {describePoints(points.values, (n) => String(n))}
+                  {sides === 2 && ' a side'}
+                </span>
               </button>
             )}
           </div>
