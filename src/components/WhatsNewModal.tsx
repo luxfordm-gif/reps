@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { ChangelogEntry } from '../lib/changelog';
 
 interface Props {
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export function WhatsNewModal({ entry, onDismiss }: Props) {
+  const titleId = useId();
   return (
     <div
       className="backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-6 backdrop-blur-sm"
@@ -15,13 +17,19 @@ export function WhatsNewModal({ entry, onDismiss }: Props) {
           taking "Got it" with it. The dialog is capped and the list scrolls
           inside it, so the way out is always on screen. */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="dialog-in flex max-h-[85vh] w-full max-w-sm flex-col rounded-card bg-paper-card p-6 shadow-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 justify-center">
           <img src="/icon-192.png" alt="" className="h-14 w-14 rounded-panel" />
         </div>
-        <h2 className="mt-4 shrink-0 text-center text-xl font-bold tracking-tight text-ink">
+        <h2
+          id={titleId}
+          className="mt-4 shrink-0 text-center text-xl font-bold tracking-tight text-ink"
+        >
           {entry.title}
         </h2>
         <ul className="mt-5 min-h-0 flex-1 space-y-2.5 overflow-y-auto text-sm text-ink">

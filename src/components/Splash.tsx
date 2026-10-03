@@ -22,11 +22,10 @@ export function Splash({ visible }: Props) {
   return (
     <div
       aria-hidden
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black"
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-ink transition-opacity duration-sheet ease-snap"
       style={{
         opacity: visible ? 1 : 0,
         pointerEvents: visible ? 'auto' : 'none',
-        transition: 'opacity 280ms cubic-bezier(0.23, 1, 0.32, 1)',
       }}
     >
       <style>{`

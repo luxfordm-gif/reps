@@ -1437,7 +1437,7 @@ export function ExerciseLogger({
   }
 
   return (
-    <div className="min-h-screen bg-paper pb-28">
+    <div className="min-h-screen bg-paper pb-[calc(7rem+env(safe-area-inset-bottom,0px))]">
       <div className="mx-auto max-w-md px-5 pt-3">
         <PageHeader
           large={false}
@@ -1779,7 +1779,7 @@ export function ExerciseLogger({
         )}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 px-5 py-4 backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 px-5 pt-4 pb-[max(env(safe-area-inset-bottom),1rem)] backdrop-blur">
         <div className="mx-auto max-w-md">
           {hasNext ? (
             <button
@@ -1839,13 +1839,19 @@ export function ExerciseLogger({
         barless={profile.kind != null}
         initialKg={
           calcOpen !== null && sets[calcOpen.idx]
-            ? Number(pointInputsFor(sets[calcOpen.idx], profile)[calcOpen.point]) ||
-              undefined
+            ? toKg(
+                Number(pointInputsFor(sets[calcOpen.idx], profile)[calcOpen.point]) || 0,
+                unit
+              ) || undefined
             : undefined
         }
         onClose={() => setCalcOpen(null)}
         onConfirm={(kg) => {
-          if (calcOpen !== null) updatePoint(calcOpen.idx, calcOpen.point, String(kg));
+          // The field is in the machine's unit; on an lb machine the total
+          // used to land as a kg figure labelled lb.
+          if (calcOpen !== null) {
+            updatePoint(calcOpen.idx, calcOpen.point, String(fromKg(kg, unit)));
+          }
         }}
       />
       {swapOpen && (
@@ -3312,6 +3318,7 @@ function SetGroup({
                 full gap. Everything here is sized so the row still has room to
                 spare at that width. */}
             <div
+              data-set-row
               className={`relative flex items-center gap-2.5 px-4 py-3 transition-colors max-[360px]:gap-2 max-[360px]:px-3 ${
                 !isMain ? 'bg-surface' : ''
               } ${
@@ -3375,6 +3382,18 @@ function SetGroup({
                       }
                       e.target.select();
                     }}
+                    // Return on the keyboard walks the row: weight, then reps,
+                    // then the set is logged — one hand, never reaching for
+                    // the tick.
+                    enterKeyHint="next"
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      e.currentTarget
+                        .closest('[data-set-row]')
+                        ?.querySelector<HTMLInputElement>('input[data-reps]')
+                        ?.focus();
+                    }}
                     aria-label={`Weight in ${unit}`}
                     className={`no-spinner w-full rounded-control border border-line bg-paper py-2 pl-3 pr-7 text-base font-semibold focus:border-ink focus:outline-none disabled:bg-pressed ${
                       row.completed
@@ -3410,6 +3429,14 @@ function SetGroup({
                 }
                 e.target.select();
               }}
+              data-reps
+              enterKeyHint="done"
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || row.completed) return;
+                e.preventDefault();
+                e.currentTarget.blur();
+                onComplete(idx);
+              }}
               placeholder={timed ? 'secs' : 'reps'}
               className={`${
                 weightless ? 'min-w-[60px] flex-1' : 'w-14 min-w-[44px]'
@@ -3431,7 +3458,7 @@ function SetGroup({
                 <button
                   onClick={() => onOpenCalculator(idx, 0)}
                   aria-label="Open barbell calculator"
-                  className="pressable flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted active:opacity-70"
+                  className="pressable relative flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted before:absolute before:-inset-1 before:content-[''] active:opacity-70"
                 >
                   <CalculatorIcon />
                 </button>
@@ -3444,7 +3471,7 @@ function SetGroup({
                 <button
                   onClick={() => onEdit(idx)}
                   aria-label={`Edit set ${setIndex}`}
-                  className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white active:opacity-70"
+                  className="pressable relative flex h-9 w-9 items-center justify-center rounded-full bg-ink text-white before:absolute before:-inset-1 before:content-[''] active:opacity-70"
                 >
                   <Check />
                 </button>
@@ -3453,7 +3480,7 @@ function SetGroup({
                   onClick={() => onComplete(idx)}
                   disabled={savingIdx === idx}
                   aria-label={`Log set ${setIndex} as done`}
-                  className={`pressable flex h-9 w-9 items-center justify-center rounded-full border active:opacity-60 disabled:opacity-40 ${
+                  className={`pressable relative flex h-9 w-9 items-center justify-center rounded-full border before:absolute before:-inset-1 before:content-[''] active:opacity-60 disabled:opacity-40 ${
                     ready ? 'border-ink text-ink' : 'border-line text-muted'
                   }`}
                 >
@@ -3778,7 +3805,7 @@ function RestOverlay({
   void lastSetReps;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-ink text-white">
+    <div className="backdrop-in fixed inset-0 z-50 flex flex-col bg-ink text-white">
       <div
         className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pt-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}

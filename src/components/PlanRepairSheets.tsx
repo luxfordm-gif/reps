@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CloseIcon } from './Icons';
 import { BODY_PART_OPTIONS, type ExerciseDraft } from '../lib/planRepair';
 import { useScrollLock } from '../lib/useScrollLock';
 import { useVisualViewport } from '../lib/useVisualViewport';
@@ -26,7 +27,7 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
 
   return (
     <div
-      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+      className="backdrop-in fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
       style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onClose}
       role="dialog"
@@ -34,13 +35,13 @@ function SheetFrame({ title, onClose, children }: SheetFrameProps) {
       aria-label={title}
     >
       <SheetPanel
-        className="w-full max-w-md rounded-t-card bg-paper-card shadow-card"
+        className="sheet-in w-full max-w-md rounded-t-card bg-paper-card shadow-card"
         header={
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold tracking-tight text-ink">{title}</h2>
             <button
               onClick={onClose}
-              className="pressable -mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+              className="pressable -mr-3 -mt-1 flex h-11 w-11 items-center justify-center rounded-full text-muted active:bg-surface-strong"
               aria-label="Close"
             >
               <CloseIcon />
@@ -433,10 +434,3 @@ function WeekPill({
   );
 }
 
-function CloseIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-    </svg>
-  );
-}

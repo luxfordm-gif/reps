@@ -16,14 +16,14 @@ export interface Kudos {
 const LABEL_POOL = ['Great work', 'Solid', 'Locked in', 'On the up', 'Strong session', 'Nice'];
 
 const WEIGHT_UP_POOL = [
-  '+{kg} kg on your top set. Strong work!',
+  '+{kg} kg on your top set. Strong work.',
   'Top set climbed {kg} kg. Heaviest you’ve moved it.',
   '+{kg} kg — the bar keeps going up.',
   'Heaviest top set yet. {kg} kg more than last time.',
 ];
 
 const REPS_UP_POOL = [
-  '+{n} rep{s} vs last time. Keep it up!',
+  '+{n} rep{s} vs last time. Keep it up.',
   '{n} extra rep{s} in the bank.',
   'Pushed past last time by {n} rep{s}.',
   '+{n} more rep{s} than last session.',

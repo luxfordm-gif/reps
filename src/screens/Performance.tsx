@@ -12,6 +12,8 @@ import {
   Tooltip,
 } from 'recharts';
 import { PageHeader } from '../components/PageHeader';
+import { ChartTooltip } from '../components/ChartTooltip';
+import { AXIS_TICK, CHART } from '../lib/chartTheme';
 import {
   MiniTile,
   ChevronRight,
@@ -639,7 +641,7 @@ function TrainingVolumeCard({ volume }: { volume: WeeklyVolumePoint[] }) {
           <BarChart data={points} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
             <XAxis
               dataKey="label"
-              tick={{ fill: '#8E8E93', fontSize: 10 }}
+              tick={AXIS_TICK}
               axisLine={false}
               tickLine={false}
               minTickGap={24}
@@ -654,7 +656,7 @@ function TrainingVolumeCard({ volume }: { volume: WeeklyVolumePoint[] }) {
                 started at the smallest value would draw the gap as a shallow
                 dip instead of the floor it is. */}
             <YAxis
-              tick={{ fill: '#8E8E93', fontSize: 10 }}
+              tick={AXIS_TICK}
               axisLine={false}
               tickLine={false}
               width={40}
@@ -664,24 +666,26 @@ function TrainingVolumeCard({ volume }: { volume: WeeklyVolumePoint[] }) {
               tickFormatter={(n) => compactNumber(Number(n))}
             />
             <Tooltip
-              cursor={{ fill: 'rgba(10,10,10,0.04)' }}
-              contentStyle={{ borderRadius: 12, border: '1px solid #E5E5EA', fontSize: 12 }}
-              formatter={(v) => [
-                metric === 'kg'
-                  ? `${Math.round(Number(v)).toLocaleString('en-GB')} kg`
-                  : `${v} ${Number(v) === 1 ? 'set' : 'sets'}`,
-                metric === 'kg' ? 'Volume' : 'Sets',
-              ]}
-              labelFormatter={(d) =>
-                `Week of ${new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                })}`
+              cursor={{ fill: CHART.cursorFill }}
+              content={
+                <ChartTooltip<{ label: string; value: number }>
+                  title={(p) =>
+                    `Week of ${new Date(`${p.label}T00:00:00`).toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                    })}`
+                  }
+                  value={(p) =>
+                    metric === 'kg'
+                      ? `${Math.round(p.value).toLocaleString('en-GB')} kg`
+                      : `${p.value} ${p.value === 1 ? 'set' : 'sets'}`
+                  }
+                />
               }
             />
             <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={18} isAnimationActive={false}>
               {points.map((p) => (
-                <Cell key={p.label} fill={p.current ? '#0A0A0A' : 'rgba(10,10,10,0.14)'} />
+                <Cell key={p.label} fill={p.current ? CHART.ink : CHART.inkFaint} />
               ))}
             </Bar>
           </BarChart>
@@ -923,9 +927,9 @@ function MoverHero({
           <div
             className={`mt-1.5 text-sm font-semibold tabular-nums ${
               move.deltaPct > 1
-                ? 'text-good'
+                ? 'text-good-bright'
                 : move.deltaPct < -1
-                  ? 'text-danger'
+                  ? 'text-danger-bright'
                   : 'text-white/70'
             }`}
           >
@@ -1309,39 +1313,6 @@ function shortDate(iso: string): string {
  * session before it. Three short lines, because a chart tooltip is asked for
  * rather than read in passing — the page itself stays wordless.
  */
-function Est1RMTooltip({
-  active,
-  payload,
-  unitLabel,
-}: {
-  active?: boolean;
-  payload?: { payload: { label: string; value: number; delta: number | null } }[];
-  unitLabel: MachineUnit;
-}) {
-  const point = payload?.[0]?.payload;
-  if (!active || !point) return null;
-  return (
-    <div className="rounded-control bg-ink px-3 py-2 shadow-lift">
-      <div className="text-caption text-white/60">
-        {new Date(point.label).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-      </div>
-      <div className="mt-0.5 text-sm font-bold text-white tabular-nums">
-        {fmtNum(point.value)} {unitLabel === 'pin' ? 'pin' : unitLabel}
-      </div>
-      {point.delta != null && Math.abs(point.delta) >= 0.05 && (
-        <div
-          className={`text-caption font-semibold tabular-nums ${
-            point.delta > 0 ? 'text-good' : 'text-danger-strong'
-          }`}
-        >
-          {point.delta > 0 ? '+' : '−'}
-          {fmtNum(Math.abs(point.delta))}%
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Est1RMChart({
   points,
   unitLabel,
@@ -1355,14 +1326,14 @@ function Est1RMChart({
         <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="e1rm-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#0A0A0A" stopOpacity={0.12} />
-              <stop offset="100%" stopColor="#0A0A0A" stopOpacity={0} />
+              <stop offset="0%" stopColor={CHART.ink} stopOpacity={0.12} />
+              <stop offset="100%" stopColor={CHART.ink} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="#E5E5EA" strokeDasharray="3 4" vertical={false} />
+          <CartesianGrid stroke={CHART.line} strokeDasharray="3 4" vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fill: '#8E8E93', fontSize: 10 }}
+            tick={AXIS_TICK}
             axisLine={false}
             tickLine={false}
             minTickGap={28}
@@ -1371,18 +1342,36 @@ function Est1RMChart({
             }
           />
           <YAxis
-            tick={{ fill: '#8E8E93', fontSize: 10 }}
+            tick={AXIS_TICK}
             axisLine={false}
             tickLine={false}
             width={36}
             domain={['dataMin - 4', 'dataMax + 4']}
             tickFormatter={(n) => String(Math.round(Number(n)))}
           />
-          <Tooltip cursor={{ stroke: '#C9C9CE', strokeWidth: 1 }} content={<Est1RMTooltip unitLabel={unitLabel} />} />
+          <Tooltip
+            cursor={{ stroke: CHART.faint, strokeWidth: 1 }}
+            content={
+              <ChartTooltip<{ label: string; value: number; delta: number | null }>
+                title={(p) =>
+                  new Date(p.label).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                }
+                value={(p) => `${fmtNum(p.value)} ${unitLabel === 'pin' ? 'pin' : unitLabel}`}
+                note={(p) =>
+                  p.delta != null && Math.abs(p.delta) >= 0.05
+                    ? {
+                        text: `${p.delta > 0 ? '+' : '−'}${fmtNum(Math.abs(p.delta))}%`,
+                        tone: p.delta > 0 ? 'good' : 'bad',
+                      }
+                    : null
+                }
+              />
+            }
+          />
           <Area
             type="monotone"
             dataKey="value"
-            stroke="#0A0A0A"
+            stroke={CHART.ink}
             strokeWidth={2}
             fill="url(#e1rm-fill)"
             dot={false}
@@ -1471,13 +1460,13 @@ function BodyWeightCard({
             <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="bw-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0A0A0A" stopOpacity={0.1} />
-                  <stop offset="100%" stopColor="#0A0A0A" stopOpacity={0} />
+                  <stop offset="0%" stopColor={CHART.ink} stopOpacity={0.1} />
+                  <stop offset="100%" stopColor={CHART.ink} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#8E8E93', fontSize: 10 }}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
                 minTickGap={24}
@@ -1486,7 +1475,7 @@ function BodyWeightCard({
                 }
               />
               <YAxis
-                tick={{ fill: '#8E8E93', fontSize: 10 }}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
                 width={40}
@@ -1494,14 +1483,18 @@ function BodyWeightCard({
                 tickFormatter={(n) => fmtNum(Number(n))}
               />
               <Tooltip
-                contentStyle={{ borderRadius: 12, border: '1px solid #E5E5EA', fontSize: 12 }}
-                formatter={(v) => [`${fmtNum(Number(v))} ${bwUnit}`, 'Body weight']}
-                labelFormatter={(d) =>
-                  new Date(d).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })
+                cursor={{ stroke: CHART.faint, strokeWidth: 1 }}
+                content={
+                  <ChartTooltip<{ label: string; value: number }>
+                    title={(p) =>
+                      new Date(p.label).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })
+                    }
+                    value={(p) => `${fmtNum(p.value)} ${bwUnit}`}
+                  />
                 }
               />
               {/* A dot on every reading turned a year of daily weigh-ins into a
@@ -1510,7 +1503,7 @@ function BodyWeightCard({
               <Area
                 type="monotone"
                 dataKey="value"
-                stroke="#0A0A0A"
+                stroke={CHART.ink}
                 strokeWidth={2}
                 fill="url(#bw-fill)"
                 dot={false}

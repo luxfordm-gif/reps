@@ -58,7 +58,7 @@ export function WeeklyProgress({
     <div className="rounded-card bg-ink p-5 text-white shadow-card">
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/55">
-          Weekly Progress
+          Weekly progress
         </div>
         {planWeek != null && (
           <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/55">

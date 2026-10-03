@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 interface Props {
   title: string;
   message?: string;
@@ -15,19 +17,25 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
 }: Props) {
+  const titleId = useId();
   return (
     <div
       className="backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-6 backdrop-blur-sm"
       onClick={onCancel}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="dialog-in w-full max-w-sm rounded-card bg-paper-card p-6 shadow-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center">
           <img src="/icon-192.png" alt="" className="h-12 w-12 rounded-panel" />
         </div>
-        <h2 className="mt-4 text-center text-xl font-bold tracking-tight text-ink">{title}</h2>
+        <h2 id={titleId} className="mt-4 text-center text-xl font-bold tracking-tight text-ink">
+          {title}
+        </h2>
         {message && <p className="mt-2 text-center text-sm text-muted">{message}</p>}
         <div className="mt-6 flex gap-3">
           <button

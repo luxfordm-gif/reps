@@ -51,7 +51,7 @@ export function Tile({
   const cls =
     'flex h-full min-h-[156px] flex-col rounded-card bg-paper-card p-4 text-left shadow-card';
   return onClick ? (
-    <button type="button" onClick={onClick} className={`${cls} w-full active:bg-surface`}>
+    <button type="button" onClick={onClick} className={`pressable ${cls} w-full active:bg-surface`}>
       {body}
     </button>
   ) : (
@@ -105,7 +105,7 @@ export function MiniTile({
   );
   const cls = 'flex h-full flex-col rounded-panel bg-paper-card p-3 text-left shadow-card';
   return onClick ? (
-    <button type="button" onClick={onClick} className={`${cls} w-full active:bg-surface`}>
+    <button type="button" onClick={onClick} className={`pressable ${cls} w-full active:bg-surface`}>
       {body}
     </button>
   ) : (

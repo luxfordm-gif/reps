@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CloseIcon } from './Icons';
 import {
   ACCEPTED_ATTACHMENT_TYPES,
   FEEDBACK_KINDS,
@@ -108,7 +109,7 @@ export function FeedbackSheet({ screen, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+      className="backdrop-in fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
       style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={status === 'sending' ? undefined : onClose}
       role="dialog"
@@ -116,14 +117,14 @@ export function FeedbackSheet({ screen, onClose }: Props) {
       aria-label="Send feedback"
     >
       <SheetPanel
-        className="w-full max-w-md rounded-t-card bg-paper-card shadow-card"
+        className="sheet-in w-full max-w-md rounded-t-card bg-paper-card shadow-card"
         header={
           status === 'sent' ? undefined : (
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-bold tracking-tight text-ink">Send feedback</h2>
               <button
                 onClick={onClose}
-                className="pressable -mr-2 -mt-1 flex h-9 w-9 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+                className="pressable -mr-3 -mt-2 flex h-11 w-11 items-center justify-center rounded-full text-muted active:bg-surface-strong"
                 aria-label="Close"
               >
                 <CloseIcon />
@@ -173,10 +174,10 @@ export function FeedbackSheet({ screen, onClose }: Props) {
                     />
                     <button
                       onClick={() => removeFile(p.file)}
-                      className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink text-white shadow-card"
+                      className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink text-white shadow-card before:absolute before:-inset-2.5 before:content-['']"
                       aria-label={`Remove ${p.file.name}`}
                     >
-                      <CloseIcon small />
+                      <CloseIcon size={12} strokeWidth={2.6} />
                     </button>
                   </li>
                 ))}
@@ -294,20 +295,6 @@ function placeholderFor(kind: FeedbackKind): string {
     default:
       return 'Anything at all.';
   }
-}
-
-function CloseIcon({ small = false }: { small?: boolean }) {
-  const s = small ? 12 : 20;
-  return (
-    <svg width={s} height={s} viewBox="0 0 20 20" fill="none">
-      <path
-        d="M5 5l10 10M15 5L5 15"
-        stroke="currentColor"
-        strokeWidth={small ? 2.6 : 1.9}
-        strokeLinecap="round"
-      />
-    </svg>
-  );
 }
 
 function PaperclipIcon() {

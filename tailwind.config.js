@@ -42,6 +42,9 @@ export default {
           strong: '#DC2626',
           soft: '#FEF2F2',
           line: '#FECACA',
+          // iOS's system red for dark surfaces: the only red that holds its
+          // contrast on a black card. Pairs with good.bright below.
+          bright: '#FF453A',
         },
         warn: {
           DEFAULT: '#92400E',
@@ -51,7 +54,8 @@ export default {
         good: {
           DEFAULT: '#166534',
           soft: '#F0FDF4',
-          // iOS's system green: the tick on a goal met, the "all synced" dot.
+          // iOS's system green: the tick on a goal met, the "all synced" dot,
+          // and the green that holds its contrast on a black card.
           bright: '#34C759',
         },
       },

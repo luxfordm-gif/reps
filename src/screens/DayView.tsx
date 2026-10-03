@@ -562,7 +562,7 @@ export function DayView({
                   <span className="h-1 w-1 rounded-full bg-white/40" />
                   <button
                     onClick={() => setConfirmDiscard(true)}
-                    className="font-medium underline-offset-2 active:underline"
+                    className="-my-3.5 px-2 py-3.5 font-medium underline-offset-2 active:underline"
                   >
                     Discard workout
                   </button>
@@ -599,7 +599,7 @@ export function DayView({
                     type="button"
                     onClick={undoReferenceDone}
                     disabled={markingDone}
-                    className="text-xs font-semibold text-muted active:text-ink disabled:opacity-50"
+                    className="-my-3.5 -mr-3 px-3 py-3.5 text-xs font-semibold text-muted active:text-ink disabled:opacity-50"
                   >
                     Undo
                   </button>
@@ -633,14 +633,14 @@ export function DayView({
                   <button
                     onClick={cancelEdit}
                     disabled={saving}
-                    className="text-sm font-medium text-muted active:text-ink disabled:opacity-50"
+                    className="-my-3 -mx-2 px-2 py-3 text-sm font-medium text-muted active:text-ink disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={saveEdit}
                     disabled={saving}
-                    className="pressable rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
+                    className="pressable rounded-pill bg-ink px-4 py-2.5 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50"
                   >
                     {saving ? 'Saving…' : 'Done'}
                   </button>
@@ -648,7 +648,7 @@ export function DayView({
               ) : (
                 <button
                   onClick={startEdit}
-                  className="pressable rounded-pill bg-surface-strong px-4 py-1.5 text-sm font-semibold text-ink active:opacity-70"
+                  className="pressable rounded-pill bg-surface-strong px-4 py-2.5 text-sm font-semibold text-ink active:opacity-70"
                 >
                   Edit
                 </button>
@@ -855,7 +855,8 @@ function ExerciseRow({
         <div className="px-5 pb-4">
           <button
             onClick={() => setNotesOpen((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-muted active:text-ink"
+            aria-expanded={notesOpen}
+            className="-my-3.5 -ml-2 flex items-center gap-1.5 px-2 py-3.5 text-xs font-medium text-muted active:text-ink"
           >
             <NoteIcon />
             <span>Coach notes</span>
@@ -897,12 +898,12 @@ function ReorderRow({
           {exercise.total_sets ?? '–'} × {exercise.rep_range}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1">
         <button
           onClick={onUp}
           disabled={disabled || isFirst}
           aria-label="Move up"
-          className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
+          className="pressable flex h-11 w-11 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
         >
           <MoveArrow up />
         </button>
@@ -910,7 +911,7 @@ function ReorderRow({
           onClick={onDown}
           disabled={disabled || isLast}
           aria-label="Move down"
-          className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
+          className="pressable flex h-11 w-11 items-center justify-center rounded-full bg-line text-ink active:opacity-70 disabled:opacity-30"
         >
           <MoveArrow />
         </button>

@@ -269,7 +269,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
 }
 
 const POSITIVE_HEADLINES = [
-  'You smashed that!',
+  'You smashed that',
   'Beast mode unlocked',
   'Logged and proud',
   'Crushed it',

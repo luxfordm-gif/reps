@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { CloseIcon } from './Icons';
 import {
   getInstallAdvice,
   markDismissed,
@@ -17,11 +18,13 @@ import { haptics } from '../lib/haptics';
  * this is a suggestion, not something to interrupt a workout with. One tap
  * dismisses it for a month.
  *
- * The bottom offset is the tab bar's own height — 12px of top padding, a 44px
- * pill inside 6px of padding, 24px below — so the banner lands a clear gap
- * above it instead of on it.
+ * The bottom offset is the tab bar's own height — 12px of top padding and a
+ * 44px pill inside 6px of padding — measured up from the same `--nav-bottom`
+ * line the bar sits on, plus the active-workout bar when one is docked above
+ * it. The three move together, and the banner lands a clear gap above the bar
+ * instead of on it.
  */
-const NAV_HEIGHT_PX = 92;
+const ABOVE_NAV = 'calc(var(--nav-bottom) + 68px + var(--active-bar-h, 0px))';
 
 /**
  * Long enough for the screen behind it to have arrived and been read. A banner
@@ -59,7 +62,7 @@ export function InstallPrompt() {
   return (
     <div
       className="sheet-in fixed inset-x-0 z-40 px-4"
-      style={{ bottom: NAV_HEIGHT_PX }}
+      style={{ bottom: ABOVE_NAV }}
       role="region"
       aria-label="Add Reps to your home screen"
     >
@@ -102,9 +105,9 @@ export function InstallBanner({ advice, onInstall, onDismiss }: BannerProps) {
         <button
           onClick={onDismiss}
           aria-label="Not now"
-          className="pressable -mr-1 flex h-8 w-8 shrink-0 items-center justify-center self-start rounded-full text-muted active:bg-surface-strong"
+          className="pressable -mr-2 -mt-1.5 flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-full text-muted active:bg-surface-strong"
         >
-          <CloseIcon />
+          <CloseIcon size={18} />
         </button>
       </div>
 
@@ -144,19 +147,6 @@ export function InstallBanner({ advice, onInstall, onDismiss }: BannerProps) {
         </p>
       )}
     </div>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M5 5l10 10M15 5L5 15"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 
