@@ -98,8 +98,11 @@ export function buildKudos(input: KudosInput): Kudos {
       (l) => l.set_index === s.setIndex && l.drop_index === s.dropIndex
     );
     const reps = parseInt(s.reps, 10) || 0;
+    const weight = parseFloat(s.weight) || 0;
     if (last && last.reps != null) {
-      if (reps > last.reps) {
+      // Extra reps only count when the set wasn't lighter than last time —
+      // 10 reps at 35 kg isn't a rep gain on 8 at 40 kg.
+      if (reps > last.reps && weight >= (last.weight ?? 0)) {
         repPRs.push({ setIndex: s.setIndex, delta: reps - last.reps });
       } else if (reps < last.reps) {
         totalLostReps += last.reps - reps;
@@ -150,12 +153,16 @@ export function buildKudos(input: KudosInput): Kudos {
 
   // Pick a complementary secondary line. Acknowledge a second positive, soften a
   // regression, or nudge if reps fell below the coach's target range.
+  // Extra reps on a set beat the softener: if the top set went heavier and
+  // another set gained reps at the same weight, both are worth saying.
   let detail: string | null = null;
-  if (primary === 'weightUp' && totalLostReps > 0) {
-    detail = pick(WEIGHT_UP_REPS_DOWN_POOL, seed + ':wuRd');
-  } else if (primary === 'weightUp' && totalExtraReps > 0) {
+  if (primary === 'weightUp' && totalExtraReps > 0) {
     const s = totalExtraReps === 1 ? '' : 's';
-    detail = `Also +${totalExtraReps} rep${s} vs last time.`;
+    const where =
+      repPRs.length === 1 ? `on set ${repPRs[0].setIndex}` : `across ${repPRs.length} sets`;
+    detail = `Also +${totalExtraReps} rep${s} ${where}.`;
+  } else if (primary === 'weightUp' && totalLostReps > 0) {
+    detail = pick(WEIGHT_UP_REPS_DOWN_POOL, seed + ':wuRd');
   } else if (primary === 'repsUp' && topDelta > 0) {
     detail = `Also +${fmt(topDelta)} kg on your top set.`;
   } else if (primary === 'repsUp') {
