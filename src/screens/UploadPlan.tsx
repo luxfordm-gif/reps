@@ -187,13 +187,16 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!parsed) {
-      setMatches(new Map());
-      return;
-    }
+  // Matched again whenever the plan or the past machines change, in the render
+  // that notices. Nothing parsed (the PDF was cleared) means nothing to match.
+  const [matchedFor, setMatchedFor] = useState<{
+    parsed: ParsedPlan | null;
+    previous: PreviousExercise[];
+  } | null>(null);
+  if (matchedFor?.parsed !== parsed || matchedFor?.previous !== previousExercises) {
+    setMatchedFor({ parsed, previous: previousExercises });
     const next = new Map<string, Match>();
-    for (const day of parsed.days) {
+    for (const day of parsed?.days ?? []) {
       for (const ex of day.exercises) next.set(keyOf(ex), computeMatch(ex, previousExercises));
     }
     // Any edit on the screen re-runs this, so a decision the user has already
@@ -211,7 +214,7 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
       }
       return merged;
     });
-  }, [parsed, previousExercises]);
+  }
 
   async function handleFile(f: File) {
     const problem = describePlanFileProblem(f);

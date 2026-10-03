@@ -124,11 +124,18 @@ function HistoryRow({
   const [startX, setStartX] = useState<number | null>(null);
   const [animating, setAnimating] = useState(false);
 
+  // The row has to be animating before the wobble's first move, so that's set
+  // in the render that sees the wobble start.
+  const [wobbling, setWobbling] = useState(false);
+  if (wobble !== wobbling) {
+    setWobbling(wobble);
+    if (wobble) setAnimating(true);
+  }
+
   useEffect(() => {
     if (!wobble) return;
     let mounted = true;
     const timers: number[] = [];
-    setAnimating(true);
     timers.push(window.setTimeout(() => mounted && setDx(-revealW * 0.7), 350));
     timers.push(window.setTimeout(() => mounted && setDx(0), 900));
     timers.push(window.setTimeout(() => mounted && setAnimating(false), 1150));

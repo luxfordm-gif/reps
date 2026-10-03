@@ -59,6 +59,6 @@ framework, no mocks, `node --experimental-strip-types`. Add cases to the
 existing file for the area you touched rather than starting a new harness.
 
 `npm run build` is `tsc -b && vite build` and must pass. `npm run lint` is
-eslint and currently reports 20 pre-existing `react-hooks` errors across twelve
-files — don't try to fix those in an unrelated PR, but don't add to the count
-either: compare against a clean checkout before blaming your own change.
+eslint and must pass with no errors. When state has to follow a prop, set it
+while rendering behind a check against the last value seen, or derive it —
+not with a `setState` at the top of a `useEffect`.

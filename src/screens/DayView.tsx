@@ -248,9 +248,16 @@ export function DayView({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const { reachable } = useNetStatus();
 
+  // A different day (or the same day re-edited) has to be looked up afresh, so
+  // the button says Loading from the render that notices, not a frame after.
+  const [lookupFor, setLookupFor] = useState({ dayId: day.id, exercises });
+  if (lookupFor.dayId !== day.id || lookupFor.exercises !== exercises) {
+    setLookupFor({ dayId: day.id, exercises });
+    setLoadingSession(true);
+  }
+
   useEffect(() => {
     let mounted = true;
-    setLoadingSession(true);
     (async () => {
       try {
         const sess = await getActiveSessionForDay(day.id);

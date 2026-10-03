@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../lib/useAuth';
 import { PageHeader } from '../components/PageHeader';
 import { DateOfBirthInput } from '../components/DateOfBirthInput';
 import { ConfirmModal } from '../components/ConfirmModal';

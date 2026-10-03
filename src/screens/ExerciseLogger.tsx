@@ -574,7 +574,8 @@ export function ExerciseLogger({
   useEffect(() => {
     profileRef.current = profile;
   }, [profile]);
-  const [, setNow] = useState(Date.now());
+  // The clock the rest countdown reads, ticked while a rest runs.
+  const [now, setNow] = useState(() => Date.now());
   const [displayName, setDisplayName] = useState(exercise.name);
   // Effective machine identity for logging + prefill. Starts as the plan
   // exercise's own identity, but a swap (one-off or persisted) re-points it so
@@ -623,8 +624,20 @@ export function ExerciseLogger({
 
   // When the user switches to a different exercise mid-session, re-pick the
   // initial rest from that exercise's stored value (falling back to local
-  // default), and reset the displayed name to the canonical one.
-  useEffect(() => {
+  // default), and reset the displayed name to the canonical one. Done in the
+  // render that sees the new exercise, so nothing of the last one shows.
+  const exerciseKey = JSON.stringify([
+    exercise.id,
+    exercise.rest_seconds,
+    exercise.name,
+    exercise.normalized_name,
+    exercise.baseline_reset_at,
+    exercise.personal_notes,
+    exercise.notes,
+  ]);
+  const [exerciseShown, setExerciseShown] = useState(exerciseKey);
+  if (exerciseKey !== exerciseShown) {
+    setExerciseShown(exerciseKey);
     setRestSecondsState(initialRestSeconds(exercise.rest_seconds));
     setDisplayName(exercise.name);
     setEffectiveNormalized(exercise.normalized_name);
@@ -640,15 +653,7 @@ export function ExerciseLogger({
     setCoachDraft(coach);
     // Reopen automatically for exercises that carry coach notes.
     setNotesOpen(Boolean(coach.trim()));
-  }, [
-    exercise.id,
-    exercise.rest_seconds,
-    exercise.name,
-    exercise.normalized_name,
-    exercise.baseline_reset_at,
-    exercise.personal_notes,
-    exercise.notes,
-  ]);
+  }
 
   // Load this slot's alternatives. Best-effort — on failure the pill switcher
   // simply doesn't render and the exercise behaves exactly as before.
@@ -671,13 +676,12 @@ export function ExerciseLogger({
   // rotates to the alternative. If they did the alternative last time, the plan
   // default (primary) is already the correct rotation, so we stay quiet.
   // Best-effort: any failure just means no suggestion.
+  const hasWeeklyAlt = alternatives.some((a) => a.is_weekly_rotation);
+  if (!hasWeeklyAlt && rotationSuggestion) setRotationSuggestion(null);
   useEffect(() => {
     let mounted = true;
     const weeklyAlt = alternatives.find((a) => a.is_weekly_rotation);
-    if (!weeklyAlt) {
-      setRotationSuggestion(null);
-      return;
-    }
+    if (!weeklyAlt) return;
     getLastLoggedNormalizedForSlot(exercise.id, sessionId)
       .then((lastNormalized) => {
         if (!mounted) return;
@@ -771,8 +775,6 @@ export function ExerciseLogger({
   // has: instant read from the cache, then reconcile with the DB (either may
   // have been set on another device).
   useEffect(() => {
-    changeUnit(getCachedExerciseUnit(effectiveNormalized));
-    changeProfile(getCachedExerciseProfile(effectiveNormalized));
     let cancelled = false;
     getExerciseUnit(effectiveNormalized)
       .then((u) => {
@@ -841,6 +843,15 @@ export function ExerciseLogger({
     });
   }
 
+  // A different machine shows its cached unit and profile from the render that
+  // switches to it; the effect above reconciles both with the database.
+  const [prefsShownFor, setPrefsShownFor] = useState(effectiveNormalized);
+  if (effectiveNormalized !== prefsShownFor) {
+    setPrefsShownFor(effectiveNormalized);
+    changeUnit(getCachedExerciseUnit(effectiveNormalized));
+    changeProfile(getCachedExerciseProfile(effectiveNormalized));
+  }
+
   function handleSelectProfile(next: MachineProfile) {
     if (sameProfile(next, profile)) return;
     changeProfile(next);
@@ -870,7 +881,9 @@ export function ExerciseLogger({
         clearRest();
         return;
       }
-      const endsAt = Date.now() + seconds * 1000;
+      const startedAt = Date.now();
+      const endsAt = startedAt + seconds * 1000;
+      setNow(startedAt);
       setRestTotalSeconds(seconds);
       setRestEndsAt(endsAt);
       writeStoredRest(sessionId, { endsAt, totalSeconds: seconds });
@@ -882,6 +895,7 @@ export function ExerciseLogger({
   const adjustRest = useCallback(
     (deltaMs: number) => {
       const now = Date.now();
+      setNow(now);
       setRestEndsAt((t) => {
         const next = (t ?? now) + deltaMs;
         if (next <= now) {
@@ -953,9 +967,11 @@ export function ExerciseLogger({
   }, [restEndsAt]);
 
   // Start each new rest expanded, even if the previous one was minimised.
-  useEffect(() => {
+  const [restSeen, setRestSeen] = useState(restEndsAt);
+  if (restEndsAt !== restSeen) {
+    setRestSeen(restEndsAt);
     if (restEndsAt != null) setRestMinimised(false);
-  }, [restEndsAt]);
+  }
 
   // Tick for rest timer + buzz/beep at zero
   useEffect(() => {
@@ -1002,10 +1018,24 @@ export function ExerciseLogger({
     };
   }, [renameOpen]);
 
-  // Load existing sets for this exercise + last session's sets
+  // Load existing sets for this exercise + last session's sets. A new set of
+  // inputs is loading from the render that notices them, not a frame later.
+  const loadKey = JSON.stringify([
+    sessionId,
+    exercise.id,
+    effectiveNormalized,
+    effectiveBaselineResetAt,
+    exercise.total_sets,
+    exercise.rep_range,
+    exercise.notes,
+  ]);
+  const [loadingFor, setLoadingFor] = useState(loadKey);
+  if (loadKey !== loadingFor) {
+    setLoadingFor(loadKey);
+    setLoading(true);
+  }
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
     // Each read falls back to the copy on the device on its own, so a request
     // that fails for a reason the offline layer doesn't recognise still leaves
     // the screen with last time's weights rather than an empty form.
@@ -1390,7 +1420,7 @@ export function ExerciseLogger({
     return [...lastSets].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))[0];
   }, [lastSets]);
 
-  const restRemainingMs = restEndsAt ? Math.max(0, restEndsAt - Date.now()) : 0;
+  const restRemainingMs = restEndsAt ? Math.max(0, restEndsAt - now) : 0;
   const restActive = restEndsAt != null && restRemainingMs > 0;
 
   const nextSet = sets.find((s) => !s.completed) ?? null;
@@ -3719,10 +3749,10 @@ function RestOverlay({
   lastSetReps: number | null;
 }) {
   useThemeColor('#0A0A0A');
-  const [, setTick] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!sessionStartedAt) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [sessionStartedAt]);
 
@@ -3735,7 +3765,7 @@ function RestOverlay({
   const offset = circumference * (1 - progress);
 
   const elapsed = sessionStartedAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(sessionStartedAt).getTime()) / 1000))
+    ? Math.max(0, Math.floor((now - new Date(sessionStartedAt).getTime()) / 1000))
     : null;
   const elapsedLabel =
     elapsed != null
