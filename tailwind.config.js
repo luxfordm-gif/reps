@@ -70,7 +70,9 @@ export default {
       // xs (12) through 2xl (24) — carry the body of the app; these are the
       // ends of the scale it has no name for.
       fontSize: {
-        // Uppercase eyebrow, badge, stat label. Tracked, always short.
+        // Badge, pill, in-field unit, the label on a stat tile. Tracked, always
+        // short. Not the eyebrow over a section or a card: that is text-xs, as
+        // SectionLabel sets it, so a heading never drops below 12px.
         label: '10px',
         // The quiet line under a row: a breakdown, a hint, a timestamp.
         caption: '11px',

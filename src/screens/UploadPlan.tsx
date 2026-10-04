@@ -722,7 +722,7 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
                 <div key={`${day.name}#${dayIdx}`} className="rounded-card bg-paper-card shadow-card">
                   <div className="flex items-start justify-between gap-3 border-b border-line/60 px-5 py-3">
                     <div className="min-w-0">
-                      <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+                      <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                         Day {dayIdx + 1}
                         {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
                         {day.weekIndex == null && rotates && ' · Every week'}
@@ -971,7 +971,7 @@ function UnreadLineCard({
 }) {
   const body = (
     <>
-      <div className="text-label font-semibold uppercase tracking-eyebrow text-warn">
+      <div className="text-xs font-semibold uppercase tracking-eyebrow text-warn">
         Couldn't read this line
       </div>
       <div className="mt-1 break-words font-mono text-caption text-ink/80">{text}</div>
@@ -1060,7 +1060,7 @@ function WeeklyAlternativeCard({
 
   return (
     <div className="mt-3 rounded-control bg-ink/5 px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-label font-semibold uppercase tracking-eyebrow text-muted">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
         <RotateGlyph />
         Alternates weekly with
       </div>

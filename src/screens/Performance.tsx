@@ -437,7 +437,7 @@ function PlanHero({
   if (!plan) {
     return (
       <div className="rounded-card bg-ink p-5 text-white shadow-card">
-        <div className="text-label font-semibold uppercase tracking-eyebrow text-white/60">
+        <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/60">
           Current plan
         </div>
         <div className="mt-1 text-xl font-bold tracking-tight">No active plan</div>
@@ -455,7 +455,7 @@ function PlanHero({
     <div className="rounded-card bg-ink p-5 text-white shadow-card">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-label font-semibold uppercase tracking-eyebrow text-white/60">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/60">
             Current plan
           </div>
           <div className="mt-1 text-display font-bold leading-none tracking-tight">Week {week}</div>
@@ -472,7 +472,7 @@ function PlanHero({
         </div>
         {target > 0 && (
           <div className="w-28 shrink-0 pt-1 text-right">
-            <div className="text-label font-semibold uppercase tracking-eyebrow text-white/60">
+            <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/60">
               This week
             </div>
             <div className="mt-1 text-xl font-bold tabular-nums">
@@ -907,7 +907,7 @@ function MoverHero({
         {/* Only a gain when it gained. In a deload week every lift is down
             and the top of the list is the smallest drop — still worth the
             card, not worth calling a gain. */}
-        <div className="text-label font-semibold uppercase tracking-eyebrow text-white/60">
+        <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/60">
           {move.deltaPct > 1 ? 'Biggest gain' : 'Top mover'}
         </div>
         {onOpen && (

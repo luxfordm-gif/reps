@@ -231,7 +231,7 @@ function PlanCard({
     >
       <div className="p-5">
         <div
-          className={`text-label font-semibold uppercase tracking-eyebrow ${
+          className={`text-xs font-semibold uppercase tracking-eyebrow ${
             dark ? 'text-white/70' : 'text-muted'
           }`}
         >

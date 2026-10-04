@@ -1634,7 +1634,7 @@ export function ExerciseLogger({
 
         {inRound && !restActive && (
           <div className="mt-5 rounded-card bg-paper-card px-4 py-3 text-center shadow-card">
-            <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+            <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
               {groupedSetLabel(roundNames.length + 1)}
             </div>
             <div className="mt-1 text-sm text-ink">
@@ -2089,7 +2089,7 @@ function ExerciseMenu({
           className="absolute right-0 top-11 z-40 w-56 overflow-y-auto overflow-x-hidden overscroll-contain rounded-card border border-line bg-paper-card shadow-card"
         >
           <div className="px-4 py-3">
-            <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+            <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
               Weight unit
             </div>
             <div className="mt-2 flex rounded-pill bg-line p-0.5">
@@ -2108,7 +2108,7 @@ function ExerciseMenu({
           </div>
           <Hairline />
           <div className="px-4 py-3">
-            <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+            <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
               Weight profile
             </div>
             <div className="mt-2 flex rounded-pill bg-line p-0.5">
@@ -2435,7 +2435,7 @@ function AlternativeSheet({
                   <span className="block break-words text-sm font-semibold text-ink">
                     {primaryName}
                   </span>
-                  <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+                  <span className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                     Plan default
                   </span>
                 </span>
@@ -2564,7 +2564,7 @@ function MachinePickerList({
                     <ExerciseName name={m.displayName} variant="inline" />
                   </span>
                   {m.setCount > 0 && (
-                    <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+                    <span className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                       history
                     </span>
                   )}
@@ -2678,7 +2678,7 @@ function AddAlternativeModal({
           onUseAsNew={fillNewFrom}
         />
 
-        <p className="mt-5 text-label font-semibold uppercase tracking-eyebrow text-muted">
+        <p className="mt-5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
           Add a new exercise
         </p>
         <ExerciseNameFields
@@ -2821,7 +2821,7 @@ function SwapMachineModal({
               onUseAsNew={fillNewFrom}
             />
 
-            <p className="mt-5 text-label font-semibold uppercase tracking-eyebrow text-muted">
+            <p className="mt-5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
               Add a new exercise
             </p>
             <ExerciseNameFields
@@ -2858,7 +2858,7 @@ function SwapMachineModal({
                 ? 'New exercise — it starts fresh and baselines from this workout.'
                 : "Pulls up that machine's own history so you can pick up where you left off."}
             </p>
-            <p className="mt-5 text-label font-semibold uppercase tracking-eyebrow text-muted">
+            <p className="mt-5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
               Is this a one-off?
             </p>
             <div className="mt-2 grid gap-2">
@@ -2945,7 +2945,7 @@ function RenameExerciseModal({
           onMovementChange={setMovement}
           onBrandChange={setBrand}
         />
-        <p className="mt-5 text-label font-semibold uppercase tracking-eyebrow text-muted">
+        <p className="mt-5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
           Is this the same machine?
         </p>
         <div className="mt-2 grid gap-2">
@@ -3088,7 +3088,7 @@ function LastTimeRow({
         aria-expanded={open}
         className="flex w-full items-center justify-between px-3.5 py-2.5 text-left active:bg-pressed"
       >
-        <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+        <span className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
           Last time
         </span>
         <span className="flex items-center gap-2 text-xs font-medium text-ink">
@@ -3158,7 +3158,7 @@ function Stat({
     <div
       className={`rounded-panel bg-paper-card ${compact ? 'p-2' : 'p-3'} text-center shadow-card`}
     >
-      <div className={`text-label font-semibold uppercase tracking-eyebrow text-muted`}>
+      <div className={`text-xs font-semibold uppercase tracking-eyebrow text-muted`}>
         {label}
       </div>
       <div
@@ -3306,7 +3306,7 @@ function SetGroup({
         return (
           <div key={idx}>
             {showBackOffHeader && (
-              <div className="px-4 pt-2.5 text-label font-semibold uppercase tracking-eyebrow text-muted">
+              <div className="px-4 pt-2.5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
                 Back off · {row.repRangeLabel}
               </div>
             )}
@@ -3499,7 +3499,7 @@ function SetGroup({
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
-                <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+                <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                   Points
                 </div>
                 <div className="mt-2 space-y-2">
@@ -3576,7 +3576,7 @@ function SetGroup({
                 )}
                 {/* The number the set actually logs, on a row of its own. */}
                 <div className="mt-2.5 flex items-start justify-between border-t border-line/60 pt-2">
-                  <span className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+                  <span className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                     Total
                   </span>
                   <span className="text-right">
@@ -3598,7 +3598,7 @@ function SetGroup({
                   !isLastInGroup ? 'border-b border-line/60' : ''
                 }`}
               >
-                <span className="shrink-0 text-label font-semibold uppercase tracking-eyebrow text-muted">
+                <span className="shrink-0 text-xs font-semibold uppercase tracking-eyebrow text-muted">
                   Curve
                 </span>
                 {row.completed ? (
@@ -3655,7 +3655,7 @@ function SetGroup({
         );
       })}
       {footerLabel && (hasDrops || scheme === 'muscle_round' || scheme === 'intensifier') && (
-        <div className="border-t border-line/60 bg-surface px-3 py-1.5 text-label font-semibold uppercase tracking-eyebrow text-muted">
+        <div className="border-t border-line/60 bg-surface px-3 py-1.5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
           {footerLabel}
         </div>
       )}
@@ -3688,7 +3688,7 @@ function RestTimer({
   return (
     <div className="flex items-center gap-4">
       <div className="flex flex-col">
-        <span className="text-label font-semibold uppercase tracking-eyebrow text-ink">
+        <span className="text-xs font-semibold uppercase tracking-eyebrow text-ink">
           Rest
         </span>
         <span className="mt-0.5 text-caption text-muted">Next set in</span>
@@ -3831,7 +3831,7 @@ function RestOverlay({
 
         {elapsedLabel && (
           <div className="mt-3 flex flex-col items-center">
-            <div className="text-label font-semibold uppercase tracking-eyebrow text-white/50">
+            <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/50">
               Workout time
             </div>
             <div className="mt-1 font-mono text-base font-semibold tabular-nums">
@@ -3871,7 +3871,7 @@ function RestOverlay({
               <div className="font-mono text-display-xl font-bold leading-none tabular-nums">
                 {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
               </div>
-              <div className="mt-3 text-label font-semibold uppercase tracking-eyebrow text-white/60">
+              <div className="mt-3 text-xs font-semibold uppercase tracking-eyebrow text-white/60">
                 Until next set
               </div>
             </div>
@@ -3879,7 +3879,7 @@ function RestOverlay({
 
           {nextSetName && (
             <div className="mt-6 flex flex-col items-center">
-              <div className="text-label font-semibold uppercase tracking-eyebrow text-white/50">
+              <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/50">
                 Next set
               </div>
               <div className="mt-1 text-lg font-bold tracking-tight">{nextSetName}</div>
@@ -3892,7 +3892,7 @@ function RestOverlay({
           )}
 
           <div className="mt-5 flex flex-col items-center">
-            <div className="text-label font-semibold uppercase tracking-eyebrow text-white/50">
+            <div className="text-xs font-semibold uppercase tracking-eyebrow text-white/50">
               Default rest time
             </div>
             {/* Six choices on one line at 390px: None, 30s, 60s, 90s, 2m, 3m.
@@ -3966,7 +3966,7 @@ function MiniRestBar({
           aria-label="Expand rest timer"
           className="pressable flex items-center gap-3 py-2 pl-4 pr-2 active:opacity-80"
         >
-          <span className="text-label font-semibold uppercase tracking-eyebrow text-white/60">
+          <span className="text-xs font-semibold uppercase tracking-eyebrow text-white/60">
             Rest
           </span>
           <span className="font-mono text-base font-bold tabular-nums">
@@ -4095,7 +4095,7 @@ function RestPicker({
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
       {!compact && (
-        <span className="mr-1 text-label font-semibold uppercase tracking-eyebrow text-muted">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-eyebrow text-muted">
           Rest
         </span>
       )}

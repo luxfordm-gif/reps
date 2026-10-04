@@ -576,7 +576,7 @@ export function DayView({
       <div className="mx-auto max-w-md px-5">
         {referenceOnly && (
           <div className="mt-6 rounded-card bg-paper-card px-5 py-4 shadow-card">
-            <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+            <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
               Reference
             </div>
             <div className="mt-1 text-sm text-ink">
