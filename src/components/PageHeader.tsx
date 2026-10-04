@@ -75,7 +75,7 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
           </h1>
         )}
         <div
-          className={`sticky top-0 z-20 -mx-5 -mt-11 transition-shadow ${
+          className={`sticky top-0 z-20 -mx-5 -mt-11 transition-[box-shadow,background-color] duration-pop ease-snap ${
             collapsed
               ? 'bg-paper shadow-hairline after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-surface-strong'
               : 'pointer-events-none'
@@ -107,7 +107,7 @@ export function PageHeader({ title, onBack, rightAction, large = true, bottomSlo
     <>
       <div
         ref={barRef}
-        className={`sticky top-0 z-20 -mx-5 bg-paper transition-shadow ${detailShadow} ${detailDivider}`}
+        className={`sticky top-0 z-20 -mx-5 bg-paper transition-shadow duration-pop ease-snap ${detailShadow} ${detailDivider}`}
         // The safe-area inset belongs here and nowhere else: the bar is what
         // sits under the status bar. Screens that also padded their own
         // container by it ended up with the gap twice over.

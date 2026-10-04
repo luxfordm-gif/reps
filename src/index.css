@@ -94,6 +94,11 @@ h1, h2, h3, h4 {
      can't reach a utility class. */
   --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  /* How far the floating tab bar sits off the bottom of the screen: its usual
+     24px, or the home-indicator inset where there is one, so the pill never
+     sits in the swipe-up zone. Everything that stacks on the bar — the install
+     banner, the padding under a scrolling tab — measures from the same line. */
+  --nav-bottom: max(env(safe-area-inset-bottom, 0px), 1.5rem);
 }
 
 /* Keyboard focus, in the app's own colour.
@@ -184,7 +189,15 @@ h1, h2, h3, h4 {
    item or a list row highlights instead, which is what a phone does everywhere
    else and what keeps a row's background from pulling away from its container. */
 .pressable {
-  transition: transform 220ms var(--ease-snap);
+  /* Not just transform. This rule sits after Tailwind's utilities with the same
+     specificity, so the shorthand was silently cancelling every
+     `transition-colors` and `transition-opacity` on a pressable element — the
+     back button over a hero snapped from white to black while the bar behind
+     it faded. Colour and opacity ride the same curve now, so one class covers
+     what a tap changes. */
+  transition-property: transform, color, background-color, border-color, opacity, box-shadow;
+  transition-duration: 220ms;
+  transition-timing-function: var(--ease-snap);
 }
 
 .pressable:active {
@@ -232,7 +245,7 @@ h1, h2, h3, h4 {
    under every tab grows to match instead of the last card disappearing behind
    it. */
 .pb-nav {
-  padding-bottom: calc(7rem + var(--active-bar-h, 0px));
+  padding-bottom: calc(5.5rem + var(--nav-bottom) + var(--active-bar-h, 0px));
 }
 
 /* A tab arriving. 110ms is about as short as a fade can be and still register

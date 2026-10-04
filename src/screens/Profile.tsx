@@ -226,7 +226,7 @@ export function Profile({
           <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
             <PrefRow
               label="Body weight units"
-              hint="On the Body Weight screen"
+              hint="On the body weight screen"
               value={bwUnit}
               options={['kg', 'st'] as const}
               onChange={changeBwUnit}
@@ -1000,7 +1000,7 @@ function DetailRow({
           <div className="text-sm font-semibold text-ink">{label}</div>
           <button
             onClick={onCancel}
-            className="text-xs font-semibold uppercase tracking-eyebrow text-muted active:text-ink"
+            className="-my-3 -mr-2 px-2 py-3 text-xs font-semibold uppercase tracking-eyebrow text-muted active:text-ink"
           >
             Cancel
           </button>

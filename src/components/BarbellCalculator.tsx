@@ -276,7 +276,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         }
       >
         <div className="px-4 pt-3">
-          <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
             Select barbell
           </div>
           <div className="mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
@@ -338,7 +338,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         <div className="border-t border-line/60 mt-3" />
 
         <div className="px-4 pt-5">
-          <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
             Build your load (one side)
           </div>
           <div className="mt-1 text-xs text-muted">
@@ -386,7 +386,7 @@ export default function BarbellCalculator({ open, barless, onClose, onConfirm }:
         </div>
 
         <div className="px-4 pt-5">
-          <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
             Tap to choose what to log
           </div>
           <div className={`mt-2 grid gap-2 ${barId === 'none' ? 'grid-cols-2' : 'grid-cols-3'}`}>

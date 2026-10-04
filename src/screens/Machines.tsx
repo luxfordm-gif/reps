@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { SectionLabel } from '../components/SectionLabel';
+import { SkeletonRows } from '../components/Skeleton';
 import { BODY_PARTS } from '../lib/parseTrainingPlan';
 import { toSentenceCase } from '../lib/textCase';
 
@@ -75,6 +77,9 @@ const ALL_PARTS = '__all__';
 export function Machines({ onBack }: Props) {
   const [machines, setMachines] = useState<MachineRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A save, merge or delete that failed, shown inside the sheet it came from.
+  // These were browser alert()s — the one place the app did that.
+  const [actionError, setActionError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>('alpha');
   const [query, setQuery] = useState('');
   const [scope, setScopeState] = useState<Scope>(readScope);
@@ -265,8 +270,8 @@ export function Machines({ onBack }: Props) {
       clearHomeCache();
       setEditing(null);
       await reload();
-    } catch (e) {
-      alert((e as Error)?.message ?? 'Save failed');
+    } catch {
+      setActionError("Couldn't save those changes. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -281,8 +286,12 @@ export function Machines({ onBack }: Props) {
       setEditing(null);
       exitSelectMode();
       await reload();
-    } catch (e) {
-      alert((e as Error)?.message ?? 'Delete failed');
+    } catch {
+      setConfirmDelete(null);
+      const message = "Couldn't delete that machine. Check your connection and try again.";
+      // Deleting from the edit sheet tells you there; from select mode, on the page.
+      if (editing) setActionError(message);
+      else setError(message);
     } finally {
       setBusy(false);
     }
@@ -299,8 +308,8 @@ export function Machines({ onBack }: Props) {
       setMerging(null);
       exitSelectMode();
       await reload();
-    } catch (e) {
-      alert((e as Error)?.message ?? 'Merge failed');
+    } catch {
+      setActionError("Couldn't merge those machines. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -433,9 +442,7 @@ export function Machines({ onBack }: Props) {
           </div>
         )}
 
-        {machines === null && (
-          <div className="mt-6 text-sm text-muted">Loading…</div>
-        )}
+        {machines === null && <SkeletonRows rows={6} className="mt-4" />}
 
         {machines && machines.length === 0 && (
           <div className="mt-8 rounded-card bg-paper-card p-5 text-sm text-muted shadow-card">
@@ -470,9 +477,7 @@ export function Machines({ onBack }: Props) {
           <div className="mt-4 space-y-5">
             {grouped.map((g) => (
               <div key={g.bodyPart}>
-                <div className="mb-2 text-xs font-semibold tracking-[0.04em] text-muted">
-                  {g.bodyPart}
-                </div>
+                <SectionLabel className="mb-2">{g.bodyPart}</SectionLabel>
                 <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
                   {g.rows.map((m, i) => (
                     <Row
@@ -546,8 +551,15 @@ export function Machines({ onBack }: Props) {
       {editing && (
         <MachineEditModal
           machine={editing}
-          onClose={() => setEditing(null)}
-          onSave={(patch) => handleSave(editing, patch)}
+          error={actionError}
+          onClose={() => {
+            setEditing(null);
+            setActionError(null);
+          }}
+          onSave={(patch) => {
+            setActionError(null);
+            return handleSave(editing, patch);
+          }}
           onDelete={() => setConfirmDelete([editing])}
           busy={busy}
         />
@@ -556,8 +568,13 @@ export function Machines({ onBack }: Props) {
       {merging && (
         <MergeMachinesModal
           machines={merging}
-          onCancel={() => setMerging(null)}
+          error={actionError}
+          onCancel={() => {
+            setMerging(null);
+            setActionError(null);
+          }}
           onConfirm={(survivor, losers, keptApart) => {
+            setActionError(null);
             // Asked and answered: a machine kept out of this merge isn't
             // suggested alongside the ones it was kept apart from again.
             if (keptApart.length > 0) {
@@ -910,12 +927,14 @@ interface SavePatch {
 
 function MachineEditModal({
   machine,
+  error,
   onClose,
   onSave,
   onDelete,
   busy,
 }: {
   machine: MachineRow;
+  error: string | null;
   onClose: () => void;
   onSave: (patch: SavePatch) => Promise<void>;
   onDelete: () => void;
@@ -964,12 +983,12 @@ function MachineEditModal({
 
   return (
     <div
-      className="fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 px-0 backdrop-blur-sm sm:items-center sm:px-6"
+      className="backdrop-in fixed inset-x-0 z-50 flex items-end justify-center bg-ink/50 px-0 backdrop-blur-sm sm:items-center sm:px-6"
       style={viewport ? { top: 0, height: viewport.height } : { top: 0, bottom: 0 }}
       onClick={onClose}
     >
       <SheetPanel
-        className="w-full rounded-t-card bg-paper-card shadow-card sm:max-w-md sm:rounded-card"
+        className="sheet-in w-full rounded-t-card bg-paper-card shadow-card sm:max-w-md sm:rounded-card"
         header={<h2 className="text-lg font-bold tracking-tight text-ink">Edit machine</h2>}
       >
         <div className="mt-4 space-y-5">
@@ -1090,6 +1109,12 @@ function MachineEditModal({
             </Prompt>
           )}
 
+          {error && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
@@ -1192,11 +1217,13 @@ function ChoiceRow({
 
 function MergeMachinesModal({
   machines,
+  error,
   onCancel,
   onConfirm,
   busy,
 }: {
   machines: MachineRow[];
+  error: string | null;
   onCancel: () => void;
   onConfirm: (survivor: MachineRow, losers: MachineRow[], keptApart: MachineRow[]) => void;
   busy: boolean;
@@ -1314,6 +1341,12 @@ function MergeMachinesModal({
             </>
           )}
         </div>
+
+        {error && (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {error}
+          </p>
+        )}
 
         <div className="mt-5 flex gap-3">
           <button

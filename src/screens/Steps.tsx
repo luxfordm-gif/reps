@@ -20,6 +20,10 @@ import {
   type StepRow,
 } from '../lib/stepsApi';
 import { PageHeader } from '../components/PageHeader';
+import { ChartTooltip } from '../components/ChartTooltip';
+import { AXIS_TICK, CHART } from '../lib/chartTheme';
+import { SkeletonRows } from '../components/Skeleton';
+import { CloseIcon } from '../components/Icons';
 import { CalendarPopover } from '../components/Calendar';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { SyncStatus } from '../components/SyncStatus';
@@ -183,7 +187,7 @@ export function Steps({ onBack }: Props) {
           <p className="mt-1 text-sm text-muted">
             {todayEntry
               ? remaining === 0
-                ? `${formatSteps(todaySteps)} steps — goal of ${formatSteps(goal)} smashed`
+                ? `${formatSteps(todaySteps)} steps — goal of ${formatSteps(goal)} reached`
                 : `${formatSteps(todaySteps)} of ${formatSteps(goal)} · ${formatSteps(remaining)} to go`
               : `Your goal is ${formatSteps(goal)} a day. Change it in Profile → Preferences.`}
           </p>
@@ -263,7 +267,7 @@ export function Steps({ onBack }: Props) {
                 <BarChart data={chartData} margin={{ top: 10, right: 8, bottom: 0, left: -8 }}>
                   <XAxis
                     dataKey="date"
-                    tick={{ fill: '#8E8E93', fontSize: 10 }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                     minTickGap={16}
@@ -275,31 +279,35 @@ export function Steps({ onBack }: Props) {
                     }
                   />
                   <YAxis
-                    tick={{ fill: '#8E8E93', fontSize: 10 }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                     width={40}
                     tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
                   />
                   <Tooltip
-                    cursor={{ fill: 'rgba(0,0,0,0.04)' }}
-                    contentStyle={{
-                      borderRadius: 12,
-                      border: '1px solid #E5E5EA',
-                      fontSize: 12,
-                    }}
-                    formatter={(v) => [formatSteps(Number(v)), 'Steps']}
-                    labelFormatter={(d) =>
-                      new Date(d + 'T00:00:00').toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })
+                    cursor={{ fill: CHART.cursorFill }}
+                    content={
+                      <ChartTooltip<{ date: string; steps: number }>
+                        title={(p) =>
+                          new Date(p.date + 'T00:00:00').toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        }
+                        value={(p) => `${formatSteps(p.steps)} steps`}
+                        note={(p) =>
+                          p.steps >= goal
+                            ? { text: 'Goal hit', tone: 'good' }
+                            : { text: `${formatSteps(goal - p.steps)} short`, tone: 'muted' }
+                        }
+                      />
                     }
                   />
                   <ReferenceLine
                     y={goal}
-                    stroke="#8E8E93"
+                    stroke={CHART.muted}
                     strokeDasharray="3 3"
                     strokeWidth={1}
                   />
@@ -307,7 +315,7 @@ export function Steps({ onBack }: Props) {
                     {chartData.map((d) => (
                       <Cell
                         key={d.date}
-                        fill={d.steps >= goal ? '#0A0A0A' : '#C9C9CE'}
+                        fill={d.steps >= goal ? CHART.ink : CHART.faint}
                       />
                     ))}
                   </Bar>
@@ -320,7 +328,7 @@ export function Steps({ onBack }: Props) {
         <div className="mt-7">
           <SectionLabel>History</SectionLabel>
           {loading ? (
-            <div className="mt-3 text-sm text-muted">Loading…</div>
+            <SkeletonRows rows={4} className="mt-3" />
           ) : rows.length === 0 ? (
             <div className="mt-3 rounded-card bg-paper-card p-6 text-center text-sm text-muted shadow-card">
               No entries yet. Log your first day above.
@@ -345,10 +353,10 @@ export function Steps({ onBack }: Props) {
                     </div>
                     <button
                       onClick={() => setPendingDeleteId(r.id)}
-                      className="text-xs text-muted active:text-ink"
+                      className="pressable -mr-3 flex h-11 w-11 items-center justify-center rounded-full text-muted active:bg-surface-strong"
                       aria-label="Delete entry"
                     >
-                      ✕
+                      <CloseIcon size={16} />
                     </button>
                   </div>
                 </li>

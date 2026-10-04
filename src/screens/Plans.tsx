@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
+import { SkeletonCards } from '../components/Skeleton';
 import {
   listPlans,
   renamePlan,
@@ -120,7 +121,7 @@ export function Plans({ onBack, onUpload, onAfterActivate }: Props) {
         )}
 
         {plans === null ? (
-          <div className="mt-10 text-center text-sm text-muted">Loading…</div>
+          <SkeletonCards count={2} tall className="mt-6" />
         ) : plans.length === 0 ? (
           <div className="mt-10 rounded-card bg-paper-card p-8 text-center shadow-card">
             <h2 className="text-xl font-bold tracking-tight text-ink">No plans yet</h2>
@@ -230,7 +231,7 @@ function PlanCard({
     >
       <div className="p-5">
         <div
-          className={`text-label font-semibold uppercase tracking-eyebrow ${
+          className={`text-xs font-semibold uppercase tracking-eyebrow ${
             dark ? 'text-white/70' : 'text-muted'
           }`}
         >

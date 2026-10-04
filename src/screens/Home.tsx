@@ -846,7 +846,7 @@ function StepsAction({ count, goal, onTap }: { count: number; goal: number; onTa
 }
 
 const HYDRATION_MESSAGES = [
-  'Well done!',
+  'Well done',
   "You're well hydrated",
   'Hydration hero',
   'Crushing it',
@@ -955,7 +955,7 @@ function WaterAction({
         />
         {reached ? (
           <span className="relative w-full text-center font-semibold text-ink">
-            {celebrating ? 'Well done!' : praise}
+            {celebrating ? 'Well done' : praise}
           </span>
         ) : (
           <>

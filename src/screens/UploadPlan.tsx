@@ -722,7 +722,7 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
                 <div key={`${day.name}#${dayIdx}`} className="rounded-card bg-paper-card shadow-card">
                   <div className="flex items-start justify-between gap-3 border-b border-line/60 px-5 py-3">
                     <div className="min-w-0">
-                      <div className="text-label font-semibold uppercase tracking-eyebrow text-muted">
+                      <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                         Day {dayIdx + 1}
                         {day.weekIndex != null && ` · Rotation week ${day.weekIndex}`}
                         {day.weekIndex == null && rotates && ' · Every week'}
@@ -734,7 +734,7 @@ export function UploadPlan({ onCancel, onSaved, onReviewingChange }: Props) {
                     <button
                       type="button"
                       onClick={() => setDayEditor({ dayIdx })}
-                      className="pressable -mr-2 shrink-0 rounded-pill px-2.5 py-1 text-xs font-semibold text-muted active:text-ink"
+                      className="pressable -my-3 -mr-2 shrink-0 rounded-pill px-2.5 py-3 text-xs font-semibold text-muted active:text-ink"
                     >
                       Edit day
                     </button>
@@ -971,7 +971,7 @@ function UnreadLineCard({
 }) {
   const body = (
     <>
-      <div className="text-label font-semibold uppercase tracking-eyebrow text-warn">
+      <div className="text-xs font-semibold uppercase tracking-eyebrow text-warn">
         Couldn't read this line
       </div>
       <div className="mt-1 break-words font-mono text-caption text-ink/80">{text}</div>
@@ -1060,7 +1060,7 @@ function WeeklyAlternativeCard({
 
   return (
     <div className="mt-3 rounded-control bg-ink/5 px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-label font-semibold uppercase tracking-eyebrow text-muted">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-eyebrow text-muted">
         <RotateGlyph />
         Alternates weekly with
       </div>
@@ -1103,19 +1103,19 @@ function WeeklyAlternativeCard({
           <span className="min-w-0 break-words text-sm font-semibold text-ink">
             <ExerciseName name={alternative.name} variant="inline" />
           </span>
-          <div className="flex shrink-0 gap-3 text-xs font-semibold">
+          <div className="-my-3 -mr-2 flex shrink-0 text-xs font-semibold">
             <button
               onClick={() => {
                 setDraft(alternative.name);
                 setEditing(true);
               }}
-              className="text-ink/70 active:text-ink"
+              className="px-2 py-3 text-ink/70 active:text-ink"
             >
               Edit
             </button>
             <button
               onClick={() => onChange(null)}
-              className="text-muted active:text-danger-strong"
+              className="px-2 py-3 text-muted active:text-danger-strong"
             >
               Remove
             </button>
@@ -1236,7 +1236,7 @@ function ExerciseReviewRow({
           type="button"
           onClick={onEdit}
           aria-label={`Edit ${exercise.name}`}
-          className="pressable -mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+          className="pressable -mr-3 -mt-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted active:bg-surface-strong"
         >
           <PencilIcon />
         </button>

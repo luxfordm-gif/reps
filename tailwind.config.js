@@ -42,6 +42,9 @@ export default {
           strong: '#DC2626',
           soft: '#FEF2F2',
           line: '#FECACA',
+          // iOS's system red for dark surfaces: the only red that holds its
+          // contrast on a black card. Pairs with good.bright below.
+          bright: '#FF453A',
         },
         warn: {
           DEFAULT: '#92400E',
@@ -51,7 +54,8 @@ export default {
         good: {
           DEFAULT: '#166534',
           soft: '#F0FDF4',
-          // iOS's system green: the tick on a goal met, the "all synced" dot.
+          // iOS's system green: the tick on a goal met, the "all synced" dot,
+          // and the green that holds its contrast on a black card.
           bright: '#34C759',
         },
       },
@@ -66,7 +70,9 @@ export default {
       // xs (12) through 2xl (24) — carry the body of the app; these are the
       // ends of the scale it has no name for.
       fontSize: {
-        // Uppercase eyebrow, badge, stat label. Tracked, always short.
+        // Badge, pill, in-field unit, the label on a stat tile. Tracked, always
+        // short. Not the eyebrow over a section or a card: that is text-xs, as
+        // SectionLabel sets it, so a heading never drops below 12px.
         label: '10px',
         // The quiet line under a row: a breakdown, a hint, a timestamp.
         caption: '11px',

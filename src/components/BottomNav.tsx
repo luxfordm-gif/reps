@@ -79,9 +79,10 @@ export function BottomNav({
 }: Props) {
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-40 px-4 pb-6 pt-3 transition-transform duration-pop ease-snap ${
+      className={`fixed inset-x-0 bottom-0 z-40 px-4 pt-3 transition-transform duration-pop ease-snap ${
         visible ? 'translate-y-0' : 'pointer-events-none translate-y-[140%]'
       }`}
+      style={{ paddingBottom: 'var(--nav-bottom)' }}
       aria-hidden={!visible}
     >
       {above}

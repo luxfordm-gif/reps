@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { NotesAccordion } from '../components/NotesAccordion';
+import { SkeletonCards } from '../components/Skeleton';
 import {
   listCompletedSessions,
   deleteSession,
@@ -46,8 +47,8 @@ export function WorkoutHistory({ onBack }: Props) {
     try {
       await deleteSession(id);
       setSessions((s) => (s ? s.filter((r) => r.id !== id) : s));
-    } catch (e) {
-      alert((e as Error)?.message ?? 'Delete failed');
+    } catch {
+      setError("Couldn't delete that workout. Check your connection and try again.");
     } finally {
       setBusyId(null);
     }
@@ -68,9 +69,7 @@ export function WorkoutHistory({ onBack }: Props) {
               {error}
             </div>
           )}
-          {sessions == null && !error && (
-            <div className="py-10 text-center text-sm text-muted">Loading…</div>
-          )}
+          {sessions == null && !error && <SkeletonCards count={4} />}
           {sessions != null && sessions.length === 0 && (
             <div className="py-16 text-center text-sm text-muted">
               No completed workouts yet.
@@ -290,9 +289,7 @@ function SessionDetail({
           {error && (
             <div className="rounded-card bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
           )}
-          {sets == null && !error && (
-            <div className="py-10 text-center text-sm text-muted">Loading…</div>
-          )}
+          {sets == null && !error && <SkeletonCards count={3} />}
           {sets != null && sets.length === 0 && (
             <div className="py-16 text-center text-sm text-muted">No sets logged.</div>
           )}

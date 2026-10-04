@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ConfirmModal } from './ConfirmModal';
 import {
   describeEntry,
   discardEntry,
@@ -46,81 +47,96 @@ export function SyncDetailsSheet({ onClose }: { onClose: () => void }) {
     [pending, needsAttention, refreshKey]
   );
 
+  // The one tap in the app that throws a logged set away for good, so it asks.
+  const [pendingDiscard, setPendingDiscard] = useState<string | null>(null);
+
   function refresh() {
     setRefreshKey((k) => k + 1);
   }
 
   return (
-    <div
-      className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <>
       <div
-        className="sheet-in max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
-        onClick={(e) => e.stopPropagation()}
+        className="backdrop-in fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm"
+        onClick={onClose}
       >
-        <h2 className="text-lg font-bold tracking-tight text-ink">Waiting to save</h2>
-        <p className="mt-1 text-sm text-muted">
-          These are on this phone and haven't reached the server yet. They stay here until
-          they do — nothing is thrown away.
-        </p>
+        <div
+          className="sheet-in max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-card bg-paper-card p-6 shadow-card"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 className="text-lg font-bold tracking-tight text-ink">Waiting to save</h2>
+          <p className="mt-1 text-sm text-muted">
+            These are on this phone and haven't reached the server yet. They stay here until
+            they do — nothing is thrown away.
+          </p>
 
-        <ul className="mt-4 space-y-3">
-          {entries.map((entry) => (
-            <li key={entry.id} className="rounded-panel border border-line px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">
-                    {describeEntry(entry)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {whenQueued(entry.queuedAt)}
-                    {nextTry(entry) ? ` · ${nextTry(entry)}` : ''}
-                  </p>
-                  {entry.lastError && (
-                    <p className="mt-1 break-words text-xs text-danger-strong">
-                      {entry.lastError.message}
+          <ul className="mt-4 space-y-3">
+            {entries.map((entry) => (
+              <li key={entry.id} className="rounded-panel border border-line px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">
+                      {describeEntry(entry)}
                     </p>
-                  )}
+                    <p className="mt-0.5 text-xs text-muted">
+                      {whenQueued(entry.queuedAt)}
+                      {nextTry(entry) ? ` · ${nextTry(entry)}` : ''}
+                    </p>
+                    {entry.lastError && (
+                      <p className="mt-1 break-words text-xs text-danger-strong">
+                        {entry.lastError.message}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setPendingDiscard(entry.id)}
+                    className="pressable -my-1 shrink-0 rounded-pill border border-line px-3 py-2.5 text-xs font-semibold text-muted active:bg-pressed"
+                  >
+                    Discard
+                  </button>
                 </div>
-                <button
-                  onClick={() => {
-                    discardEntry(entry.id);
-                    refresh();
-                  }}
-                  className="pressable shrink-0 rounded-pill border border-line px-3 py-1.5 text-xs font-semibold text-muted active:bg-pressed"
-                >
-                  Discard
-                </button>
-              </div>
-            </li>
-          ))}
-          {entries.length === 0 && (
-            <li className="rounded-card border border-line px-4 py-6 text-center text-sm text-muted">
-              Everything is saved.
-            </li>
-          )}
-        </ul>
+              </li>
+            ))}
+            {entries.length === 0 && (
+              <li className="rounded-card border border-line px-4 py-6 text-center text-sm text-muted">
+                Everything is saved.
+              </li>
+            )}
+          </ul>
 
-        <div className="mt-6 flex gap-3">
-          <button
-            onClick={onClose}
-            className="pressable flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
-          >
-            Close
-          </button>
-          <button
-            onClick={() => {
-              retryAllNow();
-              refresh();
-            }}
-            className="pressable flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
-          >
-            Retry now
-          </button>
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={onClose}
+              className="pressable flex-1 rounded-pill border border-line bg-paper-card py-3 text-sm font-semibold text-ink active:bg-pressed"
+            >
+              Close
+            </button>
+            <button
+              onClick={() => {
+                retryAllNow();
+                refresh();
+              }}
+              className="pressable flex-1 rounded-pill bg-ink py-3 text-sm font-semibold text-white active:opacity-80"
+            >
+              Retry now
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+      {pendingDiscard && (
+        <ConfirmModal
+          title="Discard this set?"
+          message="It never reached the server, so it will be gone for good."
+          confirmLabel="Discard"
+          onCancel={() => setPendingDiscard(null)}
+          onConfirm={() => {
+            discardEntry(pendingDiscard);
+            setPendingDiscard(null);
+            refresh();
+          }}
+        />
+      )}
+    </>
   );
 }
