@@ -2,11 +2,19 @@
 //
 // It's read on a phone, in a messaging app, by someone with several clients:
 // so it's plain text rather than markdown (asterisks show up as asterisks in
-// most of the places it's pasted), and it answers three questions in order —
-// did they train, are they getting stronger, and what moved most. Anything the
-// coach wants beyond that, they'll ask.
+// most of the places it's pasted), and it answers four questions in order —
+// did they train, are they getting stronger, how did it feel, and what moved
+// most. Anything the coach wants beyond that, they'll ask.
 
 import type { ExerciseWeekBest, WeeklyWorkoutSummary } from './sessionsApi';
+import {
+  RATING_MAX,
+  RATING_MIN,
+  averagesLine,
+  isCheckInEmpty,
+  ratingsLine,
+  type CheckInExportRow,
+} from './checkin';
 
 export interface CoachSummaryInput {
   /** The user's display name, if they gave one. Only the first word is used. */
@@ -18,12 +26,22 @@ export interface CoachSummaryInput {
    *  were last done — two weeks back on a two-week plan. Last week's sessions
    *  were different ones there, so this is the like-for-like comparison. */
   rotation?: { weeksBack: number; week: WeeklyWorkoutSummary } | null;
+  /** The week's end-of-workout check-ins, in date order. */
+  checkIns?: CheckInExportRow[];
   /** Formats a weight in kg in the user's lift unit, e.g. "82.5 kg". */
   weight: (kg: number) => string;
 }
 
 /** How many lifts each "Top lifts" list names. */
-export const TOP_LIFTS = 3;
+export const TOP_LIFTS = 6;
+/** How many drops a list names after the gains. */
+export const DOWN_LIFTS = 3;
+/** A lift down by at least this much is worth telling the coach. */
+export const DOWN_PCT = 5;
+/** A change this large in a week or two isn't training, it's a logging slip:
+ *  a plate weight where a stack weight belonged, or the wrong machine. Such a
+ *  lift is kept out of the average and listed for checking instead. */
+export const SUSPECT_PCT = 50;
 
 export interface LiftChange {
   cur: ExerciseWeekBest;
@@ -44,10 +62,16 @@ export function liftChanges(current: WeeklyWorkoutSummary, earlier: WeeklyWorkou
   return out;
 }
 
-/** The average change across the lifts done in both weeks, or null if none were. */
+export function isSuspect(c: LiftChange): boolean {
+  return Math.abs(c.pct) > SUSPECT_PCT;
+}
+
+/** The average change across the lifts done in both weeks, suspect entries
+ *  left out, or null if none were. */
 export function averageChange(changes: LiftChange[]): number | null {
-  if (changes.length === 0) return null;
-  return changes.reduce((sum, c) => sum + c.pct, 0) / changes.length;
+  const sound = changes.filter((c) => !isSuspect(c));
+  if (sound.length === 0) return null;
+  return sound.reduce((sum, c) => sum + c.pct, 0) / sound.length;
 }
 
 export function buildCoachSummary(input: CoachSummaryInput): string {
@@ -79,6 +103,19 @@ export function buildCoachSummary(input: CoachSummaryInput): string {
   ]);
   if (strength) out.push(strength);
 
+  // How it felt.
+  const felt = (input.checkIns ?? []).filter((c) => !isCheckInEmpty(c.checkIn));
+  if (felt.length > 0) {
+    out.push('');
+    out.push(`How it felt (${RATING_MIN} to ${RATING_MAX}, soreness and stress ${RATING_MIN} best)`);
+    for (const c of felt) {
+      out.push(`${c.dayName}, ${weekday(c.completedAt)}: ${ratingsLine(c.checkIn)}`);
+      if (c.note?.trim()) out.push(`  ${c.note.trim()}`);
+    }
+    const avg = felt.length >= 2 ? averagesLine(felt.map((c) => c.checkIn)) : null;
+    if (avg) out.push(`Average: ${avg}`);
+  }
+
   // What moved most.
   if (!lastWeek) {
     const best = current.exerciseBests.slice(0, TOP_LIFTS);
@@ -92,6 +129,20 @@ export function buildCoachSummary(input: CoachSummaryInput): string {
     if (rotation) pushTopLifts(out, `Top lifts vs ${rotationWhen}`, vsRotation, set);
   }
 
+  // Anything that can't be right, so it gets fixed in history rather than
+  // quietly skewing next week's numbers too.
+  const suspects = [...vsLast, ...vsRotation].filter(isSuspect);
+  if (suspects.length > 0) {
+    out.push('');
+    out.push('Check these entries, left out of the strength figure');
+    const seen = new Set<string>();
+    for (const c of suspects) {
+      if (seen.has(c.cur.normalizedName)) continue;
+      seen.add(c.cur.normalizedName);
+      out.push(`• ${c.cur.displayName}: ${set(c.prev)} → ${set(c.cur)}, one of these looks mis-logged`);
+    }
+  }
+
   return out.join('\n').trimEnd() + '\n';
 }
 
@@ -101,16 +152,22 @@ function pushTopLifts(
   changes: LiftChange[],
   set: (e: ExerciseWeekBest) => string
 ) {
-  if (changes.length === 0) return;
-  const up = changes.filter((c) => c.pct >= 0.5).sort((a, b) => b.pct - a.pct);
+  const sound = changes.filter((c) => !isSuspect(c));
+  if (sound.length === 0) return;
+  const up = sound.filter((c) => c.pct >= 0.5).sort((a, b) => b.pct - a.pct);
+  const down = sound.filter((c) => c.pct <= -DOWN_PCT).sort((a, b) => a.pct - b.pct);
   out.push('');
   out.push(heading);
-  if (up.length === 0) {
+  if (up.length === 0 && down.length === 0) {
     out.push('• Nothing up on the same lifts — held steady.');
     return;
   }
   for (const c of up.slice(0, TOP_LIFTS)) {
     out.push(`• ${c.cur.displayName}: ${set(c.prev)} → ${set(c.cur)} (+${Math.round(c.pct)}%)`);
+  }
+  // The bad news too: a coach reading only gains can't see a lift slipping.
+  for (const c of down.slice(0, DOWN_LIFTS)) {
+    out.push(`• ${c.cur.displayName} down: ${set(c.prev)} → ${set(c.cur)} (${Math.round(c.pct)}%)`);
   }
 }
 

@@ -37,7 +37,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "What's new",
     bullets: [
       'Rate how a workout went with a few taps at the end',
-      "Copy the week's check-ins for your coach from Profile",
+      'One copy from Profile gives your coach the whole week',
     ],
   },
   {

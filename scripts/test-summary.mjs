@@ -243,9 +243,9 @@ console.log('\nCoach summary (copied from Profile)');
   eq('says how often, and on which days', lines[2], 'Matt trained 3 times: Push (Mon), Pull (Wed), Legs (Fri).');
   eq('compares the count with last week', lines[3], 'Up from 2 last week.');
   eq('averages strength across the repeated lifts', lines[4], 'Strength up 1% on last week (estimated 1RM, same lifts).');
-  eq('top lifts, biggest gain first, only the ones that went up',
+  eq('top lifts, biggest gain first, then anything down by 5% or more',
     lines.slice(6),
-    ['Top lifts vs last week', '• Squat: 100 kg × 5 → 100 kg × 8 (+9%)', '• Bench press: 80 kg × 5 → 82.5 kg × 5 (+3%)']);
+    ['Top lifts vs last week', '• Squat: 100 kg × 5 → 100 kg × 8 (+9%)', '• Bench press: 80 kg × 5 → 82.5 kg × 5 (+3%)', '• Curl down: 16 kg × 10 → 15 kg × 10 (-6%)']);
   ok('no comparison with 2 weeks ago on a plan that repeats weekly', !text.includes('2 weeks ago'));
   ok('plain text, no markdown', !/[*#]/.test(text), text);
 
@@ -264,14 +264,47 @@ console.log('\nCoach summary (copied from Profile)');
   const flat = buildCoachSummary({ name: 'Sam', current: week('2026-09-21T00:00:00', [['Push', '2026-09-22T18:00:00']], [['Curl', 15, 10]]), lastWeek: last, weight: kg });
   ok('once, and down on last week', flat.includes('Sam trained once: Push (Tue).\nDown from 2 last week.'), flat);
   ok('a lift that dropped is reported as down', flat.includes('Strength down 6% on last week'), flat);
-  ok('nothing up is said plainly', flat.includes('• Nothing up on the same lifts — held steady.'), flat);
+  ok('…and named', flat.includes('• Curl down: 16 kg × 10 → 15 kg × 10 (-6%)'), flat);
+  const steady = buildCoachSummary({ name: 'Sam', current: week('2026-09-21T00:00:00', [['Push', '2026-09-22T18:00:00']], [['Row', 60, 10]]), lastWeek: last, weight: kg });
+  ok('nothing up or down is said plainly', steady.includes('• Nothing up on the same lifts — held steady.'), steady);
+
+  // A logging slip (9 kg where 110 kg belonged) can't be allowed to drive the
+  // strength figure, and the coach should see it rather than a +1043%.
+  const slip = buildCoachSummary({
+    name: 'Matt', weight: kg,
+    current: week('2026-10-05T00:00:00', [['Legs', '2026-10-06T18:00:00']], [['Abductor', 110, 13], ['Squat', 100, 8]]),
+    lastWeek: week('2026-09-28T00:00:00', [['Legs', '2026-09-29T18:00:00']], [['Abductor', 9, 16], ['Squat', 100, 5]]),
+  });
+  ok('a suspect change is left out of the strength figure', slip.includes('Strength up 9% on last week'), slip);
+  ok('…and out of the top lifts', !slip.includes('(+1043%)'), slip);
+  ok('…and listed for checking', slip.includes('Check these entries, left out of the strength figure\n• Abductor: 9 kg × 16 → 110 kg × 13, one of these looks mis-logged'), slip);
+
+  // The week's check-ins sit between the strength line and the lifts.
+  const felt = buildCoachSummary({
+    name: 'Matt', current: cur, lastWeek: last, weight: kg,
+    checkIns: [
+      { dayName: 'Push', completedAt: '2026-09-21T18:00:00', checkIn: { performance: 4, energy: 3, soreness: 2, sleep: 4, hunger: 3, stress: 2 }, note: null },
+      { dayName: 'Pull', completedAt: '2026-09-23T18:00:00', checkIn: { performance: null, energy: null, soreness: null, sleep: null, hunger: null, stress: null }, note: null },
+      { dayName: 'Legs', completedAt: '2026-09-25T18:00:00', checkIn: { performance: 5, energy: 4, soreness: 3, sleep: 3, hunger: null, stress: 1 }, note: 'Knee niggle' },
+    ],
+  });
+  eq('check-ins are one line per day, skipping days without one, then an average',
+    felt.split('\n').slice(5, 10),
+    [
+      '',
+      'How it felt (1 to 5, soreness and stress 1 best)',
+      'Push, Mon: Workout 4 · Energy 3 · Soreness 2 · Sleep 4 · Hunger 3 · Stress 2',
+      'Legs, Fri: Workout 5 · Energy 4 · Soreness 3 · Sleep 3 · Stress 1',
+      '  Knee niggle',
+    ]);
+  ok('…with the average after the days', felt.includes('  Knee niggle\nAverage: Workout 4.5 · Energy 3.5 · Soreness 2.5 · Sleep 3.5 · Hunger 3 · Stress 1.5\n\nTop lifts vs last week'), felt);
+  ok('no check-ins, no section', !text.includes('How it felt'), text);
 }
 
 
-// ---- The end-of-workout check-in and its weekly export (lib/checkin) ----
+// ---- The end-of-workout check-in (lib/checkin) ----
 import {
   averagesLine,
-  buildCheckInExport,
   isCheckInComplete,
   isCheckInEmpty,
   normaliseCheckIn,
@@ -293,44 +326,11 @@ console.log('\ncheck-in');
   eq('a fractional rating rounds to the sheet scale', junk.soreness, 4);
   ok('nothing at all is empty', isCheckInEmpty(normaliseCheckIn(null)));
   eq('empty ratings give no line', ratingsLine(normaliseCheckIn(null)), null);
-
-  const now = new Date('2026-10-11T18:00:00Z');
-  const rows = [
-    { completedAt: '2026-10-06T17:30:00Z', dayName: 'Upper', checkIn: full, note: null },
-    { completedAt: '2026-10-07T17:30:00Z', dayName: 'Lower', checkIn: normaliseCheckIn(null), note: null },
-    { completedAt: '2026-10-08T17:30:00Z', dayName: 'Push', checkIn: partial, note: '  Felt the bench groove come back. ' },
-  ];
-  const text = buildCheckInExport(rows, now);
-  eq(
-    'export is one block per session with something to say',
-    text,
-    [
-      'Check-ins for coach',
-      'Week ending 11 October 2026',
-      'Ratings are 1 to 5. Soreness and stress: 1 is best, 5 worst.',
-      '',
-      'Upper, Tue 6 Oct',
-      'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Hunger 3 · Stress 1',
-      '',
-      'Push, Thu 8 Oct',
-      'Workout 5 · Sleep 2',
-      'Felt the bench groove come back.',
-      '',
-      'Week average, 2 check-ins',
-      'Workout 4.5 · Energy 5 · Soreness 3 · Sleep 2 · Hunger 3 · Stress 1',
-      '',
-    ].join('\n')
-  );
   eq(
     'averages skip questions nobody answered and round to one decimal',
     averagesLine([normaliseCheckIn({ performance: 5, energy: 2 }), normaliseCheckIn({ performance: 4 }), normaliseCheckIn({ performance: 2 })]),
     'Workout 3.7 · Energy 2'
   );
-  ok('one check-in gets no average line', !buildCheckInExport([rows[0]], now).includes('Week average'));
-  ok('export has no markdown', !/[*_#]/.test(text));
-  eq('a week with nothing answered exports nothing', buildCheckInExport([rows[1]], now), null);
-  const noteOnly = { completedAt: '2026-10-09T17:30:00Z', dayName: 'Legs', checkIn: normaliseCheckIn(null), note: 'Knee niggle' };
-  ok('a note from an older build still exports', buildCheckInExport([noteOnly], now).includes('Knee niggle'));
 }
 
 console.log(failures === 0 ? '\nAll summary tests passed.' : `\n${failures} failed.`);
