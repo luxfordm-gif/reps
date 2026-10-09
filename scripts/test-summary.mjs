@@ -267,5 +267,71 @@ console.log('\nCoach summary (copied from Profile)');
   ok('nothing up is said plainly', flat.includes('• Nothing up on the same lifts — held steady.'), flat);
 }
 
+
+// ---- The end-of-workout check-in and its weekly export (lib/checkin) ----
+import {
+  averagesLine,
+  buildCheckInExport,
+  isCheckInComplete,
+  isCheckInEmpty,
+  normaliseCheckIn,
+  ratingsLine,
+} from '../src/lib/checkin.ts';
+
+console.log('\ncheck-in');
+{
+  const full = normaliseCheckIn({ performance: 4, energy: 5, soreness: 3, sleep: 2, hunger: 3, stress: 1 });
+  eq('ratings line names every answered question in order', ratingsLine(full), 'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Hunger 3 · Stress 1');
+  ok('all six answered counts as complete', isCheckInComplete(full));
+
+  const partial = normaliseCheckIn({ performance: 5, sleep: 2 });
+  eq('a skipped question is left out, not shown as blank', ratingsLine(partial), 'Workout 5 · Sleep 2');
+  ok('a partial check-in is neither empty nor complete', !isCheckInEmpty(partial) && !isCheckInComplete(partial));
+
+  const junk = normaliseCheckIn({ performance: 6, energy: 0, soreness: 4.4, sleep: '5', stress: undefined });
+  eq('out-of-range, non-numeric and missing ratings are dropped', [junk.performance, junk.energy, junk.sleep, junk.stress], [null, null, null, null]);
+  eq('a fractional rating rounds to the sheet scale', junk.soreness, 4);
+  ok('nothing at all is empty', isCheckInEmpty(normaliseCheckIn(null)));
+  eq('empty ratings give no line', ratingsLine(normaliseCheckIn(null)), null);
+
+  const now = new Date('2026-10-11T18:00:00Z');
+  const rows = [
+    { completedAt: '2026-10-06T17:30:00Z', dayName: 'Upper', checkIn: full, note: null },
+    { completedAt: '2026-10-07T17:30:00Z', dayName: 'Lower', checkIn: normaliseCheckIn(null), note: null },
+    { completedAt: '2026-10-08T17:30:00Z', dayName: 'Push', checkIn: partial, note: '  Felt the bench groove come back. ' },
+  ];
+  const text = buildCheckInExport(rows, now);
+  eq(
+    'export is one block per session with something to say',
+    text,
+    [
+      'Check-ins for coach',
+      'Week ending 11 October 2026',
+      'Ratings are 1 to 5. Soreness and stress: 1 is best, 5 worst.',
+      '',
+      'Upper, Tue 6 Oct',
+      'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Hunger 3 · Stress 1',
+      '',
+      'Push, Thu 8 Oct',
+      'Workout 5 · Sleep 2',
+      'Felt the bench groove come back.',
+      '',
+      'Week average, 2 check-ins',
+      'Workout 4.5 · Energy 5 · Soreness 3 · Sleep 2 · Hunger 3 · Stress 1',
+      '',
+    ].join('\n')
+  );
+  eq(
+    'averages skip questions nobody answered and round to one decimal',
+    averagesLine([normaliseCheckIn({ performance: 5, energy: 2 }), normaliseCheckIn({ performance: 4 }), normaliseCheckIn({ performance: 2 })]),
+    'Workout 3.7 · Energy 2'
+  );
+  ok('one check-in gets no average line', !buildCheckInExport([rows[0]], now).includes('Week average'));
+  ok('export has no markdown', !/[*_#]/.test(text));
+  eq('a week with nothing answered exports nothing', buildCheckInExport([rows[1]], now), null);
+  const noteOnly = { completedAt: '2026-10-09T17:30:00Z', dayName: 'Legs', checkIn: normaliseCheckIn(null), note: 'Knee niggle' };
+  ok('a note from an older build still exports', buildCheckInExport([noteOnly], now).includes('Knee niggle'));
+}
+
 console.log(failures === 0 ? '\nAll summary tests passed.' : `\n${failures} failed.`);
 process.exit(failures === 0 ? 0 : 1);

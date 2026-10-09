@@ -46,13 +46,14 @@ import {
   type QuickActionId,
 } from '../lib/quickActions';
 import {
-  getRecentSessionNotes,
   getWeeklyWorkoutSummary,
   hasAnySessionsBefore,
   mondayOfWeek,
 } from '../lib/sessionsApi';
 import { kgToLb } from '../lib/units';
 import { buildCoachSummary } from '../lib/coachSummary';
+import { buildCheckInExport, getCheckInEnabled, setCheckInEnabled } from '../lib/checkin';
+import { getRecentCheckIns } from '../lib/sessionsApi';
 import { copyTextWhenReady } from '../lib/copyText';
 import { haptics } from '../lib/haptics';
 
@@ -106,6 +107,7 @@ export function Profile({
   const [bwUnit, setBwUnitState] = useState<BodyWeightUnit>(getBodyWeightUnit());
   const [lwUnit, setLwUnitState] = useState<LiftWeightUnit>(getLiftWeightUnit());
   const [waterGoal, setWaterGoalState] = useState<number>(getWaterGoal());
+  const [checkInOn, setCheckInOn] = useState<boolean>(() => getCheckInEnabled());
   const [waterUnit, setWaterUnitState] = useState<WaterUnit>(getWaterUnit());
   const [stepGoal, setStepGoalState] = useState<number>(getStepGoal());
   // The goal field is typed into digit by digit, so it keeps its own text: a
@@ -306,6 +308,24 @@ export function Profile({
                 />
                 <span className="text-sm text-muted">steps</span>
               </div>
+            </div>
+            <div className="border-t border-line" />
+            <div className="flex items-center justify-between gap-3 px-5 py-4">
+              <div>
+                <div className="text-sm font-semibold text-ink">Check-in after workouts</div>
+                <div className="mt-0.5 text-xs text-muted">
+                  A few taps on how it went, to copy for your coach
+                </div>
+              </div>
+              <Toggle
+                on={checkInOn}
+                label="Check-in after workouts"
+                onChange={() => {
+                  const next = !checkInOn;
+                  setCheckInOn(next);
+                  setCheckInEnabled(next);
+                }}
+              />
             </div>
           </div>
         </Section>
@@ -650,14 +670,13 @@ function CoachCopyRow({
 function CoachExportRow() {
   return (
     <CoachCopyRow
-      label="Copy this week's notes for coach"
-      hint="The notes you left after each workout"
-      emptyHint="No notes for your coach in the last 7 days"
+      label="Copy this week's check-ins for coach"
+      hint="How each workout went, as you tapped it at the end"
+      emptyHint="No check-ins in the last 7 days"
       build={async () => {
-        const rows = await getRecentSessionNotes(7);
-        const withNotes = rows.filter((r) => (r.notesToCoach ?? '').trim().length > 0);
-        if (withNotes.length === 0) throw new NothingToCopy();
-        return buildCoachExport(withNotes);
+        const text = buildCheckInExport(await getRecentCheckIns(7));
+        if (!text) throw new NothingToCopy();
+        return text;
       }}
     />
   );
@@ -684,24 +703,6 @@ function CheckIcon() {
       />
     </svg>
   );
-}
-
-function buildCoachExport(rows: Awaited<ReturnType<typeof getRecentSessionNotes>>): string {
-  const out: string[] = [];
-  out.push(`Notes for coach`);
-  out.push(`Week ending ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`);
-  out.push('');
-  for (const r of rows) {
-    const date = new Date(r.completedAt).toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    });
-    out.push(`${r.dayName}, ${date}`);
-    if (r.notesToCoach) out.push(r.notesToCoach.trim());
-    out.push('');
-  }
-  return out.join('\n').trimEnd() + '\n';
 }
 
 /** How many weeks a plan rotates over — 2 for a week A / week B plan, 0 if it

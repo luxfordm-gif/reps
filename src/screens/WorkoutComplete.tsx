@@ -4,7 +4,8 @@ import { getActivePlan } from '../lib/plansApi';
 import { baseDayName, buildDaySlots, siblingVariant } from '../lib/daySlots';
 import { fromKgFor, getLiftWeightUnit } from '../lib/units';
 import { sessionLine } from '../lib/summary';
-import { NotesAccordion } from '../components/NotesAccordion';
+import { CheckInCard } from '../components/CheckInCard';
+import { getCheckInEnabled } from '../lib/checkin';
 import { SyncStatus } from '../components/SyncStatus';
 import { Tile, TileUnit, BarsIcon, BoltIcon, DumbbellIcon } from '../components/Tile';
 
@@ -173,8 +174,16 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
               </div>
             </Rise>
 
-            {bestSets.length > 0 && (
+            {getCheckInEnabled() && (
               <Rise index={2}>
+                <div className="mt-3">
+                  <CheckInCard sessionId={sessionId} />
+                </div>
+              </Rise>
+            )}
+
+            {bestSets.length > 0 && (
+              <Rise index={3}>
                 <div className="mt-7">
                   <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                     Top sets
@@ -218,7 +227,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
         )}
 
         {nextWeek != null && (
-          <Rise index={3}>
+          <Rise index={4}>
             <div className="mt-3 flex items-center gap-3 rounded-card bg-paper-card px-4 py-3.5 shadow-card">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper text-ink">
                 <BoltIcon />
@@ -233,24 +242,6 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
           </Rise>
         )}
 
-        <Rise index={4}>
-          <div className="mt-7 space-y-3">
-            <NotesAccordion
-              sessionId={sessionId}
-              field="feedbackForSelf"
-              title="Feedback for next time"
-              hint="Private notes for you. Example: push harder on shoulders, up calf raises next week."
-              placeholder="What would you do differently next time?"
-            />
-            <NotesAccordion
-              sessionId={sessionId}
-              field="notesToCoach"
-              title="Notes to coach"
-              hint="Shared with your coach when you export this week."
-              placeholder="Anything you want to flag to your coach about today's session?"
-            />
-          </div>
-        </Rise>
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30">
