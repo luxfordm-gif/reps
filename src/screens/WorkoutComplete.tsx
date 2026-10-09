@@ -174,8 +174,16 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
               </div>
             </Rise>
 
-            {bestSets.length > 0 && (
+            {getCheckInEnabled() && (
               <Rise index={2}>
+                <div className="mt-3">
+                  <CheckInCard sessionId={sessionId} />
+                </div>
+              </Rise>
+            )}
+
+            {bestSets.length > 0 && (
+              <Rise index={3}>
                 <div className="mt-7">
                   <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
                     Top sets
@@ -219,7 +227,7 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
         )}
 
         {nextWeek != null && (
-          <Rise index={3}>
+          <Rise index={4}>
             <div className="mt-3 flex items-center gap-3 rounded-card bg-paper-card px-4 py-3.5 shadow-card">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper text-ink">
                 <BoltIcon />
@@ -234,13 +242,6 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
           </Rise>
         )}
 
-        {getCheckInEnabled() && (
-          <Rise index={4}>
-            <div className="mt-7">
-              <CheckInCard sessionId={sessionId} />
-            </div>
-          </Rise>
-        )}
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30">

@@ -280,17 +280,17 @@ import {
 
 console.log('\ncheck-in');
 {
-  const full = normaliseCheckIn({ performance: 6, energy: 5, soreness: 3, sleep: 4, flags: ['stressed', 'stomach'] });
-  eq('ratings line names every answered question in order', ratingsLine(full), 'Workout 6 · Energy 5 · Soreness 3 · Sleep 4');
-  eq('flags line reads as one sentence fragment', flagsLine(full), 'Stressed, upset stomach');
+  const full = normaliseCheckIn({ performance: 4, energy: 5, soreness: 3, sleep: 2, flags: ['stressed', 'stomach'] });
+  eq('ratings line names every answered question in order', ratingsLine(full), 'Workout 4 · Energy 5 · Soreness 3 · Sleep 2');
+  eq('flags line reads as one sentence fragment', flagsLine(full), 'Stressed, stomach');
   ok('all four answered counts as complete', isCheckInComplete(full));
 
-  const partial = normaliseCheckIn({ performance: 7, sleep: 2 });
-  eq('a skipped question is left out, not shown as blank', ratingsLine(partial), 'Workout 7 · Sleep 2');
+  const partial = normaliseCheckIn({ performance: 5, sleep: 2 });
+  eq('a skipped question is left out, not shown as blank', ratingsLine(partial), 'Workout 5 · Sleep 2');
   ok('a partial check-in is neither empty nor complete', !isCheckInEmpty(partial) && !isCheckInComplete(partial));
   eq('no flags gives no line', flagsLine(partial), null);
 
-  const junk = normaliseCheckIn({ performance: 9, energy: 0, soreness: 4.4, sleep: '5', flags: ['ill', 'bogus', 'ill'] });
+  const junk = normaliseCheckIn({ performance: 6, energy: 0, soreness: 4.4, sleep: '5', flags: ['ill', 'bogus', 'ill'] });
   eq('out-of-range and non-numeric ratings are dropped', [junk.performance, junk.energy, junk.sleep], [null, null, null]);
   eq('a fractional rating rounds to the sheet scale', junk.soreness, 4);
   eq('unknown and repeated flags are dropped', junk.flags, ['ill']);
@@ -310,14 +310,14 @@ console.log('\ncheck-in');
     [
       'Check-ins for coach',
       'Week ending 11 October 2026',
-      'Ratings are 1 to 7. Soreness: 1 fresh, 7 wrecked.',
+      'Ratings are 1 to 5. Soreness: 1 fresh, 5 wrecked.',
       '',
       'Upper, Tue 6 Oct',
-      'Workout 6 · Energy 5 · Soreness 3 · Sleep 4',
-      'Stressed, upset stomach',
+      'Workout 4 · Energy 5 · Soreness 3 · Sleep 2',
+      'Stressed, stomach',
       '',
       'Push, Thu 8 Oct',
-      'Workout 7 · Sleep 2',
+      'Workout 5 · Sleep 2',
       'Felt the bench groove come back.',
       '',
     ].join('\n')

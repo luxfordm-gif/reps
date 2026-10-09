@@ -1,16 +1,17 @@
 // The check-in at the end of a workout: four ratings and a row of flags,
 // answered by tapping, that stand in for the daily sheet a coach hands out.
 //
-// The questions are the sheet's, and the numbers are stored the way the sheet
-// scores them, so a coach pastes them in unchanged. Soreness runs the other way
-// from the rest on most of those sheets (1 is good, 7 is bad); the end labels
-// hide that from the person tapping, and the number lands right either way.
+// The questions are the sheet's. Five points rather than the sheet's seven,
+// because seven don't fit beside a label on a phone; the export says the
+// scale so a coach can map it. Soreness runs the other way from the rest, as
+// it does on most of those sheets (1 is good, 5 is bad); the end labels hide
+// that from the person tapping.
 //
 // Everything is optional. A skipped question is simply not stored, and a
 // session with nothing answered never appears in the export.
 
 export const RATING_MIN = 1;
-export const RATING_MAX = 7;
+export const RATING_MAX = 5;
 
 export type RatingKey = 'performance' | 'energy' | 'soreness' | 'sleep';
 export type FlagKey = 'stressed' | 'hungry' | 'stomach' | 'ill';
@@ -54,7 +55,7 @@ export const RATING_QUESTIONS: readonly RatingQuestion[] = [
 export const FLAGS: readonly { key: FlagKey; label: string }[] = [
   { key: 'stressed', label: 'Stressed' },
   { key: 'hungry', label: 'Hungry' },
-  { key: 'stomach', label: 'Upset stomach' },
+  { key: 'stomach', label: 'Stomach' },
   { key: 'ill', label: 'Ill' },
 ];
 
@@ -90,13 +91,13 @@ export function isCheckInComplete(c: CheckIn): boolean {
   return RATING_QUESTIONS.every((q) => c[q.key] != null);
 }
 
-/** "Workout 6 · Energy 5 · Soreness 3 · Sleep 4", skipping anything unanswered. */
+/** "Workout 4 · Energy 3 · Soreness 2 · Sleep 4", skipping anything unanswered. */
 export function ratingsLine(c: CheckIn): string | null {
   const parts = RATING_QUESTIONS.filter((q) => c[q.key] != null).map((q) => `${q.label} ${c[q.key]}`);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-/** "Stressed, upset stomach", in the order the chips are shown. */
+/** "Stressed, stomach", in the order the chips are shown. */
 export function flagsLine(c: CheckIn): string | null {
   const labels = FLAGS.filter((f) => c.flags.includes(f.key)).map((f) => f.label);
   if (labels.length === 0) return null;
@@ -125,7 +126,7 @@ export function buildCheckInExport(rows: CheckInExportRow[], now = new Date()): 
   out.push(
     `Week ending ${now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
   );
-  out.push('Ratings are 1 to 7. Soreness: 1 fresh, 7 wrecked.');
+  out.push(`Ratings are ${RATING_MIN} to ${RATING_MAX}. Soreness: ${RATING_MIN} fresh, ${RATING_MAX} wrecked.`);
   out.push('');
   for (const r of kept) {
     const date = new Date(r.completedAt).toLocaleDateString('en-GB', {

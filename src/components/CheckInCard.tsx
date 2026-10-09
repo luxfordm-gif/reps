@@ -14,12 +14,15 @@ import {
 import { haptics } from '../lib/haptics';
 
 // The check-in at the end of a workout: a closed row you tap open, with four
-// questions inside, each a name on the left and a seven-way switch on the
-// right, then a row of chips. Closed by default
+// questions inside, each a name on the left and a five-way switch on the
+// right, then one row of four chips that never wraps. Closed by default
 // because most people finishing a workout aren't filling in a form for a
 // coach, and the row still says where you're up to. Every tap saves on its
 // own, so there is nothing to submit and nothing to lose by walking off
 // halfway through. Tapping the chosen number again clears it.
+//
+// Five points, not the seven a coach's sheet uses: seven at 30px each beside
+// a label is a mis-tap waiting to happen.
 //
 // Not sliders: on a sweaty phone a slider needs a drag, lands between values
 // and never looks finished. A row of numbers is one tap and reads back.
@@ -159,11 +162,9 @@ export function CheckInCard({ sessionId }: { sessionId: string }) {
               </div>
             ))}
 
-            <div className="flex gap-3 py-3">
-              <div className="w-[84px] shrink-0 pt-1.5">
-                <div className="text-sm font-semibold leading-tight text-ink">Anything off?</div>
-              </div>
-              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            <div className="py-3">
+              <div className="text-sm font-semibold leading-tight text-ink">Anything off today?</div>
+              <div className="mt-2 grid grid-cols-4 gap-1.5">
                 {FLAGS.map((f) => {
                   const on = checkIn.flags.includes(f.key);
                   return (
@@ -173,7 +174,7 @@ export function CheckInCard({ sessionId }: { sessionId: string }) {
                       aria-pressed={on}
                       disabled={!loaded}
                       onClick={() => flag(f.key)}
-                      className={`pressable rounded-pill border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-40 ${
+                      className={`pressable truncate rounded-pill border px-2 py-2 text-xs font-semibold transition-colors disabled:opacity-40 ${
                         on
                           ? 'border-ink bg-ink text-white'
                           : 'border-line bg-paper-card text-ink active:bg-pressed'
