@@ -19,6 +19,7 @@ import { useSyncExternalStore } from 'react';
 import { supabase, currentUserId, currentUserIdSync } from '../supabase';
 import { isOfflineError, isReachable, query } from './net';
 import { newId, readJson, writeJson } from './storage';
+import type { SessionCheckInPatch } from '../sessionsApi';
 import { deleteBlobs, deleteOrphans, getBlob } from './blobStore';
 import {
   getLocalSessions,
@@ -77,11 +78,9 @@ export type OutboxOp =
   | { kind: 'log_set'; row: QueuedSetRow }
   | { kind: 'update_set'; id: string; patch: QueuedSetPatch }
   | { kind: 'complete_session'; id: string; completed_at: string }
-  | {
-      kind: 'session_notes';
-      id: string;
-      patch: { feedback_for_self?: string | null; notes_to_coach?: string | null };
-    }
+  // The kind keeps its old name so a check-in queued by an earlier build still
+  // replays; what it patches is now the check-in columns.
+  | { kind: 'session_notes'; id: string; patch: SessionCheckInPatch }
   | { kind: 'update_row'; table: UpdatableTable; id: string; patch: Record<string, unknown> }
   | { kind: 'delete_session'; id: string }
   | { kind: 'delete_open_sessions' }
@@ -784,7 +783,7 @@ export function describeEntry(entry: OutboxEntry): string {
     case 'complete_session':
       return 'Workout finished';
     case 'session_notes':
-      return 'Workout notes';
+      return 'Workout check-in';
     case 'update_row':
       return 'Exercise settings';
     case 'delete_session':

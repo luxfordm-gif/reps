@@ -4,6 +4,7 @@ import { prefetchAlternativesForExercises } from './alternativesApi';
 import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
 import { enqueue, pendingSetIds, requestFlush, type QueuedSetPatch } from './offline/outbox';
 import { dropCache, newId, readCache, writeCache } from './offline/storage';
+import { normaliseCheckIn, type CheckIn, type CheckInExportRow, type FlagKey } from './checkin';
 import {
   completeLocalSession,
   finishedAt,
@@ -28,113 +29,114 @@ export interface SessionRow {
   training_day_id: string;
   started_at: string;
   completed_at: string | null;
-  feedback_for_self?: string | null;
-  notes_to_coach?: string | null;
 }
 
-export interface SessionNotes {
-  feedbackForSelf: string;
-  notesToCoach: string;
+/** The check-in columns on a session, as the server and the outbox name them. */
+export interface SessionCheckInPatch {
+  checkin_performance?: number | null;
+  checkin_energy?: number | null;
+  checkin_soreness?: number | null;
+  checkin_sleep?: number | null;
+  checkin_flags?: FlagKey[];
 }
 
-/** Notes typed on the completion screen, kept on the device until they sync. */
-interface LocalNotes {
-  feedback_for_self: string | null;
-  notes_to_coach: string | null;
-}
-
-function notesCacheName(sessionId: string): string {
+function checkInCacheName(sessionId: string): string {
   return `notes.${sessionId}`;
 }
 
-export async function getSessionNotes(sessionId: string): Promise<SessionNotes> {
+function toCheckIn(row: SessionCheckInPatch | null | undefined): Partial<Record<keyof CheckIn, unknown>> {
+  return {
+    performance: row?.checkin_performance,
+    energy: row?.checkin_energy,
+    soreness: row?.checkin_soreness,
+    sleep: row?.checkin_sleep,
+    flags: row?.checkin_flags,
+  };
+}
+
+function toPatch(checkIn: CheckIn): SessionCheckInPatch {
+  return {
+    checkin_performance: checkIn.performance,
+    checkin_energy: checkIn.energy,
+    checkin_soreness: checkIn.soreness,
+    checkin_sleep: checkIn.sleep,
+    checkin_flags: checkIn.flags,
+  };
+}
+
+export async function getSessionCheckIn(sessionId: string): Promise<CheckIn> {
   const userId = await currentUserId();
-  const local = readCache<LocalNotes>(userId, notesCacheName(sessionId));
+  // Anything tapped offline hasn't reached the server yet, so it wins.
+  const local = readCache<SessionCheckInPatch>(userId, checkInCacheName(sessionId));
   try {
     const data = await query(
       supabase
         .from('sessions')
-        .select('feedback_for_self, notes_to_coach')
+        .select('checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_flags')
         .eq('id', sessionId)
         .maybeSingle(),
-      { label: 'getSessionNotes' },
+      { label: 'getSessionCheckIn' },
     );
-    const row = data as LocalNotes | null;
-    // Anything typed offline hasn't reached the server yet, so it wins.
-    return {
-      feedbackForSelf: local?.feedback_for_self ?? row?.feedback_for_self ?? '',
-      notesToCoach: local?.notes_to_coach ?? row?.notes_to_coach ?? '',
-    };
+    const row = (data as SessionCheckInPatch | null) ?? {};
+    return normaliseCheckIn(toCheckIn({ ...row, ...local }));
   } catch (e) {
     if (!isOfflineError(e)) throw e;
-    return {
-      feedbackForSelf: local?.feedback_for_self ?? '',
-      notesToCoach: local?.notes_to_coach ?? '',
-    };
+    return normaliseCheckIn(toCheckIn(local));
   }
 }
 
-export async function updateSessionNotes(
-  sessionId: string,
-  patch: Partial<SessionNotes>,
-): Promise<void> {
-  const update: Record<string, string | null> = {};
-  if ('feedbackForSelf' in patch) {
-    update.feedback_for_self = patch.feedbackForSelf?.trim() ? patch.feedbackForSelf.trim() : null;
-  }
-  if ('notesToCoach' in patch) {
-    update.notes_to_coach = patch.notesToCoach?.trim() ? patch.notesToCoach.trim() : null;
-  }
+/** Saves the whole check-in; each tap on the card calls this with the new state. */
+export async function updateSessionCheckIn(sessionId: string, checkIn: CheckIn): Promise<void> {
+  const update = toPatch(normaliseCheckIn(checkIn));
   const userId = await currentUserId();
-  const cacheName = notesCacheName(sessionId);
-  const merged = { ...(readCache<LocalNotes>(userId, cacheName) ?? {}), ...update };
+  const cacheName = checkInCacheName(sessionId);
   try {
     await query(supabase.from('sessions').update(update).eq('id', sessionId).select('id'), {
-      label: 'updateSessionNotes',
+      label: 'updateSessionCheckIn',
     });
-    writeCache(userId, cacheName, merged);
+    writeCache(userId, cacheName, update);
   } catch (e) {
     if (!isOfflineError(e) || !userId) throw e;
-    writeCache(userId, cacheName, merged);
+    writeCache(userId, cacheName, update);
     enqueue(userId, { kind: 'session_notes', id: sessionId, patch: update });
   }
 }
 
-export interface WeekNoteRow {
+/** A finished session in the last week, with what was said about it. */
+export interface WeekCheckInRow extends CheckInExportRow {
   sessionId: string;
-  completedAt: string;
-  dayName: string;
-  feedbackForSelf: string | null;
-  notesToCoach: string | null;
 }
 
-export async function getRecentSessionNotes(daysBack = 7): Promise<WeekNoteRow[]> {
+export async function getRecentCheckIns(daysBack = 7): Promise<WeekCheckInRow[]> {
   const userId = await currentUserId();
   if (!userId) return [];
   const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, completed_at, feedback_for_self, notes_to_coach, training_days(name)')
+    .select(
+      'id, completed_at, notes_to_coach, checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_flags, training_days(name)'
+    )
     .eq('user_id', userId)
     .not('completed_at', 'is', null)
     .gte('completed_at', since)
     .order('completed_at', { ascending: true });
   if (error) throw error;
-  type Row = {
+  type Row = SessionCheckInPatch & {
     id: string;
     completed_at: string;
-    feedback_for_self: string | null;
     notes_to_coach: string | null;
     training_days: { name: string } | { name: string }[] | null;
   };
   return ((data as Row[]) ?? []).map((r) => {
     const td = Array.isArray(r.training_days) ? r.training_days[0] : r.training_days;
+    // A check-in tapped offline is only on the device until it syncs.
+    const local = readCache<SessionCheckInPatch>(userId, checkInCacheName(r.id));
     return {
       sessionId: r.id,
       completedAt: r.completed_at,
       dayName: td?.name ?? 'Workout',
-      feedbackForSelf: r.feedback_for_self,
-      notesToCoach: r.notes_to_coach,
+      checkIn: normaliseCheckIn(toCheckIn({ ...r, ...local })),
+      note: r.notes_to_coach,
     };
   });
 }

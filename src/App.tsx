@@ -42,7 +42,7 @@ import { clearHomeCache, loadHomeData } from './lib/homeCache';
 import { requestFlush } from './lib/offline/outbox';
 import { subscribeNet, isReachable } from './lib/offline/net';
 import { reconcileRecentWorkouts } from './lib/offline/reconcile';
-import { warmLastSetsForPlan } from './lib/sessionsApi';
+import { listCompletedSessions, warmLastSetsForPlan } from './lib/sessionsApi';
 import type { FullPlan, PlanExerciseRow } from './lib/plansApi';
 import { supersetMembers } from './lib/supersets';
 import { getMyProfile, type Profile as ProfileData } from './lib/profileApi';
@@ -150,6 +150,24 @@ function Root() {
     null
   );
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  // Open the app at ?preview=complete to land on the finish screen for the
+  // most recent workout, without doing one first. It's the real session, so
+  // anything tapped there is kept. Only the one visit: the query is dropped
+  // from the address so a reload goes back to Home.
+  useEffect(() => {
+    if (!session) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('preview') !== 'complete') return;
+    params.delete('preview');
+    const rest = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`);
+    listCompletedSessions()
+      .then((rows) => {
+        const last = rows[0];
+        if (last) setCompletedSession({ id: last.id, dayName: last.day_name });
+      })
+      .catch(() => {});
+  }, [session]);
   // Whether this user has a plan, as Home found out. "unknown" until Home has
   // actually loaded one way or the other — see PlanPresence.
   const [planPresence, setPlanPresence] = useState<PlanPresence>('unknown');

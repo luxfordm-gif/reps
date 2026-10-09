@@ -4,7 +4,8 @@ import { getActivePlan } from '../lib/plansApi';
 import { baseDayName, buildDaySlots, siblingVariant } from '../lib/daySlots';
 import { fromKgFor, getLiftWeightUnit } from '../lib/units';
 import { sessionLine } from '../lib/summary';
-import { NotesAccordion } from '../components/NotesAccordion';
+import { CheckInCard } from '../components/CheckInCard';
+import { getCheckInEnabled } from '../lib/checkin';
 import { SyncStatus } from '../components/SyncStatus';
 import { Tile, TileUnit, BarsIcon, BoltIcon, DumbbellIcon } from '../components/Tile';
 
@@ -233,24 +234,13 @@ export function WorkoutComplete({ sessionId, dayName, onDone }: Props) {
           </Rise>
         )}
 
-        <Rise index={4}>
-          <div className="mt-7 space-y-3">
-            <NotesAccordion
-              sessionId={sessionId}
-              field="feedbackForSelf"
-              title="Feedback for next time"
-              hint="Private notes for you. Example: push harder on shoulders, up calf raises next week."
-              placeholder="What would you do differently next time?"
-            />
-            <NotesAccordion
-              sessionId={sessionId}
-              field="notesToCoach"
-              title="Notes to coach"
-              hint="Shared with your coach when you export this week."
-              placeholder="Anything you want to flag to your coach about today's session?"
-            />
-          </div>
-        </Rise>
+        {getCheckInEnabled() && (
+          <Rise index={4}>
+            <div className="mt-7">
+              <CheckInCard sessionId={sessionId} />
+            </div>
+          </Rise>
+        )}
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30">

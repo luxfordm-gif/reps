@@ -267,5 +267,66 @@ console.log('\nCoach summary (copied from Profile)');
   ok('nothing up is said plainly', flat.includes('• Nothing up on the same lifts — held steady.'), flat);
 }
 
+
+// ---- The end-of-workout check-in and its weekly export (lib/checkin) ----
+import {
+  buildCheckInExport,
+  flagsLine,
+  isCheckInComplete,
+  isCheckInEmpty,
+  normaliseCheckIn,
+  ratingsLine,
+} from '../src/lib/checkin.ts';
+
+console.log('\ncheck-in');
+{
+  const full = normaliseCheckIn({ performance: 6, energy: 5, soreness: 3, sleep: 4, flags: ['stressed', 'stomach'] });
+  eq('ratings line names every answered question in order', ratingsLine(full), 'Session 6 · Energy 5 · Soreness 3 · Sleep 4');
+  eq('flags line reads as one sentence fragment', flagsLine(full), 'Stressed, upset stomach');
+  ok('all four answered counts as complete', isCheckInComplete(full));
+
+  const partial = normaliseCheckIn({ performance: 7, sleep: 2 });
+  eq('a skipped question is left out, not shown as blank', ratingsLine(partial), 'Session 7 · Sleep 2');
+  ok('a partial check-in is neither empty nor complete', !isCheckInEmpty(partial) && !isCheckInComplete(partial));
+  eq('no flags gives no line', flagsLine(partial), null);
+
+  const junk = normaliseCheckIn({ performance: 9, energy: 0, soreness: 4.4, sleep: '5', flags: ['ill', 'bogus', 'ill'] });
+  eq('out-of-range and non-numeric ratings are dropped', [junk.performance, junk.energy, junk.sleep], [null, null, null]);
+  eq('a fractional rating rounds to the sheet scale', junk.soreness, 4);
+  eq('unknown and repeated flags are dropped', junk.flags, ['ill']);
+  ok('nothing at all is empty', isCheckInEmpty(normaliseCheckIn(null)));
+  eq('empty ratings give no line', ratingsLine(normaliseCheckIn(null)), null);
+
+  const now = new Date('2026-10-11T18:00:00Z');
+  const rows = [
+    { completedAt: '2026-10-06T17:30:00Z', dayName: 'Upper', checkIn: full, note: null },
+    { completedAt: '2026-10-07T17:30:00Z', dayName: 'Lower', checkIn: normaliseCheckIn(null), note: null },
+    { completedAt: '2026-10-08T17:30:00Z', dayName: 'Push', checkIn: partial, note: '  Felt the bench groove come back. ' },
+  ];
+  const text = buildCheckInExport(rows, now);
+  eq(
+    'export is one block per session with something to say',
+    text,
+    [
+      'Check-ins for coach',
+      'Week ending 11 October 2026',
+      'Ratings are 1 to 7. Soreness: 1 fresh, 7 wrecked.',
+      '',
+      'Upper, Tue 6 Oct',
+      'Session 6 · Energy 5 · Soreness 3 · Sleep 4',
+      'Stressed, upset stomach',
+      '',
+      'Push, Thu 8 Oct',
+      'Session 7 · Sleep 2',
+      'Felt the bench groove come back.',
+      '',
+    ].join('\n')
+  );
+  ok('export has no markdown', !/[*_#]/.test(text));
+  eq('a week with nothing answered exports nothing', buildCheckInExport([rows[1]], now), null);
+  const noteOnly = { completedAt: '2026-10-09T17:30:00Z', dayName: 'Legs', checkIn: normaliseCheckIn(null), note: 'Knee niggle' };
+  ok('a note from an older build still exports', buildCheckInExport([noteOnly], now).includes('Knee niggle'));
+}
+
 console.log(failures === 0 ? '\nAll summary tests passed.' : `\n${failures} failed.`);
 process.exit(failures === 0 ? 0 : 1);
