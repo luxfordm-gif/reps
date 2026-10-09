@@ -2,7 +2,7 @@
 // on Performance. What each says for a given set of facts, and the voice every
 // template has to keep whatever the facts are.
 // Usage: npm test  —  or: node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/test-summary.mjs
-import { buildCoachSummary, weekRange } from '../src/lib/coachSummary.ts';
+import { buildCoachSummary, dailyAverages, dayKey, weekRange } from '../src/lib/coachSummary.ts';
 import { buildWeekFacts, comparisonLabel, count, mid, sessionLine, weekLine } from '../src/lib/summary.ts';
 
 let failures = 0;
@@ -299,6 +299,47 @@ console.log('\nCoach summary (copied from Profile)');
     ]);
   ok('…with the average after the days', felt.includes('  Knee niggle\nAverage: Workout 4.5 · Energy 3.5 · Soreness 2.5 · Sleep 3.5 · Hunger 3 · Stress 1.5\n\nTop lifts vs last week'), felt);
   ok('no check-ins, no section', !text.includes('How it felt'), text);
+
+  // Weight, water and steps: averaged over the days logged, against last week.
+  const logs = {
+    weights: [
+      { recorded_on: '2026-09-21', weight_kg: 84.4 }, { recorded_on: '2026-09-23', weight_kg: 84.0 },
+      { recorded_on: '2026-09-15', weight_kg: 84.8 }, { recorded_on: '2026-09-13', weight_kg: 90 },
+    ],
+    water: [
+      { recorded_on: '2026-09-21', count: 6 }, { recorded_on: '2026-09-22', count: 7 }, { recorded_on: '2026-09-23', count: 5 },
+      { recorded_on: '2026-09-16', count: 5 },
+    ],
+    steps: [
+      { recorded_on: '2026-09-22', steps: 9120 }, { recorded_on: '2026-09-24', steps: 8640 },
+      { recorded_on: '2026-09-14', steps: 9400 },
+    ],
+  };
+  eq('day keys are local dates', dayKey(new Date('2026-09-21T23:30:00')), '2026-09-21');
+  const thisWeek = dailyAverages(logs, new Date('2026-09-21T00:00:00'));
+  eq('averages use only the seven days from the week start', [thisWeek.weightKg, thisWeek.waterPerDay, thisWeek.stepsPerDay], [84.2, 6, 8880]);
+  const prevWeek = dailyAverages(logs, new Date('2026-09-14T00:00:00'));
+  eq('…so a log outside the week is ignored', prevWeek.weightKg, 84.8);
+  eq('nothing logged gives nulls', dailyAverages(logs, new Date('2026-09-28T00:00:00')), { weightKg: null, waterPerDay: null, stepsPerDay: null });
+
+  const bodied = buildCoachSummary({
+    name: 'Matt', current: cur, lastWeek: last, weight: kg,
+    body: { current: thisWeek, lastWeek: prevWeek, bodyWeightUnit: 'kg', waterUnit: 'bottles' },
+  });
+  eq('body lines read as averages against last week',
+    bodied.split('\n').slice(5, 10),
+    ['', 'Body', 'Weight 84.2 kg average, down 0.6 kg on last week', 'Water 6 bottles a day, up 1 on last week', 'Steps 8,900 a day, down 500 on last week']);
+  const stones = buildCoachSummary({
+    name: 'Matt', current: cur, lastWeek: last, weight: kg,
+    body: { current: thisWeek, lastWeek: null, bodyWeightUnit: 'st', waterUnit: 'L' },
+  });
+  ok('stones for weight, no comparison without last week', stones.includes('Weight 13 st 4 lb average\nWater 6 L a day\nSteps 8,900 a day'), stones);
+  const partialBody = buildCoachSummary({
+    name: 'Matt', current: cur, lastWeek: last, weight: kg,
+    body: { current: { weightKg: null, waterPerDay: 6, stepsPerDay: null }, lastWeek: { weightKg: 84, waterPerDay: 6.02, stepsPerDay: 9000 }, bodyWeightUnit: 'kg', waterUnit: 'bottles' },
+  });
+  ok('a log with nothing this week is left out, and a tiny change reads as the same', partialBody.includes('Body\nWater 6 bottles a day, same as last week\n\nTop lifts'), partialBody);
+  ok('no body logs, no section', !text.includes('\nBody\n'), text);
 }
 
 

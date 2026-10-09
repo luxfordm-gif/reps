@@ -52,7 +52,10 @@ import {
   mondayOfWeek,
 } from '../lib/sessionsApi';
 import { kgToLb } from '../lib/units';
-import { buildCoachSummary } from '../lib/coachSummary';
+import { buildCoachSummary, dailyAverages, dayKey } from '../lib/coachSummary';
+import { listBodyWeights } from '../lib/bodyWeightApi';
+import { listWaterSince } from '../lib/waterApi';
+import { listSteps } from '../lib/stepsApi';
 import { getCheckInEnabled, setCheckInEnabled } from '../lib/checkin';
 import { copyTextWhenReady } from '../lib/copyText';
 import { haptics } from '../lib/haptics';
@@ -715,12 +718,23 @@ function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: Full
         if (current.workoutsDone === 0) throw new NothingToCopy();
 
         const rotation = rotationLength(plan);
-        const [hasHistory, lastWeek, rotationWeek, checkIns] = await Promise.all([
+        const previousStart = mondayOfWeek(offset - 1);
+        const [hasHistory, lastWeek, rotationWeek, checkIns, weights, water, steps] = await Promise.all([
           hasAnySessionsBefore(current.weekStart.toISOString()),
-          getWeeklyWorkoutSummary(mondayOfWeek(offset - 1)),
+          getWeeklyWorkoutSummary(previousStart),
           rotation >= 2 ? getWeeklyWorkoutSummary(mondayOfWeek(offset - rotation)) : null,
           getCheckInsBetween(current.weekStart, current.weekEnd),
+          listBodyWeights().catch(() => []),
+          listWaterSince(dayKey(previousStart)).catch(() => []),
+          listSteps().catch(() => []),
         ]);
+        const logs = { weights, water, steps };
+        const body = {
+          current: dailyAverages(logs, current.weekStart),
+          lastWeek: dailyAverages(logs, previousStart),
+          bodyWeightUnit: getBodyWeightUnit(),
+          waterUnit: getWaterUnit(),
+        };
 
         const unit = getLiftWeightUnit();
         // One decimal, so micro-loading (+2.5 kg on bench) isn't rounded away.
@@ -738,6 +752,7 @@ function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: Full
               ? { weeksBack: rotation, week: rotationWeek }
               : null,
           checkIns,
+          body,
           weight,
         });
       }}
