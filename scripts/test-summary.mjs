@@ -281,12 +281,12 @@ import {
 console.log('\ncheck-in');
 {
   const full = normaliseCheckIn({ performance: 6, energy: 5, soreness: 3, sleep: 4, flags: ['stressed', 'stomach'] });
-  eq('ratings line names every answered question in order', ratingsLine(full), 'Session 6 · Energy 5 · Soreness 3 · Sleep 4');
+  eq('ratings line names every answered question in order', ratingsLine(full), 'Workout 6 · Energy 5 · Soreness 3 · Sleep 4');
   eq('flags line reads as one sentence fragment', flagsLine(full), 'Stressed, upset stomach');
   ok('all four answered counts as complete', isCheckInComplete(full));
 
   const partial = normaliseCheckIn({ performance: 7, sleep: 2 });
-  eq('a skipped question is left out, not shown as blank', ratingsLine(partial), 'Session 7 · Sleep 2');
+  eq('a skipped question is left out, not shown as blank', ratingsLine(partial), 'Workout 7 · Sleep 2');
   ok('a partial check-in is neither empty nor complete', !isCheckInEmpty(partial) && !isCheckInComplete(partial));
   eq('no flags gives no line', flagsLine(partial), null);
 
@@ -313,11 +313,11 @@ console.log('\ncheck-in');
       'Ratings are 1 to 7. Soreness: 1 fresh, 7 wrecked.',
       '',
       'Upper, Tue 6 Oct',
-      'Session 6 · Energy 5 · Soreness 3 · Sleep 4',
+      'Workout 6 · Energy 5 · Soreness 3 · Sleep 4',
       'Stressed, upset stomach',
       '',
       'Push, Thu 8 Oct',
-      'Session 7 · Sleep 2',
+      'Workout 7 · Sleep 2',
       'Felt the bench groove come back.',
       '',
     ].join('\n')

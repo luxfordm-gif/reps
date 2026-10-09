@@ -35,6 +35,8 @@ export interface RatingQuestion {
   key: RatingKey;
   /** The row's label, and the word the export uses. */
   label: string;
+  /** The question under the label. */
+  hint: string;
   /** What 1 means, in the person's words. */
   low: string;
   /** What 7 means. */
@@ -43,10 +45,10 @@ export interface RatingQuestion {
 
 /** In the order they're asked: how it went, then what you brought to it. */
 export const RATING_QUESTIONS: readonly RatingQuestion[] = [
-  { key: 'performance', label: 'Session', low: 'Rough', high: 'On fire' },
-  { key: 'energy', label: 'Energy', low: 'Flat', high: 'Full tank' },
-  { key: 'soreness', label: 'Soreness', low: 'Fresh', high: 'Wrecked' },
-  { key: 'sleep', label: 'Sleep last night', low: 'Terrible', high: 'Great' },
+  { key: 'performance', label: 'Workout', hint: 'How did it feel?', low: 'Rough', high: 'Great' },
+  { key: 'energy', label: 'Energy', hint: 'How was it?', low: 'Low', high: 'High' },
+  { key: 'soreness', label: 'Soreness', hint: 'How sore?', low: 'Fresh', high: 'Wrecked' },
+  { key: 'sleep', label: 'Sleep', hint: 'Last night?', low: 'Terrible', high: 'Great' },
 ];
 
 export const FLAGS: readonly { key: FlagKey; label: string }[] = [
@@ -88,9 +90,9 @@ export function isCheckInComplete(c: CheckIn): boolean {
   return RATING_QUESTIONS.every((q) => c[q.key] != null);
 }
 
-/** "Session 6 · Energy 5 · Soreness 3 · Sleep 4", skipping anything unanswered. */
+/** "Workout 6 · Energy 5 · Soreness 3 · Sleep 4", skipping anything unanswered. */
 export function ratingsLine(c: CheckIn): string | null {
-  const parts = RATING_QUESTIONS.filter((q) => c[q.key] != null).map((q) => `${q.label.split(' ')[0]} ${c[q.key]}`);
+  const parts = RATING_QUESTIONS.filter((q) => c[q.key] != null).map((q) => `${q.label} ${c[q.key]}`);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 

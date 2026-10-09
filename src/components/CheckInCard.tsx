@@ -13,10 +13,13 @@ import {
 } from '../lib/checkin';
 import { haptics } from '../lib/haptics';
 
-// The check-in at the end of a workout: four rows of seven round buttons and
-// a row of chips. Every tap saves on its own, so there is nothing to submit
-// and nothing to lose by walking off halfway through. Tapping the chosen
-// number again clears it.
+// The check-in at the end of a workout: a closed row you tap open, with four
+// questions inside, each a name on the left and a seven-way switch on the
+// right, then a row of chips. Closed by default
+// because most people finishing a workout aren't filling in a form for a
+// coach, and the row still says where you're up to. Every tap saves on its
+// own, so there is nothing to submit and nothing to lose by walking off
+// halfway through. Tapping the chosen number again clears it.
 //
 // Not sliders: on a sweaty phone a slider needs a drag, lands between values
 // and never looks finished. A row of numbers is one tap and reads back.
@@ -27,6 +30,7 @@ export function CheckInCard({ sessionId }: { sessionId: string }) {
   // session's check-in has been read, so a tap can't overwrite it.
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const loaded = loadedFor === sessionId;
 
   useEffect(() => {
@@ -67,100 +71,139 @@ export function CheckInCard({ sessionId }: { sessionId: string }) {
   }
 
   const complete = isCheckInComplete(checkIn);
+  const answered = RATING_QUESTIONS.filter((q) => checkIn[q.key] != null).length;
+  // Closed, the row says where you're up to; open, the questions say it.
+  const summary = complete
+    ? 'Logged for your coach'
+    : answered > 0
+      ? `${answered} of ${RATING_QUESTIONS.length} answered`
+      : `Optional · ${RATING_QUESTIONS.length} quick questions`;
 
   return (
-    <div className="rounded-card bg-paper-card px-4 pb-4 pt-4 shadow-card">
-      <div className="px-1">
-        <div className="text-sm font-semibold text-ink">How did it go?</div>
-        <div className="mt-0.5 text-xs text-muted">
-          A few taps for your coach. Skip any you like.
+    <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          haptics.tap();
+          setOpen((v) => !v);
+        }}
+        className="flex w-full items-center gap-3 px-4 py-4 text-left active:bg-pressed"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper text-ink">
+          <ClipboardIcon />
         </div>
-      </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-ink">Coach check-in</div>
+          <div className={`mt-0.5 text-xs ${complete ? 'text-good' : 'text-muted'}`}>{summary}</div>
+        </div>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 18 18"
+          fill="none"
+          aria-hidden="true"
+          className="shrink-0 text-muted"
+          style={{ transform: `rotate(${open ? 180 : 0}deg)`, transition: 'transform 200ms ease' }}
+        >
+          <path
+            d="M4 7l5 5 5-5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
 
-      <div className="mt-4 space-y-4">
-        {RATING_QUESTIONS.map((q) => (
-          <div key={q.key} role="radiogroup" aria-label={q.label}>
-            <div className="px-1 text-xs font-semibold text-ink">{q.label}</div>
-            <div className="mt-1.5 flex justify-between gap-1.5">
-              {Array.from({ length: RATING_MAX - RATING_MIN + 1 }, (_, i) => RATING_MIN + i).map(
-                (n) => {
-                  const on = checkIn[q.key] === n;
+      {open && (
+        <div className="border-t border-line/60 px-4 pb-4 pt-3">
+          <div className="px-1 pb-1 text-xs text-muted">A few taps for your coach. Skip any you like.</div>
+
+          <div className="mt-3 divide-y divide-line/60">
+            {RATING_QUESTIONS.map((q) => (
+              <div key={q.key} role="radiogroup" aria-label={q.label} className="flex gap-3 py-3">
+                <div className="w-[84px] shrink-0 pt-1">
+                  <div className="text-sm font-semibold leading-tight text-ink">{q.label}</div>
+                  <div className="mt-0.5 text-caption leading-tight text-muted">{q.hint}</div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex rounded-pill bg-surface-strong p-0.5">
+                    {Array.from({ length: RATING_MAX - RATING_MIN + 1 }, (_, i) => RATING_MIN + i).map(
+                      (n) => {
+                        const on = checkIn[q.key] === n;
+                        return (
+                          <button
+                            key={n}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            aria-label={`${q.label} ${n} of ${RATING_MAX}`}
+                            disabled={!loaded}
+                            onClick={() => rate(q.key, n)}
+                            className={`h-8 min-w-0 flex-1 rounded-pill text-sm font-semibold tabular-nums transition-colors disabled:opacity-40 ${
+                              on ? 'bg-ink text-white' : 'text-ink active:bg-line'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                  <div className="mt-1 flex justify-between px-1 text-caption text-muted">
+                    <span>{q.low}</span>
+                    <span>{q.high}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <div className="flex gap-3 py-3">
+              <div className="w-[84px] shrink-0 pt-1.5">
+                <div className="text-sm font-semibold leading-tight text-ink">Anything off?</div>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                {FLAGS.map((f) => {
+                  const on = checkIn.flags.includes(f.key);
                   return (
                     <button
-                      key={n}
+                      key={f.key}
                       type="button"
-                      role="radio"
-                      aria-checked={on}
-                      aria-label={`${q.label} ${n} of ${RATING_MAX}`}
+                      aria-pressed={on}
                       disabled={!loaded}
-                      onClick={() => rate(q.key, n)}
-                      className={`pressable aspect-square max-w-11 flex-1 rounded-full text-sm font-semibold tabular-nums transition-colors disabled:opacity-40 ${
-                        on ? 'bg-ink text-white' : 'bg-surface-strong text-ink active:bg-line'
+                      onClick={() => flag(f.key)}
+                      className={`pressable rounded-pill border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-40 ${
+                        on
+                          ? 'border-ink bg-ink text-white'
+                          : 'border-line bg-paper-card text-ink active:bg-pressed'
                       }`}
                     >
-                      {n}
+                      {f.label}
                     </button>
                   );
-                }
-              )}
-            </div>
-            <div className="mt-1 flex justify-between px-1 text-caption text-muted">
-              <span>{q.low}</span>
-              <span>{q.high}</span>
+                })}
+              </div>
             </div>
           </div>
-        ))}
 
-        <div>
-          <div className="px-1 text-xs font-semibold text-ink">Anything off today?</div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5 px-1">
-            {FLAGS.map((f) => {
-              const on = checkIn.flags.includes(f.key);
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  aria-pressed={on}
-                  disabled={!loaded}
-                  onClick={() => flag(f.key)}
-                  className={`pressable rounded-pill border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-40 ${
-                    on
-                      ? 'border-ink bg-ink text-white'
-                      : 'border-line bg-paper-card text-ink active:bg-pressed'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
+          {error && (
+            <div className="mt-3 px-1 text-caption text-danger" aria-live="polite">
+              {error}
+            </div>
+          )}
         </div>
-      </div>
-
-      <div className="mt-4 min-h-[16px] px-1 text-caption" aria-live="polite">
-        {error ? (
-          <span className="text-danger">{error}</span>
-        ) : complete ? (
-          <span className="flex items-center gap-1.5 font-semibold text-good">
-            <TickIcon />
-            Logged for your coach
-          </span>
-        ) : null}
-      </div>
+      )}
     </div>
   );
 }
 
-function TickIcon() {
+function ClipboardIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M3 8.5l3 3 6.5-6.5"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="5" y="4" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M9 3.5h6v2.5H9z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M9 11h6M9 15h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }
