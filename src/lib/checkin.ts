@@ -83,6 +83,23 @@ export function ratingsLine(c: CheckIn): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+/** Each rating's mean across the check-ins that answered it, one decimal. */
+export function averagesLine(checkIns: CheckIn[]): string | null {
+  const parts: string[] = [];
+  for (const q of RATING_QUESTIONS) {
+    const answered = checkIns.map((c) => c[q.key]).filter((v): v is number => v != null);
+    if (answered.length === 0) continue;
+    const mean = answered.reduce((sum, v) => sum + v, 0) / answered.length;
+    parts.push(`${q.label} ${formatMean(mean)}`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+function formatMean(n: number): string {
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
 export interface CheckInExportRow {
   completedAt: string;
   dayName: string;
@@ -93,8 +110,9 @@ export interface CheckInExportRow {
 
 /**
  * The week's check-ins as plain text for the coach — one block per session,
- * read in a messaging app, so no markdown. Sessions with nothing to say are
- * left out; returns null when that's all of them.
+ * then the week's averages when there are two or more. Read in a messaging
+ * app, so no markdown. Sessions with nothing to say are left out; returns null
+ * when that's all of them.
  */
 export function buildCheckInExport(rows: CheckInExportRow[], now = new Date()): string | null {
   const kept = rows.filter((r) => !isCheckInEmpty(r.checkIn) || (r.note ?? '').trim().length > 0);
@@ -119,6 +137,14 @@ export function buildCheckInExport(rows: CheckInExportRow[], now = new Date()): 
     if (ratings) out.push(ratings);
     if (r.note?.trim()) out.push(r.note.trim());
     out.push('');
+  }
+  // The headline for a coach skimming it, after the days rather than instead
+  // of them. One check-in has no average worth stating.
+  const rated = kept.map((r) => r.checkIn).filter((c) => !isCheckInEmpty(c));
+  const averages = rated.length >= 2 ? averagesLine(rated) : null;
+  if (averages) {
+    out.push(`Week average, ${rated.length} check-ins`);
+    out.push(averages);
   }
   return out.join('\n').trimEnd() + '\n';
 }

@@ -270,6 +270,7 @@ console.log('\nCoach summary (copied from Profile)');
 
 // ---- The end-of-workout check-in and its weekly export (lib/checkin) ----
 import {
+  averagesLine,
   buildCheckInExport,
   isCheckInComplete,
   isCheckInEmpty,
@@ -315,8 +316,17 @@ console.log('\ncheck-in');
       'Workout 5 · Sleep 2',
       'Felt the bench groove come back.',
       '',
+      'Week average, 2 check-ins',
+      'Workout 4.5 · Energy 5 · Soreness 3 · Sleep 2 · Hunger 3 · Stress 1',
+      '',
     ].join('\n')
   );
+  eq(
+    'averages skip questions nobody answered and round to one decimal',
+    averagesLine([normaliseCheckIn({ performance: 5, energy: 2 }), normaliseCheckIn({ performance: 4 }), normaliseCheckIn({ performance: 2 })]),
+    'Workout 3.7 · Energy 2'
+  );
+  ok('one check-in gets no average line', !buildCheckInExport([rows[0]], now).includes('Week average'));
   ok('export has no markdown', !/[*_#]/.test(text));
   eq('a week with nothing answered exports nothing', buildCheckInExport([rows[1]], now), null);
   const noteOnly = { completedAt: '2026-10-09T17:30:00Z', dayName: 'Legs', checkIn: normaliseCheckIn(null), note: 'Knee niggle' };
