@@ -271,7 +271,6 @@ console.log('\nCoach summary (copied from Profile)');
 // ---- The end-of-workout check-in and its weekly export (lib/checkin) ----
 import {
   buildCheckInExport,
-  flagsLine,
   isCheckInComplete,
   isCheckInEmpty,
   normaliseCheckIn,
@@ -280,20 +279,17 @@ import {
 
 console.log('\ncheck-in');
 {
-  const full = normaliseCheckIn({ performance: 4, energy: 5, soreness: 3, sleep: 2, flags: ['stressed', 'stomach'] });
-  eq('ratings line names every answered question in order', ratingsLine(full), 'Workout 4 · Energy 5 · Soreness 3 · Sleep 2');
-  eq('flags line reads as one sentence fragment', flagsLine(full), 'Stressed, stomach');
-  ok('all four answered counts as complete', isCheckInComplete(full));
+  const full = normaliseCheckIn({ performance: 4, energy: 5, soreness: 3, sleep: 2, stress: 1 });
+  eq('ratings line names every answered question in order', ratingsLine(full), 'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Stress 1');
+  ok('all five answered counts as complete', isCheckInComplete(full));
 
   const partial = normaliseCheckIn({ performance: 5, sleep: 2 });
   eq('a skipped question is left out, not shown as blank', ratingsLine(partial), 'Workout 5 · Sleep 2');
   ok('a partial check-in is neither empty nor complete', !isCheckInEmpty(partial) && !isCheckInComplete(partial));
-  eq('no flags gives no line', flagsLine(partial), null);
 
-  const junk = normaliseCheckIn({ performance: 6, energy: 0, soreness: 4.4, sleep: '5', flags: ['ill', 'bogus', 'ill'] });
-  eq('out-of-range and non-numeric ratings are dropped', [junk.performance, junk.energy, junk.sleep], [null, null, null]);
+  const junk = normaliseCheckIn({ performance: 6, energy: 0, soreness: 4.4, sleep: '5', stress: undefined });
+  eq('out-of-range, non-numeric and missing ratings are dropped', [junk.performance, junk.energy, junk.sleep, junk.stress], [null, null, null, null]);
   eq('a fractional rating rounds to the sheet scale', junk.soreness, 4);
-  eq('unknown and repeated flags are dropped', junk.flags, ['ill']);
   ok('nothing at all is empty', isCheckInEmpty(normaliseCheckIn(null)));
   eq('empty ratings give no line', ratingsLine(normaliseCheckIn(null)), null);
 
@@ -310,11 +306,10 @@ console.log('\ncheck-in');
     [
       'Check-ins for coach',
       'Week ending 11 October 2026',
-      'Ratings are 1 to 5. Soreness: 1 fresh, 5 wrecked.',
+      'Ratings are 1 to 5. Soreness and stress: 1 is best, 5 worst.',
       '',
       'Upper, Tue 6 Oct',
-      'Workout 4 · Energy 5 · Soreness 3 · Sleep 2',
-      'Stressed, stomach',
+      'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Stress 1',
       '',
       'Push, Thu 8 Oct',
       'Workout 5 · Sleep 2',

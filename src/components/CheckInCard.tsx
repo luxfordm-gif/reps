@@ -2,20 +2,18 @@ import { useEffect, useState } from 'react';
 import { getSessionCheckIn, updateSessionCheckIn } from '../lib/sessionsApi';
 import {
   EMPTY_CHECK_IN,
-  FLAGS,
   RATING_MAX,
   RATING_MIN,
   RATING_QUESTIONS,
   isCheckInComplete,
   type CheckIn,
-  type FlagKey,
   type RatingKey,
 } from '../lib/checkin';
 import { haptics } from '../lib/haptics';
 
-// The check-in at the end of a workout: a closed row you tap open, with four
+// The check-in at the end of a workout: a closed row you tap open, with five
 // questions inside, each a name on the left and a five-way switch on the
-// right, then one row of four chips that never wraps. Closed by default
+// right. One shape the whole way down, so there is nothing to work out. Closed by default
 // because most people finishing a workout aren't filling in a form for a
 // coach, and the row still says where you're up to. Every tap saves on its
 // own, so there is nothing to submit and nothing to lose by walking off
@@ -63,14 +61,6 @@ export function CheckInCard({ sessionId }: { sessionId: string }) {
 
   function rate(key: RatingKey, n: number) {
     commit({ ...checkIn, [key]: checkIn[key] === n ? null : n });
-  }
-
-  function flag(key: FlagKey) {
-    const has = checkIn.flags.includes(key);
-    commit({
-      ...checkIn,
-      flags: has ? checkIn.flags.filter((f) => f !== key) : [...checkIn.flags, key],
-    });
   }
 
   const complete = isCheckInComplete(checkIn);
@@ -162,30 +152,6 @@ export function CheckInCard({ sessionId }: { sessionId: string }) {
               </div>
             ))}
 
-            <div className="py-3">
-              <div className="text-sm font-semibold leading-tight text-ink">Anything off today?</div>
-              <div className="mt-2 grid grid-cols-4 gap-1.5">
-                {FLAGS.map((f) => {
-                  const on = checkIn.flags.includes(f.key);
-                  return (
-                    <button
-                      key={f.key}
-                      type="button"
-                      aria-pressed={on}
-                      disabled={!loaded}
-                      onClick={() => flag(f.key)}
-                      className={`pressable truncate rounded-pill border px-2 py-2 text-xs font-semibold transition-colors disabled:opacity-40 ${
-                        on
-                          ? 'border-ink bg-ink text-white'
-                          : 'border-line bg-paper-card text-ink active:bg-pressed'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
           </div>
 
           {error && (

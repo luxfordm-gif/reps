@@ -4,7 +4,7 @@ import { prefetchAlternativesForExercises } from './alternativesApi';
 import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
 import { enqueue, pendingSetIds, requestFlush, type QueuedSetPatch } from './offline/outbox';
 import { dropCache, newId, readCache, writeCache } from './offline/storage';
-import { normaliseCheckIn, type CheckIn, type CheckInExportRow, type FlagKey } from './checkin';
+import { normaliseCheckIn, type CheckIn, type CheckInExportRow, type RatingKey } from './checkin';
 import {
   completeLocalSession,
   finishedAt,
@@ -37,20 +37,20 @@ export interface SessionCheckInPatch {
   checkin_energy?: number | null;
   checkin_soreness?: number | null;
   checkin_sleep?: number | null;
-  checkin_flags?: FlagKey[];
+  checkin_stress?: number | null;
 }
 
 function checkInCacheName(sessionId: string): string {
   return `notes.${sessionId}`;
 }
 
-function toCheckIn(row: SessionCheckInPatch | null | undefined): Partial<Record<keyof CheckIn, unknown>> {
+function toCheckIn(row: SessionCheckInPatch | null | undefined): Partial<Record<RatingKey, unknown>> {
   return {
     performance: row?.checkin_performance,
     energy: row?.checkin_energy,
     soreness: row?.checkin_soreness,
     sleep: row?.checkin_sleep,
-    flags: row?.checkin_flags,
+    stress: row?.checkin_stress,
   };
 }
 
@@ -60,7 +60,7 @@ function toPatch(checkIn: CheckIn): SessionCheckInPatch {
     checkin_energy: checkIn.energy,
     checkin_soreness: checkIn.soreness,
     checkin_sleep: checkIn.sleep,
-    checkin_flags: checkIn.flags,
+    checkin_stress: checkIn.stress,
   };
 }
 
@@ -72,7 +72,7 @@ export async function getSessionCheckIn(sessionId: string): Promise<CheckIn> {
     const data = await query(
       supabase
         .from('sessions')
-        .select('checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_flags')
+        .select('checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_stress')
         .eq('id', sessionId)
         .maybeSingle(),
       { label: 'getSessionCheckIn' },
@@ -114,7 +114,7 @@ export async function getRecentCheckIns(daysBack = 7): Promise<WeekCheckInRow[]>
   const { data, error } = await supabase
     .from('sessions')
     .select(
-      'id, completed_at, notes_to_coach, checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_flags, training_days(name)'
+      'id, completed_at, notes_to_coach, checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_stress, training_days(name)'
     )
     .eq('user_id', userId)
     .not('completed_at', 'is', null)
