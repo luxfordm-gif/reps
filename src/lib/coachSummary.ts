@@ -85,9 +85,10 @@ export const TOP_LIFTS = 6;
 export const DOWN_LIFTS = 3;
 /** A lift down by at least this much is worth telling the coach. */
 export const DOWN_PCT = 5;
-/** A change this large in a week or two isn't training, it's a logging slip:
- *  a plate weight where a stack weight belonged, or the wrong machine. Such a
- *  lift is kept out of the average and listed for checking instead. */
+/** A change this large in a week or two isn't training: it's a different
+ *  machine (pin stack one week, plates the next) or a logging slip. Either
+ *  way the two sets aren't comparable, so the lift is kept out of the average
+ *  and named instead. */
 export const SUSPECT_PCT = 50;
 
 export interface LiftChange {
@@ -184,17 +185,17 @@ export function buildCoachSummary(input: CoachSummaryInput): string {
     if (rotation) pushTopLifts(out, `Top lifts vs ${rotationWhen}`, vsRotation, set);
   }
 
-  // Anything that can't be right, so it gets fixed in history rather than
-  // quietly skewing next week's numbers too.
+  // Named rather than silently dropped, so a machine change is understood
+  // and a slip gets fixed in history instead of skewing next week too.
   const suspects = [...vsLast, ...vsRotation].filter(isSuspect);
   if (suspects.length > 0) {
     out.push('');
-    out.push('Check these entries, left out of the strength figure');
+    out.push('Not compared, too big a jump to be the same machine');
     const seen = new Set<string>();
     for (const c of suspects) {
       if (seen.has(c.cur.normalizedName)) continue;
       seen.add(c.cur.normalizedName);
-      out.push(`• ${c.cur.displayName}: ${set(c.prev)} → ${set(c.cur)}, one of these looks mis-logged`);
+      out.push(`• ${c.cur.displayName}: ${set(c.prev)} → ${set(c.cur)}`);
     }
   }
 

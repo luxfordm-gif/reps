@@ -268,8 +268,8 @@ console.log('\nCoach summary (copied from Profile)');
   const steady = buildCoachSummary({ name: 'Sam', current: week('2026-09-21T00:00:00', [['Push', '2026-09-22T18:00:00']], [['Row', 60, 10]]), lastWeek: last, weight: kg });
   ok('nothing up or down is said plainly', steady.includes('• Nothing up on the same lifts — held steady.'), steady);
 
-  // A logging slip (9 kg where 110 kg belonged) can't be allowed to drive the
-  // strength figure, and the coach should see it rather than a +1043%.
+  // A machine change (pin stack to plates) or a logging slip can't be allowed
+  // to drive the strength figure, and the coach should see it rather than +1043%.
   const slip = buildCoachSummary({
     name: 'Matt', weight: kg,
     current: week('2026-10-05T00:00:00', [['Legs', '2026-10-06T18:00:00']], [['Abductor', 110, 13], ['Squat', 100, 8]]),
@@ -277,7 +277,7 @@ console.log('\nCoach summary (copied from Profile)');
   });
   ok('a suspect change is left out of the strength figure', slip.includes('Strength up 9% on last week'), slip);
   ok('…and out of the top lifts', !slip.includes('(+1043%)'), slip);
-  ok('…and listed for checking', slip.includes('Check these entries, left out of the strength figure\n• Abductor: 9 kg × 16 → 110 kg × 13, one of these looks mis-logged'), slip);
+  ok('…and named as not comparable', slip.includes('Not compared, too big a jump to be the same machine\n• Abductor: 9 kg × 16 → 110 kg × 13'), slip);
 
   // The week's check-ins sit between the strength line and the lifts.
   const felt = buildCoachSummary({

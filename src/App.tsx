@@ -26,6 +26,7 @@ import { SetNewPassword } from './screens/SetNewPassword';
 import { WorkoutHistory } from './screens/WorkoutHistory';
 import { Machines } from './screens/Machines';
 import { FeedbackSheet } from './components/FeedbackSheet';
+import { FEEDBACK_ENABLED } from './lib/feedbackApi';
 import { WorkoutComplete } from './screens/WorkoutComplete';
 import { Onboarding } from './screens/Onboarding';
 import {
@@ -475,7 +476,7 @@ function Root() {
             setActiveDay(null);
           }}
           onEndWorkout={() => setEndWorkoutOpen(true)}
-          onFeedback={() => setFeedbackOpen(true)}
+          onFeedback={FEEDBACK_ENABLED ? () => setFeedbackOpen(true) : undefined}
           onFinish={async () => {
             const sid = sessionId;
             const finishedDay = activeDay?.name ?? 'Workout';
@@ -594,7 +595,7 @@ function Root() {
         active={tab}
         onChange={changeTab}
         visible={navVisible}
-        onFeedback={session ? () => setFeedbackOpen(true) : undefined}
+        onFeedback={FEEDBACK_ENABLED && session ? () => setFeedbackOpen(true) : undefined}
         above={
           barVisible && activeWorkout ? (
             <ActiveWorkoutBar info={activeWorkout} onEnd={() => setEndWorkoutOpen(true)} />

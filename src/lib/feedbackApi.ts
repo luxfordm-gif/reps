@@ -11,6 +11,13 @@ import { putBlob } from './offline/blobStore';
 // the message is the only required field, attachments are optional, and the
 // context that would otherwise need a follow-up question is collected for them.
 
+/**
+ * Whether the app offers "Send feedback" anywhere. Off until the reports have
+ * somewhere to go: the sheet, the queue and the table all stay, so turning it
+ * back on is this one line.
+ */
+export const FEEDBACK_ENABLED = false;
+
 export type FeedbackKind = 'bug' | 'idea' | 'plan_import' | 'general';
 
 export const FEEDBACK_KINDS: { id: FeedbackKind; label: string }[] = [
