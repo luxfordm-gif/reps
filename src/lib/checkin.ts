@@ -100,53 +100,13 @@ function formatMean(n: number): string {
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
+/** A finished session's check-in, as the weekly summary for a coach lists it. */
 export interface CheckInExportRow {
   completedAt: string;
   dayName: string;
   checkIn: CheckIn;
   /** A note typed on an older build, before the check-in replaced the text box. */
   note: string | null;
-}
-
-/**
- * The week's check-ins as plain text for the coach — one block per session,
- * then the week's averages when there are two or more. Read in a messaging
- * app, so no markdown. Sessions with nothing to say are left out; returns null
- * when that's all of them.
- */
-export function buildCheckInExport(rows: CheckInExportRow[], now = new Date()): string | null {
-  const kept = rows.filter((r) => !isCheckInEmpty(r.checkIn) || (r.note ?? '').trim().length > 0);
-  if (kept.length === 0) return null;
-  const out: string[] = [];
-  out.push('Check-ins for coach');
-  out.push(
-    `Week ending ${now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
-  );
-  out.push(
-    `Ratings are ${RATING_MIN} to ${RATING_MAX}. Soreness and stress: ${RATING_MIN} is best, ${RATING_MAX} worst.`
-  );
-  out.push('');
-  for (const r of kept) {
-    const date = new Date(r.completedAt).toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    });
-    out.push(`${r.dayName}, ${date}`);
-    const ratings = ratingsLine(r.checkIn);
-    if (ratings) out.push(ratings);
-    if (r.note?.trim()) out.push(r.note.trim());
-    out.push('');
-  }
-  // The headline for a coach skimming it, after the days rather than instead
-  // of them. One check-in has no average worth stating.
-  const rated = kept.map((r) => r.checkIn).filter((c) => !isCheckInEmpty(c));
-  const averages = rated.length >= 2 ? averagesLine(rated) : null;
-  if (averages) {
-    out.push(`Week average, ${rated.length} check-ins`);
-    out.push(averages);
-  }
-  return out.join('\n').trimEnd() + '\n';
 }
 
 // Whether the card is shown at all. Someone without a coach may not want six

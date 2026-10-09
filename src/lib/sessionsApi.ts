@@ -110,10 +110,10 @@ export interface WeekCheckInRow extends CheckInExportRow {
   sessionId: string;
 }
 
-export async function getRecentCheckIns(daysBack = 7): Promise<WeekCheckInRow[]> {
+/** Check-ins on sessions completed from `from` up to (not including) `to`. */
+export async function getCheckInsBetween(from: Date, to: Date): Promise<WeekCheckInRow[]> {
   const userId = await currentUserId();
   if (!userId) return [];
-  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from('sessions')
     .select(
@@ -121,7 +121,8 @@ export async function getRecentCheckIns(daysBack = 7): Promise<WeekCheckInRow[]>
     )
     .eq('user_id', userId)
     .not('completed_at', 'is', null)
-    .gte('completed_at', since)
+    .gte('completed_at', from.toISOString())
+    .lt('completed_at', to.toISOString())
     .order('completed_at', { ascending: true });
   if (error) throw error;
   type Row = SessionCheckInPatch & {

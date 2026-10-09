@@ -46,14 +46,17 @@ import {
   type QuickActionId,
 } from '../lib/quickActions';
 import {
+  getCheckInsBetween,
   getWeeklyWorkoutSummary,
   hasAnySessionsBefore,
   mondayOfWeek,
 } from '../lib/sessionsApi';
 import { kgToLb } from '../lib/units';
-import { buildCoachSummary } from '../lib/coachSummary';
-import { buildCheckInExport, getCheckInEnabled, setCheckInEnabled } from '../lib/checkin';
-import { getRecentCheckIns } from '../lib/sessionsApi';
+import { buildCoachSummary, dailyAverages, dayKey } from '../lib/coachSummary';
+import { listBodyWeights } from '../lib/bodyWeightApi';
+import { listWaterSince } from '../lib/waterApi';
+import { listSteps } from '../lib/stepsApi';
+import { getCheckInEnabled, setCheckInEnabled } from '../lib/checkin';
 import { copyTextWhenReady } from '../lib/copyText';
 import { haptics } from '../lib/haptics';
 
@@ -413,8 +416,6 @@ export function Profile({
               <ChevronRight />
             </button>
             <div className="border-t border-line" />
-            <CoachExportRow />
-            <div className="border-t border-line" />
             <CoachWeeklySummaryRow name={profile?.display_name ?? null} plan={plan} />
           </div>
         </Section>
@@ -667,21 +668,6 @@ function CoachCopyRow({
   );
 }
 
-function CoachExportRow() {
-  return (
-    <CoachCopyRow
-      label="Copy this week's check-ins for coach"
-      hint="How each workout went, as you tapped it at the end"
-      emptyHint="No check-ins in the last 7 days"
-      build={async () => {
-        const text = buildCheckInExport(await getRecentCheckIns(7));
-        if (!text) throw new NothingToCopy();
-        return text;
-      }}
-    />
-  );
-}
-
 function CopyIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -717,8 +703,8 @@ function rotationLength(plan: FullPlan | null): number {
 function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: FullPlan | null }) {
   return (
     <CoachCopyRow
-      label="Copy weekly summary for coach"
-      hint="Workouts, strength and top lifts vs last week"
+      label="Copy week for coach"
+      hint="Workouts, how it felt, and top lifts vs last week"
       emptyHint="No workouts logged this week or last"
       build={async () => {
         // Early in the week there may be nothing yet — then the week just
@@ -732,11 +718,23 @@ function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: Full
         if (current.workoutsDone === 0) throw new NothingToCopy();
 
         const rotation = rotationLength(plan);
-        const [hasHistory, lastWeek, rotationWeek] = await Promise.all([
+        const previousStart = mondayOfWeek(offset - 1);
+        const [hasHistory, lastWeek, rotationWeek, checkIns, weights, water, steps] = await Promise.all([
           hasAnySessionsBefore(current.weekStart.toISOString()),
-          getWeeklyWorkoutSummary(mondayOfWeek(offset - 1)),
+          getWeeklyWorkoutSummary(previousStart),
           rotation >= 2 ? getWeeklyWorkoutSummary(mondayOfWeek(offset - rotation)) : null,
+          getCheckInsBetween(current.weekStart, current.weekEnd),
+          listBodyWeights().catch(() => []),
+          listWaterSince(dayKey(previousStart)).catch(() => []),
+          listSteps().catch(() => []),
         ]);
+        const logs = { weights, water, steps };
+        const body = {
+          current: dailyAverages(logs, current.weekStart),
+          lastWeek: dailyAverages(logs, previousStart),
+          bodyWeightUnit: getBodyWeightUnit(),
+          waterUnit: getWaterUnit(),
+        };
 
         const unit = getLiftWeightUnit();
         // One decimal, so micro-loading (+2.5 kg on bench) isn't rounded away.
@@ -753,6 +751,8 @@ function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: Full
             hasHistory && rotationWeek && rotationWeek.workoutsDone > 0
               ? { weeksBack: rotation, week: rotationWeek }
               : null,
+          checkIns,
+          body,
           weight,
         });
       }}
