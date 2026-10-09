@@ -1,4 +1,4 @@
-// The check-in at the end of a workout: five ratings, answered by tapping,
+// The check-in at the end of a workout: six ratings, answered by tapping,
 // that stand in for the daily sheet a coach hands out.
 //
 // The questions are the sheet's. Five points rather than the sheet's seven,
@@ -13,7 +13,7 @@
 export const RATING_MIN = 1;
 export const RATING_MAX = 5;
 
-export type RatingKey = 'performance' | 'energy' | 'soreness' | 'sleep' | 'stress';
+export type RatingKey = 'performance' | 'energy' | 'soreness' | 'sleep' | 'hunger' | 'stress';
 
 export type CheckIn = Record<RatingKey, number | null>;
 
@@ -22,6 +22,7 @@ export const EMPTY_CHECK_IN: CheckIn = {
   energy: null,
   soreness: null,
   sleep: null,
+  hunger: null,
   stress: null,
 };
 
@@ -44,6 +45,7 @@ export const RATING_QUESTIONS: readonly RatingQuestion[] = [
   { key: 'energy', label: 'Energy', hint: 'How was it?', low: 'Low', high: 'High' },
   { key: 'soreness', label: 'Soreness', hint: 'How sore?', low: 'Fresh', high: 'Wrecked' },
   { key: 'sleep', label: 'Sleep', hint: 'Last night?', low: 'Terrible', high: 'Great' },
+  { key: 'hunger', label: 'Hunger', hint: 'How hungry?', low: 'Not at all', high: 'Starving' },
   { key: 'stress', label: 'Stress', hint: 'How stressed?', low: 'Calm', high: 'Frazzled' },
 ];
 
@@ -61,6 +63,7 @@ export function normaliseCheckIn(raw: Partial<Record<RatingKey, unknown>> | null
     energy: normaliseRating(raw?.energy),
     soreness: normaliseRating(raw?.soreness),
     sleep: normaliseRating(raw?.sleep),
+    hunger: normaliseRating(raw?.hunger),
     stress: normaliseRating(raw?.stress),
   };
 }
@@ -74,7 +77,7 @@ export function isCheckInComplete(c: CheckIn): boolean {
   return RATING_QUESTIONS.every((q) => c[q.key] != null);
 }
 
-/** "Workout 4 · Energy 3 · Soreness 2 · Sleep 4 · Stress 2", skipping anything unanswered. */
+/** "Workout 4 · Energy 3 · Soreness 2 · Sleep 4 · Hunger 3 · Stress 2", skipping anything unanswered. */
 export function ratingsLine(c: CheckIn): string | null {
   const parts = RATING_QUESTIONS.filter((q) => c[q.key] != null).map((q) => `${q.label} ${c[q.key]}`);
   return parts.length > 0 ? parts.join(' · ') : null;
@@ -120,7 +123,7 @@ export function buildCheckInExport(rows: CheckInExportRow[], now = new Date()): 
   return out.join('\n').trimEnd() + '\n';
 }
 
-// Whether the card is shown at all. Someone without a coach may not want five
+// Whether the card is shown at all. Someone without a coach may not want six
 // questions at the end of every workout; the switch lives in Profile.
 const ENABLED_KEY = 'reps.checkIn';
 

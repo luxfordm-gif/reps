@@ -11,7 +11,7 @@ import {
 } from '../lib/checkin';
 import { haptics } from '../lib/haptics';
 
-// The check-in at the end of a workout: a closed row you tap open, with five
+// The check-in at the end of a workout: a closed row you tap open, with six
 // questions inside, each a name on the left and a five-way switch on the
 // right. One shape the whole way down, so there is nothing to work out. Closed by default
 // because most people finishing a workout aren't filling in a form for a

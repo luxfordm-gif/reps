@@ -279,9 +279,9 @@ import {
 
 console.log('\ncheck-in');
 {
-  const full = normaliseCheckIn({ performance: 4, energy: 5, soreness: 3, sleep: 2, stress: 1 });
-  eq('ratings line names every answered question in order', ratingsLine(full), 'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Stress 1');
-  ok('all five answered counts as complete', isCheckInComplete(full));
+  const full = normaliseCheckIn({ performance: 4, energy: 5, soreness: 3, sleep: 2, hunger: 3, stress: 1 });
+  eq('ratings line names every answered question in order', ratingsLine(full), 'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Hunger 3 · Stress 1');
+  ok('all six answered counts as complete', isCheckInComplete(full));
 
   const partial = normaliseCheckIn({ performance: 5, sleep: 2 });
   eq('a skipped question is left out, not shown as blank', ratingsLine(partial), 'Workout 5 · Sleep 2');
@@ -309,7 +309,7 @@ console.log('\ncheck-in');
       'Ratings are 1 to 5. Soreness and stress: 1 is best, 5 worst.',
       '',
       'Upper, Tue 6 Oct',
-      'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Stress 1',
+      'Workout 4 · Energy 5 · Soreness 3 · Sleep 2 · Hunger 3 · Stress 1',
       '',
       'Push, Thu 8 Oct',
       'Workout 5 · Sleep 2',

@@ -1,4 +1,4 @@
--- The check-in at the end of a workout: five 1–5 ratings, tapped on the
+-- The check-in at the end of a workout: six 1–5 ratings, tapped on the
 -- completion screen and copied to a coach each week.
 -- Run this in the Supabase SQL Editor.
 --
@@ -16,5 +16,7 @@ alter table public.sessions
     check (checkin_soreness is null or checkin_soreness between 1 and 5),
   add column if not exists checkin_sleep smallint
     check (checkin_sleep is null or checkin_sleep between 1 and 5),
+  add column if not exists checkin_hunger smallint
+    check (checkin_hunger is null or checkin_hunger between 1 and 5),
   add column if not exists checkin_stress smallint
     check (checkin_stress is null or checkin_stress between 1 and 5);

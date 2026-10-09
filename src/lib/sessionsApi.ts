@@ -37,6 +37,7 @@ export interface SessionCheckInPatch {
   checkin_energy?: number | null;
   checkin_soreness?: number | null;
   checkin_sleep?: number | null;
+  checkin_hunger?: number | null;
   checkin_stress?: number | null;
 }
 
@@ -50,6 +51,7 @@ function toCheckIn(row: SessionCheckInPatch | null | undefined): Partial<Record<
     energy: row?.checkin_energy,
     soreness: row?.checkin_soreness,
     sleep: row?.checkin_sleep,
+    hunger: row?.checkin_hunger,
     stress: row?.checkin_stress,
   };
 }
@@ -60,6 +62,7 @@ function toPatch(checkIn: CheckIn): SessionCheckInPatch {
     checkin_energy: checkIn.energy,
     checkin_soreness: checkIn.soreness,
     checkin_sleep: checkIn.sleep,
+    checkin_hunger: checkIn.hunger,
     checkin_stress: checkIn.stress,
   };
 }
@@ -72,7 +75,7 @@ export async function getSessionCheckIn(sessionId: string): Promise<CheckIn> {
     const data = await query(
       supabase
         .from('sessions')
-        .select('checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_stress')
+        .select('checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_hunger, checkin_stress')
         .eq('id', sessionId)
         .maybeSingle(),
       { label: 'getSessionCheckIn' },
@@ -114,7 +117,7 @@ export async function getRecentCheckIns(daysBack = 7): Promise<WeekCheckInRow[]>
   const { data, error } = await supabase
     .from('sessions')
     .select(
-      'id, completed_at, notes_to_coach, checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_stress, training_days(name)'
+      'id, completed_at, notes_to_coach, checkin_performance, checkin_energy, checkin_soreness, checkin_sleep, checkin_hunger, checkin_stress, training_days(name)'
     )
     .eq('user_id', userId)
     .not('completed_at', 'is', null)
