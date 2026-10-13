@@ -8,6 +8,7 @@ import {
   buildCoachWeek,
   compareSessions,
   liftHistory,
+  lookBackOptions,
   liftSessionNames,
   topSet,
   topSetChangePct,
@@ -137,6 +138,21 @@ console.log('a two-week rotation');
   eq('a lift\'s sessions, most recent first', liftSessionNames(rdata, 'bench'), ['Push 1', 'Push 2']);
   eq('its history in one session skips the other', liftHistory(rdata, 'bench', 'Push 1').map((p) => p.top.weightKg), [80, 82.5]);
   eq('and across both, every time', liftHistory(rdata, 'bench').length, 3);
+  // Push 1 on a two-week rotation, every other week from 7 Sep to 19 Oct.
+  const p1 = ['2026-09-07', '2026-09-21', '2026-10-05', '2026-10-19'].map((d, i) => rot(`p${i}`, d, 'Push 1'));
+  const p1sets = p1.map((x, i) => set(x.id, x.completedAt.slice(0, 10), 'Bench', 'Chest', 80 + 2.5 * i, 8));
+  const pdata = { ...data, sessions: [...p1, rs[1]], sets: [...p1sets, rsets[1]] };
+  const latest = p1[3];
+  const backTo = (lb, start) => compareSessions(pdata, [latest], lb, start)[0].previous?.sessionId ?? null;
+  eq('last time: two weeks back', backTo(undefined), 'p2');
+  eq('four weeks back', backTo(4), 'p1');
+  eq('six weeks back', backTo(6), 'p0');
+  eq('further back than it was done: nothing', backTo(10), null);
+  eq('start of the plan: the first on this plan', backTo('start', at('2026-09-15')), 'p1');
+  eq('…without a plan date, the first ever', backTo('start'), 'p0');
+  eq('a whole rotation at a time, as far as the plan goes', lookBackOptions(2, at('2026-09-07'), new Date('2026-10-19T00:00:00')), [2, 4, 6]);
+  eq('a week at a time on a plan that doesn\'t rotate', lookBackOptions(0, at('2026-09-21'), new Date('2026-10-19T00:00:00')), [1, 2, 3, 4]);
+  eq('at least one choice on a brand new plan', lookBackOptions(2, at('2026-10-19'), new Date('2026-10-19T00:00:00')), [2]);
 }
 
 console.log('body parts');

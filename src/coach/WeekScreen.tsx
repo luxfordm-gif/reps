@@ -18,6 +18,9 @@ import {
   type CoachWeek,
   type Comparison,
   type Flag,
+  compareSessions,
+  lookBackOptions,
+  type LookBack,
   type SessionCompare,
   type TopSet,
 } from '../lib/coach/coachWeek';
@@ -497,6 +500,16 @@ function PctCell({ value }: { value: number | null }) {
   );
 }
 
+/** "2 weeks earlier" — how far back a session's comparison is. */
+function weeksBefore(s: SessionCompare): string {
+  if (!s.previous) return '';
+  const weeks = Math.round(
+    (new Date(s.completedAt).getTime() - new Date(s.previous.completedAt).getTime()) / (7 * 86_400_000),
+  );
+  if (weeks <= 0) return 'earlier this week';
+  return weeks === 1 ? '1 week earlier' : `${weeks} weeks earlier`;
+}
+
 function sessionLabel(s: SessionCompare): string {
   return `${s.dayName}, ${weekdayName(dayKey(new Date(s.completedAt)))}`;
 }
@@ -518,11 +531,45 @@ function LiftsCard({
   data: AthleteData;
 }) {
   const [picked, setPicked] = useState<string | null>(null);
-  const sessions = week.sessionLifts;
+  // 'last', a number of weeks as a string, or 'start' — a <select>'s value.
+  const [back, setBack] = useState('last');
+  const planStart = data.plan?.activatedAt ?? null;
+  const options = lookBackOptions(data.rotationWeeks, planStart, week.weekStart);
+  const lookBack: LookBack | undefined = back === 'last' ? undefined : back === 'start' ? 'start' : Number(back);
+  const ids = new Set(week.sessionLifts.map((s) => s.sessionId));
+  const sessions =
+    lookBack == null
+      ? week.sessionLifts
+      : compareSessions(
+          data,
+          data.sessions.filter((s) => ids.has(s.id)),
+          lookBack,
+          planStart,
+        );
   const shown = sessions.find((s) => s.sessionId === picked) ?? null;
 
   return (
-    <Card title="Lifts" aside="Each session against the last time you did it">
+    <Card
+      title="Lifts"
+      aside={
+        <label className="flex items-center gap-2">
+          <span>Compare with</span>
+          <select
+            value={back}
+            onChange={(e) => setBack(e.target.value)}
+            className="rounded-control border border-line bg-paper py-1 pl-2 pr-7 text-xs font-semibold text-ink focus:border-ink focus:outline-none"
+          >
+            <option value="last">Last time</option>
+            {options.map((w) => (
+              <option key={w} value={String(w)}>
+                {w === 1 ? '1 week ago' : `${w} weeks ago`}
+              </option>
+            ))}
+            <option value="start">Start of the plan</option>
+          </select>
+        </label>
+      }
+    >
       {sessions.length === 0 ? (
         <p className="text-sm text-muted">No sessions this week.</p>
       ) : (
@@ -561,7 +608,11 @@ function LiftsCard({
                     >
                       <td className="py-2.5 pr-3 font-semibold text-ink">{sessionLabel(s)}</td>
                       <td className="py-2.5 pr-3 text-muted">
-                        {s.previous ? `${s.dayName} on ${shortDate(s.previous.completedAt)}` : 'First time logged'}
+                        {s.previous
+                          ? `${s.dayName} on ${shortDate(s.previous.completedAt)}, ${weeksBefore(s)}`
+                          : lookBack == null
+                            ? 'First time logged'
+                            : 'Not done that far back'}
                       </td>
                       <td className="py-2.5 text-right tabular-nums">{s.previous ? up : '–'}</td>
                       <td className="py-2.5 text-right tabular-nums">{s.previous ? down : '–'}</td>
@@ -574,7 +625,7 @@ function LiftsCard({
               </tbody>
             </table>
           ) : (
-            <SessionLifts session={shown} athleteId={athleteId} units={units} data={data} />
+            <SessionLifts session={shown} athleteId={athleteId} units={units} data={data} lookingBack={lookBack != null} />
           )}
         </>
       )}
@@ -587,11 +638,14 @@ function SessionLifts({
   athleteId,
   units,
   data,
+  lookingBack,
 }: {
   session: SessionCompare;
   athleteId: string;
   units: CoachUnits;
   data: AthleteData;
+  /** A look-back was chosen, so "nothing to compare" means not that far back. */
+  lookingBack: boolean;
 }) {
   const set = (name: string, t: TopSet | null) =>
     t ? liftSet(t.weightKg, t.reps, units.lift, data.machineUnits.get(name)) : '–';
@@ -604,8 +658,10 @@ function SessionLifts({
             <Link to={`/coach/${athleteId}/session/${session.previous.sessionId}`} className="text-ink hover:underline">
               the same session on {shortDate(session.previous.completedAt)}
             </Link>
-            .
+            , {weeksBefore(session)}.
           </>
+        ) : lookingBack ? (
+          `${session.dayName} wasn't done that far back on this plan.`
         ) : (
           `The first ${session.dayName} logged, so there's nothing to compare with yet.`
         )}{' '}
@@ -618,7 +674,9 @@ function SessionLifts({
           <thead>
             <tr className="text-left text-xs text-muted">
               <th className="pb-2 font-semibold">Lift</th>
-              <th className="pb-2 font-semibold">Last time</th>
+              <th className="pb-2 font-semibold">
+                {session.previous && lookingBack ? shortDate(session.previous.completedAt) : 'Last time'}
+              </th>
               <th className="pb-2 font-semibold">This week</th>
               <th className="pb-2 font-semibold">Change</th>
               <th className="pb-2 text-right font-semibold">%</th>

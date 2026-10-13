@@ -550,13 +550,62 @@ function liftsIn(data: CoachData, sessionId: string): Map<string, CoachSet[]> {
   return out;
 }
 
-export function compareSessions(data: CoachData, sessions: CoachSession[]): SessionCompare[] {
+/**
+ * How far back each session is set against. Unset: the last time it was
+ * done. A number of weeks: the same session that many weeks back — on a
+ * rotating plan only whole rotations make sense, see lookBackOptions.
+ * 'start': the first time it was done on this plan.
+ */
+export type LookBack = number | 'start';
+
+const DAY = 86_400_000;
+
+/** The earlier session a session is set against, or undefined. */
+function comparisonFor(
+  data: CoachData,
+  session: CoachSession,
+  lookBack?: LookBack,
+  planStart?: string | null,
+): CoachSession | undefined {
+  const earlier = data.sessions
+    .filter((s) => s.dayName === session.dayName && s.completedAt < session.completedAt)
+    .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1));
+  if (lookBack == null) return earlier[0];
+  if (lookBack === 'start') {
+    const onPlan = planStart ? earlier.filter((s) => s.completedAt >= planStart) : earlier;
+    return onPlan[onPlan.length - 1];
+  }
+  // Half a week's grace, so a session done on a Tuesday instead of a Monday
+  // still counts as the one two weeks back.
+  const cutoff = new Date(session.completedAt).getTime() - (lookBack * 7 - 3.5) * DAY;
+  return earlier.find((s) => new Date(s.completedAt).getTime() <= cutoff);
+}
+
+/**
+ * The look-backs worth offering for a week: whole rotations (every two weeks
+ * on a two-week plan, since three weeks back is the other half of it), as far
+ * back as the plan has been running — or twelve weeks without a plan.
+ */
+export function lookBackOptions(rotationWeeks: number, planStart: string | null, weekStart: Date): number[] {
+  const step = rotationWeeks >= 2 ? rotationWeeks : 1;
+  const max = planStart
+    ? Math.floor((weekStart.getTime() - mondayOf(new Date(planStart)).getTime()) / (7 * DAY) + 0.5)
+    : 12;
+  const out: number[] = [];
+  for (let w = step; w <= max; w += step) out.push(w);
+  return out.length > 0 ? out : [step];
+}
+
+export function compareSessions(
+  data: CoachData,
+  sessions: CoachSession[],
+  lookBack?: LookBack,
+  planStart?: string | null,
+): SessionCompare[] {
   return [...sessions]
     .sort((a, b) => (a.completedAt < b.completedAt ? -1 : 1))
     .map((session) => {
-      const before = data.sessions
-        .filter((s) => s.dayName === session.dayName && s.completedAt < session.completedAt)
-        .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
+      const before = comparisonFor(data, session, lookBack, planStart);
       const now = liftsIn(data, session.id);
       const then = before ? liftsIn(data, before.id) : new Map<string, CoachSet[]>();
       const lifts: LiftCompare[] = [...now.entries()].map(([normalizedName, sets]) => {
