@@ -88,6 +88,8 @@ export type OutboxOp =
   | { kind: 'delete_body_weight'; id: string }
   | { kind: 'steps'; row: { id: string; steps: number; recorded_on: string } }
   | { kind: 'delete_steps'; id: string }
+  | { kind: 'sleep'; row: { id: string; hours: number; recorded_on: string } }
+  | { kind: 'delete_sleep'; id: string }
   | { kind: 'water'; recorded_on: string; count: number }
   | {
       kind: 'feedback';
@@ -329,6 +331,28 @@ export function enqueue(userId: string, op: OutboxOp): void {
     }
   }
 
+  if (op.kind === 'sleep') {
+    // One night per day — a corrected figure replaces the queued one.
+    const existing = entries.find(
+      (e) => e.op.kind === 'sleep' && e.op.row.recorded_on === op.row.recorded_on
+    );
+    if (existing && existing.op.kind === 'sleep') {
+      existing.op.row = op.row;
+      save(entries);
+      return;
+    }
+  }
+
+  if (op.kind === 'delete_sleep') {
+    const idx = entries.findIndex((e) => e.op.kind === 'sleep' && e.op.row.id === op.id);
+    if (idx >= 0) {
+      // Logged and deleted while offline — the server never needs to hear about it.
+      entries.splice(idx, 1);
+      save(entries);
+      return;
+    }
+  }
+
   if (op.kind === 'delete_session' || op.kind === 'delete_open_sessions') {
     // Drop anything queued for a session that's being thrown away.
     const doomedSessions = new Set<string>();
@@ -536,6 +560,28 @@ async function applyOp(op: OutboxOp, userId: string): Promise<void> {
     case 'delete_steps':
       await query(supabase.from('step_logs').delete().eq('id', op.id).select('id'), {
         label: 'sync:delete_steps',
+      });
+      return;
+    case 'sleep':
+      await query(
+        supabase
+          .from('sleep_logs')
+          .upsert(
+            {
+              id: op.row.id,
+              user_id: userId,
+              hours: op.row.hours,
+              recorded_on: op.row.recorded_on,
+            },
+            { onConflict: 'user_id,recorded_on' }
+          )
+          .select('id'),
+        { label: 'sync:sleep' }
+      );
+      return;
+    case 'delete_sleep':
+      await query(supabase.from('sleep_logs').delete().eq('id', op.id).select('id'), {
+        label: 'sync:delete_sleep',
       });
       return;
     case 'water':
@@ -797,6 +843,10 @@ export function describeEntry(entry: OutboxEntry): string {
       return `Steps ${op.row.steps.toLocaleString('en-GB')}`;
     case 'delete_steps':
       return 'Deleted step count';
+    case 'sleep':
+      return `Sleep ${op.row.hours} h`;
+    case 'delete_sleep':
+      return 'Deleted sleep entry';
     case 'water':
       return 'Water count';
     case 'feedback':

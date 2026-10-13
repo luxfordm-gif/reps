@@ -14,6 +14,7 @@ import {
 import { type ActiveSessionContext, type WeekSummary } from '../lib/sessionsApi';
 import { adjustWater, getWaterGoal, getWaterUnit } from '../lib/waterApi';
 import { formatSteps, getStepGoal } from '../lib/stepsApi';
+import { formatSleep, getSleepGoal } from '../lib/sleepApi';
 import { getQuickActions, type QuickActionId } from '../lib/quickActions';
 import { getCachedHomeData, loadHomeData, patchHomeCache } from '../lib/homeCache';
 import { SyncStatus } from '../components/SyncStatus';
@@ -26,7 +27,7 @@ import { useElapsedLabel } from '../lib/elapsed';
 import { haptics } from '../lib/haptics';
 import { notePlanState } from '../lib/installPrompt';
 import type { PlanPresence } from '../lib/whatsNew';
-import { WaterIcon, StepsIcon } from '../components/Tile';
+import { WaterIcon, StepsIcon, MoonIcon } from '../components/Tile';
 import { SectionLabel } from '../components/SectionLabel';
 
 type Day = FullPlan['training_days'][number];
@@ -37,6 +38,7 @@ interface Props {
   onPlanSaved: () => void;
   onLogBodyWeight: () => void;
   onLogSteps: () => void;
+  onLogSleep: () => void;
   // Opens a training day. `sibling` is the other week's version of the same day
   // type, when the plan rotates — DayView offers a switch to it.
   onTapDay: (day: Day, sibling?: Day | null) => void;
@@ -177,6 +179,7 @@ export function Home({
   onPlanSaved,
   onLogBodyWeight,
   onLogSteps,
+  onLogSleep,
   onTapDay,
   onResumeWorkout,
   profile,
@@ -204,6 +207,8 @@ export function Home({
   const [waterError, setWaterError] = useState<string | null>(null);
   const [stepCount, setStepCount] = useState(initial?.stepCount ?? 0);
   const [stepGoal] = useState(() => getStepGoal());
+  const [sleepHours, setSleepHours] = useState<number | null>(initial?.sleepHours ?? null);
+  const [sleepGoal] = useState(() => getSleepGoal());
   // Which tiles the row shows, and in what order — set in Profile. Read once:
   // changing it there unmounts Home, so it's re-read on the way back.
   const [quickActions] = useState<QuickActionId[]>(() => getQuickActions());
@@ -252,6 +257,7 @@ export function Home({
         setLastCompleted(data.lastCompleted);
         setWaterCount(data.waterCount);
         setStepCount(data.stepCount ?? 0);
+        setSleepHours(data.sleepHours ?? null);
         setActive(data.active);
         setWeekSummary(data.weekSummary);
         setCompletedThisWeek(data.completedThisWeek);
@@ -571,6 +577,9 @@ export function Home({
                   {id === 'steps' && (
                     <StepsAction count={stepCount} goal={stepGoal} onTap={onLogSteps} />
                   )}
+                  {id === 'sleep' && (
+                    <SleepAction hours={sleepHours} goal={sleepGoal} onTap={onLogSleep} />
+                  )}
                   {id === 'weight' && (
                     <QuickAction
                       icon={<ScaleIcon />}
@@ -840,6 +849,55 @@ function StepsAction({ count, goal, onTap }: { count: number; goal: number; onTa
       <span className="relative whitespace-nowrap tabular-nums">
         {formatSteps(count)}
         <span className="text-muted">{reached ? ' \u2713' : ` / ${formatSteps(goal)}`}</span>
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Last night's hours against the goal. Like steps, it's one number typed in
+ * once a day, so the tile opens the screen where it's entered.
+ */
+function SleepAction({
+  hours,
+  goal,
+  onTap,
+}: {
+  hours: number | null;
+  goal: number;
+  onTap: () => void;
+}) {
+  const pct = hours == null ? 0 : Math.min(1, hours / Math.max(1, goal));
+  const reached = hours != null && hours >= goal;
+  return (
+    <button
+      onClick={() => {
+        haptics.tap();
+        onTap();
+      }}
+      aria-label={
+        hours == null
+          ? 'Sleep: not logged today. Opens the sleep log.'
+          : `Sleep last night: ${hours} hours of ${goal}. Opens the sleep log.`
+      }
+      className="pressable relative flex w-full items-center gap-2.5 overflow-hidden rounded-card bg-paper-card px-5 py-4 text-sm font-medium text-ink shadow-card transition-transform"
+    >
+      <div
+        className={`absolute inset-y-0 left-0 ${TILE_FILL}`}
+        style={{ width: `${pct * 100}%`, transition: 'width 350ms cubic-bezier(.22,.85,.36,1)' }}
+      />
+      <span className="relative shrink-0">
+        <MoonIcon />
+      </span>
+      <span className="relative whitespace-nowrap tabular-nums">
+        {hours == null ? (
+          'Sleep'
+        ) : (
+          <>
+            {formatSleep(hours)}
+            <span className="text-muted">{reached ? ' \u2713' : ` / ${formatSleep(goal)}`}</span>
+          </>
+        )}
       </span>
     </button>
   );

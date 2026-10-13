@@ -6,6 +6,7 @@ import {
   normalizeQuickActions,
   moveQuickAction,
   toggleQuickAction,
+  withNewQuickActions,
 } from '../src/lib/quickActions.ts';
 
 let failures = 0;
@@ -25,7 +26,7 @@ check('a stored list is kept as-is', normalizeQuickActions(['steps', 'water']), 
   'steps',
   'water',
 ]);
-check('unknown ids are dropped', normalizeQuickActions(['steps', 'sleep', 'water']), [
+check('unknown ids are dropped', normalizeQuickActions(['steps', 'mood', 'water']), [
   'steps',
   'water',
 ]);
@@ -37,10 +38,28 @@ check('an empty list falls back to the default', normalizeQuickActions([]), DEFA
 check('rubbish falls back to the default', normalizeQuickActions('water'), DEFAULT_QUICK_ACTIONS);
 check(
   'a list of only unknown ids falls back to the default',
-  normalizeQuickActions(['sleep', 'mood']),
+  normalizeQuickActions(['mood', 'heart']),
   DEFAULT_QUICK_ACTIONS
 );
 check('steps is on by default', DEFAULT_QUICK_ACTIONS.includes('steps'), true);
+check('sleep is on by default', DEFAULT_QUICK_ACTIONS.includes('sleep'), true);
+
+console.log('new tiles');
+check(
+  'a list saved before sleep existed gets it on the end',
+  withNewQuickActions(['steps', 'water'], null),
+  ['steps', 'water', 'sleep']
+);
+check(
+  'sleep switched off after it was offered stays off',
+  withNewQuickActions(['steps', 'water'], ['water', 'coffee', 'weight', 'steps', 'sleep']),
+  ['steps', 'water']
+);
+check(
+  'a list that already has sleep is left alone',
+  withNewQuickActions(['sleep', 'water'], null),
+  ['sleep', 'water']
+);
 
 console.log('toggle');
 check('switching a tile off removes it', toggleQuickAction(['water', 'steps'], 'water'), [

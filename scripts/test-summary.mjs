@@ -300,7 +300,7 @@ console.log('\nCoach summary (copied from Profile)');
   ok('…with the average after the days', felt.includes('  Knee niggle\nAverage: Workout 4.5 · Energy 3.5 · Soreness 2.5 · Sleep 3.5 · Hunger 3 · Stress 1.5\n\nTop lifts vs last week'), felt);
   ok('no check-ins, no section', !text.includes('How it felt'), text);
 
-  // Weight, water and steps: averaged over the days logged, against last week.
+  // Weight, water, steps and sleep: averaged over the days logged, against last week.
   const logs = {
     weights: [
       { recorded_on: '2026-09-21', weight_kg: 84.4 }, { recorded_on: '2026-09-23', weight_kg: 84.0 },
@@ -314,26 +314,31 @@ console.log('\nCoach summary (copied from Profile)');
       { recorded_on: '2026-09-22', steps: 9120 }, { recorded_on: '2026-09-24', steps: 8640 },
       { recorded_on: '2026-09-14', steps: 9400 },
     ],
+    sleep: [
+      { recorded_on: '2026-09-21', hours: 7 }, { recorded_on: '2026-09-22', hours: 6.5 }, { recorded_on: '2026-09-24', hours: 8 },
+      { recorded_on: '2026-09-15', hours: 7.5 },
+    ],
   };
   eq('day keys are local dates', dayKey(new Date('2026-09-21T23:30:00')), '2026-09-21');
   const thisWeek = dailyAverages(logs, new Date('2026-09-21T00:00:00'));
-  eq('averages use only the seven days from the week start', [thisWeek.weightKg, thisWeek.waterPerDay, thisWeek.stepsPerDay], [84.2, 6, 8880]);
+  eq('averages use only the seven days from the week start', [thisWeek.weightKg, thisWeek.waterPerDay, thisWeek.stepsPerDay, thisWeek.sleepHours], [84.2, 6, 8880, 7.166666666666667]);
   const prevWeek = dailyAverages(logs, new Date('2026-09-14T00:00:00'));
   eq('…so a log outside the week is ignored', prevWeek.weightKg, 84.8);
-  eq('nothing logged gives nulls', dailyAverages(logs, new Date('2026-09-28T00:00:00')), { weightKg: null, waterPerDay: null, stepsPerDay: null });
+  eq('nothing logged gives nulls', dailyAverages(logs, new Date('2026-09-28T00:00:00')), { weightKg: null, waterPerDay: null, stepsPerDay: null, sleepHours: null });
+  eq('logs from before sleep existed still average', dailyAverages({ ...logs, sleep: undefined }, new Date('2026-09-21T00:00:00')).sleepHours, null);
 
   const bodied = buildCoachSummary({
     name: 'Matt', current: cur, lastWeek: last, weight: kg,
     body: { current: thisWeek, lastWeek: prevWeek, bodyWeightUnit: 'kg', waterUnit: 'bottles' },
   });
   eq('body lines read as averages against last week',
-    bodied.split('\n').slice(5, 10),
-    ['', 'Body', 'Weight 84.2 kg average, down 0.6 kg on last week', 'Water 6 bottles a day, up 1 on last week', 'Steps 8,900 a day, down 500 on last week']);
+    bodied.split('\n').slice(5, 11),
+    ['', 'Body', 'Weight 84.2 kg average, down 0.6 kg on last week', 'Water 6 bottles a day, up 1 on last week', 'Steps 8,900 a day, down 500 on last week', 'Sleep 7.2 h a night, down 0.3 h on last week']);
   const stones = buildCoachSummary({
     name: 'Matt', current: cur, lastWeek: last, weight: kg,
     body: { current: thisWeek, lastWeek: null, bodyWeightUnit: 'st', waterUnit: 'L' },
   });
-  ok('stones for weight, no comparison without last week', stones.includes('Weight 13 st 4 lb average\nWater 6 L a day\nSteps 8,900 a day'), stones);
+  ok('stones for weight, no comparison without last week', stones.includes('Weight 13 st 4 lb average\nWater 6 L a day\nSteps 8,900 a day\nSleep 7.2 h a night'), stones);
   const partialBody = buildCoachSummary({
     name: 'Matt', current: cur, lastWeek: last, weight: kg,
     body: { current: { weightKg: null, waterPerDay: 6, stepsPerDay: null }, lastWeek: { weightKg: 84, waterPerDay: 6.02, stepsPerDay: 9000 }, bodyWeightUnit: 'kg', waterUnit: 'bottles' },

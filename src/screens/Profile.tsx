@@ -38,6 +38,14 @@ import {
 } from '../lib/waterApi';
 import { getStepGoal, setStepGoal, formatSteps, MAX_STEPS } from '../lib/stepsApi';
 import {
+  getSleepGoal,
+  setSleepGoal,
+  formatSleep,
+  listSleep,
+  roundToHalf,
+  MAX_SLEEP_HOURS,
+} from '../lib/sleepApi';
+import {
   QUICK_ACTION_META,
   getQuickActions,
   moveQuickAction,
@@ -116,6 +124,8 @@ export function Profile({
   // The goal field is typed into digit by digit, so it keeps its own text: a
   // controlled numeric value can't be cleared to retype a four-figure number.
   const [stepGoalText, setStepGoalText] = useState<string>(() => String(getStepGoal()));
+  const [sleepGoal, setSleepGoalState] = useState<number>(getSleepGoal());
+  const [sleepGoalText, setSleepGoalText] = useState<string>(() => String(getSleepGoal()));
   const [quickActions, setQuickActionsState] = useState<QuickActionId[]>(() =>
     getQuickActions()
   );
@@ -310,6 +320,36 @@ export function Profile({
                   className="w-20 rounded-control border border-line bg-paper px-2 py-1 text-center text-sm font-semibold text-ink focus:border-ink focus:outline-none"
                 />
                 <span className="text-sm text-muted">steps</span>
+              </div>
+            </div>
+            <div className="border-t border-line" />
+            <div className="flex items-center justify-between px-5 py-4">
+              <div>
+                <div className="text-sm font-semibold text-ink">Nightly sleep goal</div>
+                <div className="mt-0.5 text-xs text-muted">
+                  Currently {formatSleep(sleepGoal)} a night
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={1}
+                  max={MAX_SLEEP_HOURS}
+                  step={0.5}
+                  value={sleepGoalText}
+                  onChange={(e) => {
+                    setSleepGoalText(e.target.value);
+                    const n = parseFloat(e.target.value);
+                    if (!Number.isNaN(n) && n > 0 && n <= MAX_SLEEP_HOURS) {
+                      setSleepGoalState(roundToHalf(n));
+                      setSleepGoal(n);
+                    }
+                  }}
+                  onBlur={() => setSleepGoalText(String(sleepGoal))}
+                  className="w-20 rounded-control border border-line bg-paper px-2 py-1 text-center text-sm font-semibold text-ink focus:border-ink focus:outline-none"
+                />
+                <span className="text-sm text-muted">hours</span>
               </div>
             </div>
             <div className="border-t border-line" />
@@ -719,7 +759,7 @@ function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: Full
 
         const rotation = rotationLength(plan);
         const previousStart = mondayOfWeek(offset - 1);
-        const [hasHistory, lastWeek, rotationWeek, checkIns, weights, water, steps] = await Promise.all([
+        const [hasHistory, lastWeek, rotationWeek, checkIns, weights, water, steps, sleep] = await Promise.all([
           hasAnySessionsBefore(current.weekStart.toISOString()),
           getWeeklyWorkoutSummary(previousStart),
           rotation >= 2 ? getWeeklyWorkoutSummary(mondayOfWeek(offset - rotation)) : null,
@@ -727,8 +767,9 @@ function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: Full
           listBodyWeights().catch(() => []),
           listWaterSince(dayKey(previousStart)).catch(() => []),
           listSteps().catch(() => []),
+          listSleep().catch(() => []),
         ]);
-        const logs = { weights, water, steps };
+        const logs = { weights, water, steps, sleep };
         const body = {
           current: dailyAverages(logs, current.weekStart),
           lastWeek: dailyAverages(logs, previousStart),

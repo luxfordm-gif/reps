@@ -1,0 +1,568 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from 'recharts';
+import {
+  listSleep,
+  logSleep,
+  deleteSleep,
+  getTodayEntry,
+  getSleepGoal,
+  formatSleep,
+  roundToHalf,
+  MAX_SLEEP_HOURS,
+  type SleepRow,
+} from '../lib/sleepApi';
+import { PageHeader } from '../components/PageHeader';
+import { ChartTooltip } from '../components/ChartTooltip';
+import { AXIS_TICK, CHART } from '../lib/chartTheme';
+import { SkeletonRows } from '../components/Skeleton';
+import { CloseIcon } from '../components/Icons';
+import { CalendarPopover } from '../components/Calendar';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { SyncStatus } from '../components/SyncStatus';
+import { patchHomeCache } from '../lib/homeCache';
+import { haptics } from '../lib/haptics';
+import { isReachable } from '../lib/offline/net';
+import { SectionLabel } from '../components/SectionLabel';
+
+interface Props {
+  onBack: () => void;
+}
+
+interface SavedState {
+  /** The date + hours that were saved, so the button reverts to Save the
+   *  moment either of them changes. */
+  signature: string;
+  /** Whether this replaced an existing entry for that date. */
+  replaced: boolean;
+  /** Saved to the device with no signal, still waiting to sync. */
+  offline: boolean;
+  date: string;
+}
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function yesterdayISO(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatEntryDate(iso: string): string {
+  if (iso === todayISO()) return 'Today';
+  if (iso === yesterdayISO()) return 'Yesterday';
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
+export function Sleep({ onBack }: Props) {
+  const [rows, setRows] = useState<SleepRow[]>([]);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [input, setInput] = useState('');
+  const [date, setDate] = useState<string>(todayISO());
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [goal] = useState(() => getSleepGoal());
+  // What the Save button is showing. Same behaviour as the body weight screen:
+  // it settles on `saved` and only re-arms when the hours or the date changes.
+  const [saved, setSaved] = useState<SavedState | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    listSleep()
+      .then((r) => {
+        if (!mounted) return;
+        setRows(r);
+        // Pre-fill with what's already down for the day being logged, so a
+        // correction is an edit rather than a retype.
+        const today = r.find((x) => x.recorded_on === todayISO());
+        if (today) setInput(String(today.hours));
+      })
+      .finally(() => mounted && setLoading(false));
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const todayEntry = getTodayEntry(rows);
+
+  const parsed = parseFloat(input);
+  const inputHours =
+    !Number.isNaN(parsed) && parsed >= 0 && parsed <= MAX_SLEEP_HOURS ? roundToHalf(parsed) : null;
+  const tooBig = !Number.isNaN(parsed) && parsed > MAX_SLEEP_HOURS;
+
+  /** The stepper: half an hour at a time, starting from the goal when empty. */
+  function nudge(delta: number) {
+    const from = inputHours ?? goal;
+    setInput(String(roundToHalf(from + delta)));
+  }
+
+  const saveSignature = `${date}|${inputHours ?? ''}`;
+  const savedNow = saved != null && saved.signature === saveSignature;
+
+  /** Switching the date brings up whatever is already logged for that day. */
+  function changeDate(next: string) {
+    setDate(next);
+    const existing = rows.find((r) => r.recorded_on === next);
+    setInput(existing ? String(existing.hours) : '');
+  }
+
+  async function handleSave() {
+    if (inputHours == null || savedNow) return;
+    setSaving(true);
+    setError(null);
+    const replaced = rows.some((r) => r.recorded_on === date);
+    try {
+      const newRow = await logSleep(inputHours, date);
+      const filtered = rows.filter((r) => r.recorded_on !== newRow.recorded_on);
+      const nextRows = [newRow, ...filtered].sort((a, b) =>
+        a.recorded_on < b.recorded_on ? 1 : -1
+      );
+      setRows(nextRows);
+      // Keep Home's tile honest without waiting for its next fetch.
+      if (date === todayISO()) patchHomeCache({ sleepHours: inputHours });
+      setSaved({
+        signature: `${date}|${inputHours}`,
+        replaced,
+        // logSleep banks the entry locally when it can't reach the server;
+        // say so rather than implying it's synced.
+        offline: !isReachable(),
+        date,
+      });
+      haptics.commit();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    const removed = rows.find((r) => r.id === id);
+    await deleteSleep(id);
+    setRows((prev) => prev.filter((r) => r.id !== id));
+    if (removed?.recorded_on === todayISO()) patchHomeCache({ sleepHours: null });
+    if (removed?.recorded_on === date) {
+      setInput('');
+      setSaved(null);
+    }
+    setPendingDeleteId(null);
+  }
+
+  // Chart data — chronological, last 14 days' entries.
+  const chartData = useMemo(() => {
+    return [...rows]
+      .slice(0, 14)
+      .reverse()
+      .map((r) => ({ date: r.recorded_on, hours: r.hours }));
+  }, [rows]);
+
+  const weekAverage = useMemo(() => {
+    const recent = rows.slice(0, 7);
+    if (recent.length === 0) return null;
+    return roundToHalf(recent.reduce((sum, r) => sum + r.hours, 0) / recent.length);
+  }, [rows]);
+
+  const todayHours = todayEntry?.hours ?? 0;
+
+  return (
+    <div className="min-h-screen bg-paper pb-28">
+      <div className="mx-auto max-w-md px-5 pt-3">
+        <PageHeader title="Sleep" onBack={onBack} />
+
+        <div className="mt-3">
+          <div className="text-base font-semibold tracking-tight text-ink">
+            {todayEntry ? 'Logged for last night' : 'How long did you sleep last night?'}
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            {todayEntry
+              ? todayHours >= goal
+                ? `${formatSleep(todayHours)} — your goal of ${formatSleep(goal)} reached`
+                : `${formatSleep(todayHours)} of ${formatSleep(goal)}`
+              : `Your goal is ${formatSleep(goal)} a night. Change it in Profile → Preferences.`}
+          </p>
+        </div>
+
+        {todayEntry && <GoalBar value={todayHours} goal={goal} />}
+
+        <div className="mt-6 rounded-card bg-paper-card p-5 shadow-card">
+          <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
+            {rows.some((r) => r.recorded_on === date) ? 'Update entry' : 'New entry'}
+          </div>
+
+          <DateField
+            date={date}
+            isOpen={calendarOpen}
+            onToggle={() => setCalendarOpen((v) => !v)}
+          />
+          <CalendarPopover
+            open={calendarOpen}
+            value={date}
+            maxISO={todayISO()}
+            onSelect={(d) => {
+              changeDate(d);
+              setCalendarOpen(false);
+            }}
+          />
+
+          <div className="mt-4 flex items-center gap-3">
+            <StepButton label="Half an hour less" onClick={() => nudge(-0.5)}>
+              −
+            </StepButton>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.5"
+              min={0}
+              max={MAX_SLEEP_HOURS}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={String(goal)}
+              aria-label="Hours slept"
+              className="no-spinner w-full min-w-0 rounded-panel border border-line bg-paper-card px-4 py-3.5 text-center text-2xl font-bold tracking-tight text-ink focus:border-ink focus:outline-none"
+            />
+            <StepButton label="Half an hour more" onClick={() => nudge(0.5)}>
+              +
+            </StepButton>
+            <div className="text-base font-medium text-muted">hours</div>
+          </div>
+
+          {inputHours != null && inputHours > 0 && (
+            <div className="mt-3 text-xs text-muted">
+              {inputHours >= goal
+                ? `Your ${formatSleep(goal)} goal, reached`
+                : `${formatSleep(goal - inputHours)} short of your ${formatSleep(goal)} goal`}
+            </div>
+          )}
+          {tooBig && (
+            <div className="mt-3 text-sm text-danger">
+              That's more than {MAX_SLEEP_HOURS} hours — check the number.
+            </div>
+          )}
+          {error && <div className="mt-3 text-sm text-danger">{error}</div>}
+          <SaveButton
+            state={saving ? 'saving' : savedNow ? 'saved' : 'idle'}
+            disabled={inputHours == null}
+            savedLabel={savedNow && saved ? savedLabel(saved) : ''}
+            onClick={handleSave}
+          />
+          <SyncStatus className="mt-3" />
+        </div>
+
+        {chartData.length >= 2 && (
+          <div className="mt-7">
+            <div className="flex items-baseline justify-between">
+              <SectionLabel>Last {chartData.length} entries</SectionLabel>
+              {weekAverage != null && (
+                <div className="text-xs text-muted">
+                  {formatSleep(weekAverage)} avg
+                </div>
+              )}
+            </div>
+            <div className="mt-3 rounded-card bg-paper-card p-4 shadow-card">
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={chartData} margin={{ top: 10, right: 8, bottom: 0, left: -8 }}>
+                  <XAxis
+                    dataKey="date"
+                    tick={AXIS_TICK}
+                    axisLine={false}
+                    tickLine={false}
+                    minTickGap={16}
+                    tickFormatter={(d) =>
+                      new Date(d + 'T00:00:00').toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                      })
+                    }
+                  />
+                  <YAxis
+                    tick={AXIS_TICK}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: CHART.cursorFill }}
+                    content={
+                      <ChartTooltip<{ date: string; hours: number }>
+                        title={(p) =>
+                          new Date(p.date + 'T00:00:00').toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        }
+                        value={(p) => formatSleep(p.hours)}
+                        note={(p) =>
+                          p.hours >= goal
+                            ? { text: 'Goal hit', tone: 'good' }
+                            : { text: `${formatSleep(goal - p.hours)} short`, tone: 'muted' }
+                        }
+                      />
+                    }
+                  />
+                  <ReferenceLine
+                    y={goal}
+                    stroke={CHART.muted}
+                    strokeDasharray="3 3"
+                    strokeWidth={1}
+                  />
+                  <Bar dataKey="hours" radius={[4, 4, 0, 0]} maxBarSize={26}>
+                    {chartData.map((d) => (
+                      <Cell
+                        key={d.date}
+                        fill={d.hours >= goal ? CHART.ink : CHART.faint}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-7">
+          <SectionLabel>History</SectionLabel>
+          {loading ? (
+            <SkeletonRows rows={4} className="mt-3" />
+          ) : rows.length === 0 ? (
+            <div className="mt-3 rounded-card bg-paper-card p-6 text-center text-sm text-muted shadow-card">
+              No nights logged yet. Log last night above.
+            </div>
+          ) : (
+            <ul className="mt-3 divide-y divide-line overflow-hidden rounded-card bg-paper-card shadow-card">
+              {rows.map((r) => (
+                <li key={r.id} className="flex items-center justify-between px-5 py-4">
+                  <div>
+                    <div className="text-sm font-semibold text-ink">
+                      {formatEntryDate(r.recorded_on)}
+                    </div>
+                    <div className="text-xs text-muted">
+                      {r.hours >= goal ? 'Goal hit' : `${formatSleep(goal - r.hours)} short`}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-lg font-bold tabular-nums tracking-tight text-ink">
+                      {formatSleep(r.hours)}
+                    </div>
+                    <button
+                      onClick={() => setPendingDeleteId(r.id)}
+                      className="pressable -mr-3 flex h-11 w-11 items-center justify-center rounded-full text-muted active:bg-surface-strong"
+                      aria-label="Delete entry"
+                    >
+                      <CloseIcon size={16} />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {pendingDeleteId && (
+        <ConfirmModal
+          title="Delete this entry?"
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={() => handleDelete(pendingDeleteId)}
+        />
+      )}
+    </div>
+  );
+}
+
+function GoalBar({ value, goal }: { value: number; goal: number }) {
+  const pct = Math.min(1, value / Math.max(1, goal));
+  return (
+    <div className="mt-3 h-2 overflow-hidden rounded-pill bg-line">
+      <div
+        className="h-full rounded-pill bg-ink"
+        style={{ width: `${pct * 100}%`, transition: 'width 400ms cubic-bezier(.22,.85,.36,1)' }}
+      />
+    </div>
+  );
+}
+
+function StepButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        haptics.tap();
+        onClick();
+      }}
+      aria-label={label}
+      className="pressable flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-paper text-2xl font-semibold text-ink active:bg-surface-strong"
+    >
+      {children}
+    </button>
+  );
+}
+
+function savedLabel(saved: SavedState): string {
+  if (saved.offline) return 'Saved on this phone';
+  if (saved.replaced) return 'Updated';
+  if (saved.date === todayISO()) return 'Recorded for today';
+  if (saved.date === yesterdayISO()) return 'Recorded for yesterday';
+  return `Recorded for ${new Date(saved.date + 'T00:00:00').toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  })}`;
+}
+
+/**
+ * Save → Saving… → a greyed-out confirmation that stays put — the same button
+ * as the body weight screen, so logging either feels like the same action.
+ */
+function SaveButton({
+  state,
+  disabled,
+  savedLabel,
+  onClick,
+}: {
+  state: 'idle' | 'saving' | 'saved';
+  disabled: boolean;
+  savedLabel: string;
+  onClick: () => void;
+}) {
+  const isSaved = state === 'saved';
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || state !== 'idle'}
+      aria-live="polite"
+      className={`pressable mt-4 flex w-full items-center justify-center gap-2 rounded-pill py-3.5 text-base font-semibold transition-all duration-300 ${
+        isSaved
+          ? 'bg-line text-muted'
+          : 'bg-ink text-white active:opacity-80 disabled:opacity-50'
+      }`}
+    >
+      {state === 'saving' && (
+        <span className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />
+      )}
+      {isSaved && (
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 18 18"
+          fill="none"
+          className="animate-pop-in text-good-bright"
+          aria-hidden="true"
+        >
+          <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5" />
+          <path
+            d="M5.5 9.2l2.3 2.3 4.7-4.9"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+      <span key={state} className={isSaved ? 'animate-rise-in' : undefined}>
+        {state === 'saving' ? 'Saving…' : isSaved ? savedLabel : 'Save'}
+      </span>
+    </button>
+  );
+}
+
+function DateField({
+  date,
+  isOpen,
+  onToggle,
+}: {
+  date: string;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="mt-3 flex w-full items-center justify-between rounded-panel bg-paper px-4 py-3 text-left active:bg-surface-strong"
+    >
+      <div className="flex items-center gap-2.5">
+        <CalendarIcon />
+        <div className="text-sm font-semibold text-ink">{formatEntryDate(date)}</div>
+      </div>
+      <div className="flex items-center gap-1 text-xs text-muted">
+        <span>
+          {new Date(date + 'T00:00:00').toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+          })}
+        </span>
+        <ChevronRight rotate={isOpen ? 90 : 0} />
+      </div>
+    </button>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="text-ink">
+      <rect
+        x="2.5"
+        y="3.5"
+        width="13"
+        height="12"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M2.5 7h13 M6 2v3 M12 2v3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronRight({ rotate = 0 }: { rotate?: number }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      style={{ transform: `rotate(${rotate}deg)`, transition: 'transform 200ms ease' }}
+    >
+      <path
+        d="M4.5 3l3 3-3 3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
