@@ -1,8 +1,9 @@
-// The coach dashboard: reached at /coach on a computer, signed in with an
-// ordinary Reps account. A coach follows athletes who have sent them an
-// invite code and reads their training — never changes it.
+// Reps on a computer, at /coach: your own training on a big screen, and —
+// for a coach — the athletes who have sent them an invite code, read-only.
+// /coach/demo shows the same pages filled with made-up training, signed in
+// or not.
 
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from '../lib/auth';
 import { useAuth } from '../lib/useAuth';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -16,6 +17,7 @@ import { BodyPartScreen } from './BodyPartScreen';
 import { ExerciseScreen } from './ExerciseScreen';
 import { SessionScreen } from './SessionScreen';
 import { setCoachUnits, useCoachUnits } from './format';
+import { STAY_HOME } from './athleteContext';
 
 export default function CoachApp() {
   if (!isSupabaseConfigured) {
@@ -36,16 +38,16 @@ export default function CoachApp() {
 
 function Gate() {
   const { session, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
+  const { pathname } = useLocation();
+  const demo = pathname.startsWith('/coach/demo');
   if (loading) return null;
   if (passwordRecovery) return <SetNewPassword onDone={clearPasswordRecovery} />;
-  if (!session) {
-    return (
-      <Login note="Reps for coaches. Sign in or create an account to see the athletes who have invited you." />
-    );
+  if (!session && !demo) {
+    return <Login note="Reps on a computer. Sign in to see your training, or the athletes who have invited you." />;
   }
   return (
     <div className="min-h-full bg-paper">
-      <TopBar email={session.user.email ?? null} />
+      <TopBar email={session?.user.email ?? null} signedIn={session != null} />
       <main className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-8">
         <Routes>
           <Route path="/coach" element={<AthletesScreen />} />
@@ -62,15 +64,14 @@ function Gate() {
   );
 }
 
-function TopBar({ email }: { email: string | null }) {
+function TopBar({ email, signedIn }: { email: string | null; signedIn: boolean }) {
   const { signOut } = useAuth();
   const units = useCoachUnits();
   return (
     <header className="border-b border-line bg-paper-card">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-8">
-        <Link to="/coach" className="flex items-center gap-2.5">
+        <Link to="/coach" state={STAY_HOME} className="flex items-center gap-2.5">
           <Logo className="h-6 w-auto" />
-          <span className="text-xs font-semibold uppercase tracking-eyebrow text-muted">Coach</span>
         </Link>
         <div className="ml-auto flex flex-wrap items-center gap-4">
           <UnitSwitch
@@ -86,12 +87,18 @@ function TopBar({ email }: { email: string | null }) {
             onChange={(body) => setCoachUnits({ ...units, body })}
           />
           {email && <span className="hidden text-sm text-muted md:inline">{email}</span>}
-          <button
-            onClick={() => void signOut()}
-            className="rounded-pill px-3 py-1.5 text-sm font-semibold text-ink hover:bg-pressed"
-          >
-            Sign out
-          </button>
+          {signedIn ? (
+            <button
+              onClick={() => void signOut()}
+              className="rounded-pill px-3 py-1.5 text-sm font-semibold text-ink hover:bg-pressed"
+            >
+              Sign out
+            </button>
+          ) : (
+            <Link to="/coach" className="rounded-pill bg-ink px-4 py-1.5 text-sm font-semibold text-white hover:opacity-90">
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     </header>

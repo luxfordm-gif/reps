@@ -11,3 +11,7 @@ export interface AthleteContext {
 export function useAthlete(): AthleteContext {
   return useOutletContext<AthleteContext>();
 }
+
+/** Passed as link state by "Home" links, so arriving back on the home page
+ *  shows it rather than bouncing straight on to your own week again. */
+export const STAY_HOME = { stay: true } as const;

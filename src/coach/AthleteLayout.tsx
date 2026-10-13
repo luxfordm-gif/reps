@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { listAthletes, removeLink } from '../lib/coachAccessApi';
 import { loadAthleteData, type AthleteData } from '../lib/coach/coachApi';
+import { DEMO_ATHLETE_ID, DEMO_NAME, demoAthleteData } from '../lib/coach/demoData';
+import { getMyProfile } from '../lib/profileApi';
 import { lastSessionAt } from '../lib/coach/coachWeek';
 import { weeksOnPlanAt } from '../lib/dashboard';
 import { useAuth } from '../lib/useAuth';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { SkeletonRows } from '../components/Skeleton';
 import { ago } from './format';
-import type { AthleteContext } from './athleteContext';
+import { STAY_HOME, type AthleteContext } from './athleteContext';
 
 /** Keyed on the athlete, so moving between athletes starts from a clean load
  *  rather than showing one athlete's figures under another's name. */
@@ -23,17 +25,37 @@ type Load =
   | { state: 'failed'; message: string }
   | { state: 'ready'; name: string; data: AthleteData };
 
+/** Whose page this is: made-up sample data, the signed-in person's own
+ *  training, or an athlete who invited them. Only the last can be unfollowed. */
+type Whose = 'demo' | 'self' | 'athlete';
+
 function AthleteLoader({ athleteId }: { athleteId: string }) {
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const { session } = useAuth();
   const navigate = useNavigate();
+  const whose: Whose =
+    athleteId === DEMO_ATHLETE_ID ? 'demo' : athleteId === session?.user.id ? 'self' : 'athlete';
 
   useEffect(() => {
     let live = true;
     (async () => {
       try {
+        if (whose === 'demo') {
+          if (live) setLoad({ state: 'ready', name: DEMO_NAME, data: demoAthleteData() });
+          return;
+        }
+        if (whose === 'self') {
+          // Your own rows are readable whether or not anyone has been invited,
+          // so this needs nothing from the coach-access migration.
+          const [profile, data] = await Promise.all([
+            getMyProfile().catch(() => null),
+            loadAthleteData(athleteId),
+          ]);
+          if (live) setLoad({ state: 'ready', name: profile?.display_name?.trim() || 'Your training', data });
+          return;
+        }
         const athletes = await listAthletes();
         const me = athletes.find((a) => a.athlete_id === athleteId);
         if (!me) {
@@ -49,7 +71,7 @@ function AthleteLoader({ athleteId }: { athleteId: string }) {
     return () => {
       live = false;
     };
-  }, [athleteId, attempt]);
+  }, [athleteId, attempt, whose]);
 
   if (load.state === 'loading') {
     return (
@@ -93,8 +115,8 @@ function AthleteLoader({ athleteId }: { athleteId: string }) {
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <Link to="/coach" className="text-sm text-muted hover:text-ink">
-            ← Athletes
+          <Link to="/coach" state={STAY_HOME} className="text-sm text-muted hover:text-ink">
+            ← {whose === 'athlete' ? 'Athletes' : 'Home'}
           </Link>
           <h1 className="mt-1 truncate text-display font-bold tracking-title text-ink">
             <Link to={`/coach/${athleteId}`} className="hover:underline">
@@ -106,13 +128,21 @@ function AthleteLoader({ athleteId }: { athleteId: string }) {
             {last ? ` · last trained ${ago(last).toLowerCase()}` : ' · nothing logged yet'}
           </p>
         </div>
-        <button
-          onClick={() => setConfirmRemove(true)}
-          className="rounded-pill px-3 py-1.5 text-sm font-semibold text-muted hover:bg-pressed hover:text-danger"
-        >
-          Stop following
-        </button>
+        {whose === 'athlete' && (
+          <button
+            onClick={() => setConfirmRemove(true)}
+            className="rounded-pill px-3 py-1.5 text-sm font-semibold text-muted hover:bg-pressed hover:text-danger"
+          >
+            Stop following
+          </button>
+        )}
       </div>
+
+      {whose === 'demo' && (
+        <div className="mt-4 rounded-panel bg-warn-soft px-4 py-3 text-sm text-warn">
+          Made-up training, to show what this page looks like. Sign in to see your own.
+        </div>
+      )}
 
       <Outlet context={{ athleteId, name, data } satisfies AthleteContext} />
 
@@ -147,8 +177,8 @@ export function Notice({
       <p className="mt-2 text-sm text-muted">{body}</p>
       {children}
       <div className="mt-6">
-        <Link to="/coach" className="text-sm font-semibold text-ink hover:underline">
-          Back to athletes
+        <Link to="/coach" state={STAY_HOME} className="text-sm font-semibold text-ink hover:underline">
+          Back
         </Link>
       </div>
     </div>

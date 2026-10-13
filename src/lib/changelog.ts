@@ -37,7 +37,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "What's new",
     bullets: [
       'Log how many hours you slept from the home screen',
-      'Invite your coach to see your training on a computer',
+      'See your training on a computer, and share it with your coach',
     ],
   },
   {

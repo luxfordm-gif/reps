@@ -19,6 +19,7 @@ import {
   type Flag,
 } from '../lib/coach/coachWeek';
 import type { AthleteData } from '../lib/coach/coachApi';
+import { DEMO_ATHLETE_ID } from '../lib/coach/demoData';
 import { weekRange } from '../lib/coachSummary';
 import { RATING_QUESTIONS, type RatingKey } from '../lib/checkin';
 import { useAthlete } from './athleteContext';
@@ -60,7 +61,12 @@ export function WeekScreen() {
   const thisMonday = mondayOf(now);
   const requested = parseWeek(params.get('week'));
   const weekKey = dayKey(
-    requested && requested.getTime() <= thisMonday.getTime() ? requested : defaultWeek(data, now),
+    requested && requested.getTime() <= thisMonday.getTime()
+      ? requested
+      : // The sample opens on a full week: it's there to show what one looks like.
+        athleteId === DEMO_ATHLETE_ID
+        ? addDays(thisMonday, -7)
+        : defaultWeek(data, now),
   );
   const weekStart = parseWeek(weekKey)!;
   const compare: Comparison = params.get('vs') === 'rotation' && data.rotationWeeks >= 2 ? 'rotation' : 'last';

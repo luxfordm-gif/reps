@@ -14,6 +14,7 @@ import {
   weeklyTrends,
 } from '../src/lib/coach/coachWeek.ts';
 import { summarizeWeekSets } from '../src/lib/weekSummary.ts';
+import { demoAthleteData } from '../src/lib/coach/demoData.ts';
 
 let failures = 0;
 function eq(label, got, want) {
@@ -154,6 +155,22 @@ eq('body parts trimmed, missing ones as Other', summary.byBodyPart.map((b) => [b
 eq('best set by estimated 1RM, not by weight', [summary.exerciseBests[0].topWeightKg, summary.exerciseBests[0].topReps], [70, 12]);
 eq('week end is seven days on', summary.weekEnd.getDate(), 28);
 eq('nothing logged is an empty week', summarizeWeekSets(WEEK2, [], []).workoutsDone, 0);
+
+console.log('sample athlete (/coach/demo)');
+{
+  // A Thursday evening, so the current week has a few sessions in it.
+  const now = new Date('2026-10-15T20:00:00');
+  const demo = demoAthleteData(now);
+  const again = demoAthleteData(now);
+  eq('the same every time', JSON.stringify(demo.sets.slice(0, 5)), JSON.stringify(again.sets.slice(0, 5)));
+  ok('nothing logged in the future', [...demo.sessions.map((x) => x.completedAt), ...demo.sets.map((x) => x.completedAt)].every((t) => new Date(t) <= now));
+  const last = buildCoachWeek(demo, new Date('2026-10-05T00:00:00'), 'last', now);
+  eq('last week: three of four, one missed on purpose', [last.workouts.current, last.target], [3, 4]);
+  ok('…with short sleep and soreness flagged', ['missed', 'sleep', 'soreness'].every((k) => last.flags.some((f) => f.key === k)), last.flags);
+  const week = buildCoachWeek(demo, new Date('2026-10-12T00:00:00'), 'last', now);
+  ok('this week: squat is flagged as down', week.flags.some((f) => f.key === 'down' && f.text.includes('Back squat')), week.flags);
+  eq('twelve weeks of trends with work in every one', weeklyTrends(demo, new Date('2026-10-12T00:00:00'), 12).every((t) => t.workouts > 0), true);
+}
 
 console.log(failures === 0 ? '\nAll coach week tests passed.' : `\n${failures} failed.`);
 process.exit(failures === 0 ? 0 : 1);

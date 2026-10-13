@@ -1,8 +1,12 @@
-// The coach's home: every athlete who has invited them, the ones needing a
-// look first, and the box for a new invite code.
+// Home on desktop: your own training first, then every athlete who has
+// invited you (the ones needing a look first), and the box for a new invite
+// code. Someone who coaches nobody is taken straight to their own week.
 
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../lib/useAuth';
+import { getMyProfile } from '../lib/profileApi';
+import { DEMO_ATHLETE_ID } from '../lib/coach/demoData';
 import { acceptInvite, listAthletes, type CoachAthlete } from '../lib/coachAccessApi';
 import { loadAthleteGlance } from '../lib/coach/coachApi';
 import { addDays, buildCoachWeek, lastSessionAt, mondayOf, type CoachWeek } from '../lib/coach/coachWeek';
@@ -18,18 +22,37 @@ interface Glance {
 
 export function AthletesScreen() {
   const [glances, setGlances] = useState<Glance[] | null>(null);
+  const [self, setSelf] = useState<Glance | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { session } = useAuth();
+  const myId = session?.user.id ?? '';
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const stay = (location.state as { stay?: boolean } | null)?.stay === true || params.has('code');
 
   useEffect(() => {
     let live = true;
     (async () => {
       try {
-        const athletes = await listAthletes();
+        // Before the coach-access migration has run there's nobody to list,
+        // which is the same as coaching nobody.
+        const athletes = await listAthletes().catch(() => [] as CoachAthlete[]);
+        if (athletes.length === 0 && !stay) {
+          navigate(`/coach/${myId}`, { replace: true });
+          return;
+        }
         const now = new Date();
         const thisMonday = mondayOf(now);
         const lastMonday = addDays(thisMonday, -7);
-        const out = await Promise.all(
-          athletes.map(async (athlete): Promise<Glance> => {
+        const profile = await getMyProfile().catch(() => null);
+        const me: CoachAthlete = {
+          athlete_id: myId,
+          display_name: profile?.display_name ?? null,
+          linked_at: new Date().toISOString(),
+        };
+        const [mine, ...out] = await Promise.all(
+          [me, ...athletes].map(async (athlete): Promise<Glance> => {
             try {
               const data = await loadAthleteGlance(athlete.athlete_id, addDays(lastMonday, -7));
               return {
@@ -49,7 +72,10 @@ export function AthletesScreen() {
             (b.lastWeek?.flags.length ?? 0) - (a.lastWeek?.flags.length ?? 0) ||
             nameOf(a.athlete).localeCompare(nameOf(b.athlete)),
         );
-        if (live) setGlances(out);
+        if (live) {
+          setSelf(mine);
+          setGlances(out);
+        }
       } catch (e) {
         if (live) setError(e instanceof Error ? e.message : String(e));
       }
@@ -57,18 +83,28 @@ export function AthletesScreen() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [myId, navigate, stay]);
 
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-display font-bold tracking-title text-ink">Athletes</h1>
-          <p className="mt-1 text-sm text-muted">Everyone who has shared their training with you.</p>
+          <h1 className="text-display font-bold tracking-title text-ink">Training</h1>
+          <p className="mt-1 text-sm text-muted">Yours, and anyone who has shared theirs with you.</p>
         </div>
+        <Link to={`/coach/${DEMO_ATHLETE_ID}`} className="text-sm font-semibold text-muted hover:text-ink">
+          See a sample
+        </Link>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
+      {self && (
+        <div className="mt-6 max-w-xl">
+          <AthleteCard glance={self} title="Your training" />
+        </div>
+      )}
+      {self && <h2 className="mt-8 text-base font-semibold tracking-tight text-ink">Athletes you coach</h2>}
+
+      <div className="mt-3 grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div>
           {error ? (
             <div className="rounded-card bg-danger-soft p-5 text-sm text-danger">Couldn't load your athletes: {error}</div>
@@ -78,6 +114,7 @@ export function AthletesScreen() {
             <div className="rounded-card bg-paper-card p-8 text-center shadow-card">
               <div className="text-base font-semibold text-ink">No athletes yet</div>
               <p className="mx-auto mt-2 max-w-sm text-sm text-muted">
+                Coaching someone?{' '}
                 Ask your athlete to open Reps on their phone, go to Profile → Coach and send you an invite
                 code. Enter it here.
               </p>
@@ -100,7 +137,7 @@ function nameOf(a: CoachAthlete): string {
   return a.display_name?.trim() || 'Your athlete';
 }
 
-function AthleteCard({ glance }: { glance: Glance }) {
+function AthleteCard({ glance, title }: { glance: Glance; title?: string }) {
   const { athlete, thisWeek, lastWeek, lastTrained } = glance;
   const flags = lastWeek?.flags ?? [];
   return (
@@ -109,7 +146,7 @@ function AthleteCard({ glance }: { glance: Glance }) {
       className="block rounded-card bg-paper-card p-5 shadow-card transition-shadow hover:shadow-lift-soft"
     >
       <div className="flex items-baseline justify-between gap-3">
-        <div className="truncate text-lg font-semibold tracking-tight text-ink">{nameOf(athlete)}</div>
+        <div className="truncate text-lg font-semibold tracking-tight text-ink">{title ?? nameOf(athlete)}</div>
         <div className="shrink-0 text-xs text-muted">
           {lastTrained ? `Trained ${ago(lastTrained).toLowerCase()}` : 'Nothing logged yet'}
         </div>

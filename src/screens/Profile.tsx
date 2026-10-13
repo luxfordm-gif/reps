@@ -884,7 +884,8 @@ function CoachAccessSection({ athleteId }: { athleteId: string }) {
       <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
         <p className="px-5 pt-4 text-xs text-muted">
           Your coach signs in on a computer and sees your workouts, check-ins, weight, water,
-          steps and sleep. They can't change anything.
+          steps and sleep. They can't change anything. To see it yourself, sign in at{' '}
+          <span className="font-semibold text-ink">{window.location.host}/coach</span>.
         </p>
 
         {loadError ? (
