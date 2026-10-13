@@ -1,30 +1,44 @@
-// One lift's whole history: the strength line, then every session's sets.
+// One lift's whole history: its best set session by session, then every set.
+// A lift done in more than one session — Push 1 and Push 2 on a rotating
+// plan, or bench in both Push and Upper — is shown one session at a time, so
+// each line compares like with like.
 
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { exerciseDetail } from '../lib/coach/coachWeek';
-import { estimate1RM } from '../lib/oneRepMax';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  exerciseDetail,
+  historyChangePct,
+  liftSessionNames,
+  topSetChangePct,
+  type TopSet,
+} from '../lib/coach/coachWeek';
 import { useAthlete } from './athleteContext';
 import { liftSet, liftWeight, pct, shortDate, useCoachUnits } from './format';
-import { Card, E1rmChart } from './ui';
+import { Card, BestSetChart } from './ui';
 
 export function ExerciseScreen() {
   const { athleteId, data } = useAthlete();
   const units = useCoachUnits();
   const navigate = useNavigate();
   const { name = '' } = useParams();
+  const [params, setParams] = useSearchParams();
   const normalizedName = decodeURIComponent(name);
-  const detail = exerciseDetail(data, normalizedName);
+  const sessionNames = liftSessionNames(data, normalizedName);
+  const requested = params.get('session');
+  const dayName = requested && sessionNames.includes(requested) ? requested : sessionNames[0];
+  const detail = exerciseDetail(data, normalizedName, dayName);
   const machine = data.machineUnits.get(normalizedName);
 
-  const scored = detail.history.filter((p) => p.bestEst1RMkg != null);
-  const best = scored.reduce<(typeof scored)[number] | null>(
-    (b, p) => (!b || (p.bestEst1RMkg ?? 0) > (b.bestEst1RMkg ?? 0) ? p : b),
+  const scored = detail.history.filter((p) => p.top != null);
+  const heaviest = scored.reduce<(typeof scored)[number] | null>(
+    (b, p) =>
+      !b || p.top!.weightKg > b.top!.weightKg || (p.top!.weightKg === b.top!.weightKg && p.top!.reps > b.top!.reps)
+        ? p
+        : b,
     null,
   );
-  const change =
-    scored.length >= 2
-      ? ((scored[scored.length - 1].bestEst1RMkg! - scored[0].bestEst1RMkg!) / scored[0].bestEst1RMkg!) * 100
-      : null;
+  const latest = scored.length > 0 ? scored[scored.length - 1] : null;
+  const change = historyChangePct(detail.history);
+  const show = (t: TopSet) => liftSet(t.weightKg, t.reps, units.lift, machine);
 
   return (
     <div className="mt-6 space-y-6">
@@ -44,61 +58,80 @@ export function ExerciseScreen() {
           ) : (
             'No body part'
           )}
-          {` · ${detail.history.length} ${detail.history.length === 1 ? 'session' : 'sessions'} in the last year`}
           {machine === 'pin' ? ' · logged in pin positions' : ''}
         </p>
+        {sessionNames.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Sessions">
+            {sessionNames.map((n) => (
+              <button
+                key={n}
+                role="tab"
+                aria-selected={n === dayName}
+                onClick={() => setParams({ session: n }, { replace: true })}
+                className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  n === dayName ? 'bg-ink text-white' : 'bg-surface-strong text-ink hover:bg-line'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+            <span className="ml-1 text-xs text-muted">
+              {detail.history.length} {detail.history.length === 1 ? 'time' : 'times'} in {dayName}, in the last year
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Figure
-          label="Best estimated 1RM"
-          value={best?.bestEst1RMkg != null ? liftWeight(best.bestEst1RMkg, units.lift, machine) : '–'}
-          hint={best ? shortDate(best.date) : undefined}
+          label="Heaviest set"
+          value={heaviest ? show(heaviest.top!) : '–'}
+          hint={heaviest ? shortDate(heaviest.date) : undefined}
         />
         <Figure
           label="Change"
           value={change != null ? pct(change) : '–'}
-          hint={scored.length >= 2 ? `since ${shortDate(scored[0].date)}` : 'Needs two sessions'}
+          hint={
+            scored.length >= 2
+              ? `Best set, weight × reps, since ${shortDate(scored[0].date)}`
+              : 'Needs two sessions'
+          }
         />
         <Figure
-          label="Latest heaviest set"
-          value={
-            scored.length > 0
-              ? liftSet(scored[scored.length - 1].topWeightKg, scored[scored.length - 1].repsAtTopWeight, units.lift, machine)
-              : '–'
-          }
-          hint={scored.length > 0 ? shortDate(scored[scored.length - 1].date) : undefined}
+          label="Latest best set"
+          value={latest ? show(latest.top!) : '–'}
+          hint={latest ? shortDate(latest.date) : undefined}
         />
       </div>
 
-      <Card title="Estimated 1RM by session">
-        <E1rmChart
+      <Card title={`Best set, each ${dayName}`}>
+        <BestSetChart
           history={detail.history}
           height={240}
           format={(kg) => liftWeight(kg, units.lift, machine)}
-          setLabel={(p) => `Heaviest ${liftSet(p.topWeightKg, p.repsAtTopWeight, units.lift, machine)}`}
+          setLabel={(p) => (p.top ? show(p.top) : '–')}
         />
       </Card>
 
-      <Card title="Every session">
+      <Card title={`Every ${dayName}`}>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-muted">
               <th className="pb-2 font-semibold">Date</th>
               <th className="pb-2 font-semibold">Sets</th>
-              <th className="pb-2 text-right font-semibold">Est. 1RM</th>
+              <th className="pb-2 text-right font-semibold">vs the {dayName} before</th>
             </tr>
           </thead>
           <tbody>
-            {[...detail.history].reverse().map((p) => (
-              <tr key={p.date} className="border-t border-line align-top">
+            {detail.history.map((p, i) => ({ p, before: detail.history[i - 1] })).reverse().map(({ p, before }) => (
+              <tr key={p.sessionId} className="border-t border-line align-top">
                 <td className="whitespace-nowrap py-2 pr-4">{shortDate(p.date)}</td>
                 <td className="py-2 pr-4 tabular-nums">
                   {p.sets.map((s, i) => (
                     <span
                       key={i}
                       className={`mr-3 inline-block ${
-                        s.weightKg != null && s.reps != null && estimate1RM(s.weightKg, s.reps) === p.bestEst1RMkg
+                        p.top && s.weightKg === p.top.weightKg && s.reps === p.top.reps
                           ? 'font-semibold text-ink'
                           : 'text-muted'
                       }`}
@@ -108,7 +141,7 @@ export function ExerciseScreen() {
                   ))}
                 </td>
                 <td className="py-2 text-right tabular-nums">
-                  {p.bestEst1RMkg != null ? liftWeight(p.bestEst1RMkg, units.lift, machine) : '–'}
+                  <Change before={before?.top ?? null} after={p.top} />
                 </td>
               </tr>
             ))}
@@ -126,5 +159,17 @@ function Figure({ label, value, hint }: { label: string; value: string; hint?: s
       <div className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight text-ink">{value}</div>
       {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
     </div>
+  );
+}
+
+function Change({ before, after }: { before: TopSet | null; after: TopSet | null }) {
+  const value = before && after ? topSetChangePct(before, after) : null;
+  if (value == null) return <span className="text-muted">–</span>;
+  const r = Math.round(value);
+  return (
+    <span className={`font-semibold ${r > 0 ? 'text-good' : r < 0 ? 'text-danger' : 'text-muted'}`}>
+      {r > 0 ? '▲ ' : r < 0 ? '▼ ' : ''}
+      {pct(value)}
+    </span>
   );
 }

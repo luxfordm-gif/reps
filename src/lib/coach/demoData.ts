@@ -1,8 +1,9 @@
 // Twelve weeks of made-up training, for /coach/demo — the dashboard as it
 // looks with a real athlete's history behind it, before anyone has one.
 //
-// A push / pull / legs / upper plan, four sessions a week, lifts creeping up
-// about one percent a week, body weight drifting down. The last fortnight is
+// A push / pull / legs / upper plan on a two-week rotation — Push 1 one
+// week, Push 2 (lighter, more reps) the next — four sessions a week, lifts
+// creeping up about one percent a week, body weight drifting down. The last fortnight is
 // rougher on purpose — a missed session, short sleep, higher soreness and
 // stress, squat down — so the flags have something to show. Seeded, so the
 // page reads the same on every visit; dated from `now`, so it's always recent.
@@ -70,12 +71,15 @@ export function demoAthleteData(now: Date = new Date()): AthleteData {
     // The last fortnight: tired, under-slept and a bit beaten up.
     const rough = w <= 1;
 
-    for (const [dow, dayName] of SCHEDULE) {
+    // Week 1 and week 2 of the rotation alternate, ending on whichever lands now.
+    const variant = w % 2 === 0 ? 1 : 2;
+    for (const [dow, base] of SCHEDULE) {
       const at = addDays(monday, dow);
       at.setHours(18, 0, 0, 0);
       if (at > now) continue;
-      if (w === 1 && dayName === 'Upper') continue;
-      if (w === 5 && dayName === 'Pull') continue;
+      if (w === 1 && base === 'Upper') continue;
+      if (w === 5 && base === 'Pull') continue;
+      const dayName = `${base} ${variant}`;
       const id = `demo-session-${++n}`;
       sessions.push({
         id,
@@ -90,10 +94,13 @@ export function demoAthleteData(now: Date = new Date()): AthleteData {
           stress: rough ? 4 : 2,
         },
       });
-      PLAN[dayName].forEach(([name, bodyPart, base, reps], i) => {
-        let kg = half(base * (1 + progress));
+      PLAN[base].forEach(([name, bodyPart, start, plannedReps], i) => {
+        // Week 2 of the rotation: lighter, for more reps.
+        const load = variant === 2 ? start * 0.85 : start;
+        const reps = variant === 2 ? plannedReps + 2 : plannedReps;
+        let kg = half(load * (1 + progress));
         // One lift going the wrong way, so the "down" flag shows.
-        if (name === 'Back squat' && w === 0) kg = half(base * (1 + progress - 0.08));
+        if (name === 'Back squat' && w === 0) kg = half(load * (1 + progress - 0.08));
         for (let s = 0; s < 3; s++) {
           sets.push({
             sessionId: id,
@@ -127,7 +134,7 @@ export function demoAthleteData(now: Date = new Date()): AthleteData {
     sets,
     logs: { weights, water, steps, sleep },
     weeklyTarget: SCHEDULE.length,
-    rotationWeeks: 0,
+    rotationWeeks: 2,
     referenceDayNames: [],
     plan: { name: 'Hypertrophy block 2', activatedAt: addDays(thisMonday, -7 * 9).toISOString() },
     machineUnits: new Map(),

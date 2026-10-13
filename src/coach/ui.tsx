@@ -15,8 +15,7 @@ import {
 } from 'recharts';
 import { ChartTooltip } from '../components/ChartTooltip';
 import { AXIS_TICK, CHART } from '../lib/chartTheme';
-import type { Measure } from '../lib/coach/coachWeek';
-import type { ExerciseHistoryPoint } from '../lib/performanceApi';
+import type { LiftPoint, Measure } from '../lib/coach/coachWeek';
 import { shortDate } from './format';
 
 export function Card({
@@ -251,24 +250,24 @@ export function Pips({ value, invert = false }: { value: number | null; invert?:
 }
 
 /**
- * One lift over time: estimated 1RM per session as the line, so heavier-for-
- * fewer and lighter-for-more land on the same scale. The tooltip names the
- * set it came from.
+ * One lift over time: the weight of its best set each session. The tooltip
+ * gives the full set, so a session that added reps rather than weight still
+ * reads as progress.
  */
-export function E1rmChart({
+export function BestSetChart({
   history,
   format,
   setLabel,
   height = 160,
 }: {
-  history: ExerciseHistoryPoint[];
-  /** A weight in kg, in the coach's unit. */
+  history: LiftPoint[];
+  /** A weight in kg, in the viewer's unit. */
   format: (kg: number) => string;
-  /** The day's heaviest set, as words. */
-  setLabel: (p: ExerciseHistoryPoint) => string;
+  /** The session's best set, as words. */
+  setLabel: (p: LiftPoint) => string;
   height?: number;
 }) {
-  const points = history.filter((p) => p.bestEst1RMkg != null);
+  const points = history.filter((p) => p.top != null).map((p) => ({ ...p, weightKg: p.top!.weightKg }));
   if (points.length < 2) {
     return (
       <div className="flex items-center justify-center text-xs text-muted" style={{ height }}>
@@ -294,21 +293,21 @@ export function E1rmChart({
             tickLine={false}
             width={44}
             domain={['dataMin', 'dataMax']}
-            tickFormatter={(v: number) => String(Math.round(v))}
+            tickFormatter={(v: number) => String(Math.round(v * 10) / 10)}
           />
           <Tooltip
             cursor={{ stroke: CHART.line }}
             content={
-              <ChartTooltip<ExerciseHistoryPoint>
+              <ChartTooltip<LiftPoint & { weightKg: number }>
                 title={(p) => shortDate(p.date)}
-                value={(p) => `${format(p.bestEst1RMkg ?? 0)} est. 1RM`}
-                note={(p) => ({ text: setLabel(p), tone: 'muted' })}
+                value={(p) => setLabel(p)}
+                note={(p) => ({ text: `Heaviest ${format(p.weightKg)}`, tone: 'muted' })}
               />
             }
           />
           <Line
             type="monotone"
-            dataKey="bestEst1RMkg"
+            dataKey="weightKg"
             stroke={CHART.ink}
             strokeWidth={2}
             dot={false}

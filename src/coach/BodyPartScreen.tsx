@@ -6,7 +6,7 @@ import { bodyPartDetail, bodyPartsTrained, dayKey, mondayOf, parseWeek } from '.
 import { kgToLb } from '../lib/units';
 import { useAthlete } from './athleteContext';
 import { count, liftSet, liftWeight, pct, shortDate, useCoachUnits, volume } from './format';
-import { Card, E1rmChart, WeekTrend } from './ui';
+import { Card, BestSetChart, WeekTrend } from './ui';
 
 const WEEKS = 12;
 
@@ -71,11 +71,11 @@ export function BodyPartScreen() {
         <div className="grid gap-4 md:grid-cols-2">
           {detail.exercises.map((e) => {
             const machine = data.machineUnits.get(e.normalizedName);
-            const last = [...e.history].reverse().find((p) => p.topWeightKg != null);
+            const last = [...e.history].reverse().find((p) => p.top != null)?.top ?? null;
             return (
               <Card
-                key={e.normalizedName}
-                title={e.displayName}
+                key={`${e.normalizedName}|${e.dayName}`}
+                title={`${e.displayName} · ${e.dayName}`}
                 aside={
                   e.changePct != null ? (
                     <span
@@ -84,23 +84,23 @@ export function BodyPartScreen() {
                       }`}
                     >
                       {e.changePct >= 0.5 ? '▲ ' : e.changePct <= -0.5 ? '▼ ' : ''}
-                      {pct(e.changePct)} est. 1RM
+                      {pct(e.changePct)} in {e.history.length} sessions
                     </span>
                   ) : undefined
                 }
               >
-                <E1rmChart
+                <BestSetChart
                   history={e.history}
                   format={(kg) => liftWeight(kg, units.lift, machine)}
-                  setLabel={(p) => `Heaviest ${liftSet(p.topWeightKg, p.repsAtTopWeight, units.lift, machine)}`}
+                  setLabel={(p) => (p.top ? liftSet(p.top.weightKg, p.top.reps, units.lift, machine) : '–')}
                 />
                 <div className="mt-3 flex items-center justify-between text-xs text-muted">
                   <span>
                     {e.history.length} {e.history.length === 1 ? 'session' : 'sessions'}
-                    {last ? ` · latest ${liftSet(last.topWeightKg, last.repsAtTopWeight, units.lift, machine)}` : ''}
+                    {last ? ` · latest best ${liftSet(last.weightKg, last.reps, units.lift, machine)}` : ''}
                   </span>
                   <Link
-                    to={`/coach/${athleteId}/exercise/${encodeURIComponent(e.normalizedName)}`}
+                    to={`/coach/${athleteId}/exercise/${encodeURIComponent(e.normalizedName)}?session=${encodeURIComponent(e.dayName)}`}
                     className="font-semibold text-ink hover:underline"
                   >
                     All sessions

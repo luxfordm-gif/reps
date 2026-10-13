@@ -9,17 +9,8 @@
 // figure comes with the comparison week beside it, and anything worth a
 // second look is raised as a flag rather than left to be spotted in a table.
 
-import {
-  averageChange,
-  dayKey,
-  DOWN_PCT,
-  isSuspect,
-  liftChanges,
-  type LiftChange,
-} from '../coachSummary';
+import { dayKey, DOWN_PCT, SUSPECT_PCT } from '../coachSummary';
 import { RATING_QUESTIONS, type CheckIn, type RatingKey } from '../checkin';
-import { estimate1RM } from '../oneRepMax';
-import { buildExerciseHistory, type ExerciseHistoryPoint, type PerfSet } from '../performanceApi';
 import { summarizeWeekSets, type WeeklyWorkoutSummary } from '../weekSummary';
 
 export interface CoachSession {
@@ -123,7 +114,8 @@ export interface BodyPartRow {
   bodyPart: string;
   sets: Measure;
   volumeKg: Measure;
-  /** Mean estimated-1RM change across this part's lifts done in both weeks. */
+  /** Mean change on the best set across this part's lifts this week, each
+   *  against the last time its session was done — see LiftCompare. */
   strengthPct: number | null;
   topSet: { exercise: string; weight: number; reps: number } | null;
 }
@@ -165,11 +157,10 @@ export interface CoachWeek {
   sleepHours: Measure;
   feel: FeelSummary;
   days: DayCell[];
-  /** Lifts done in both weeks, biggest gain first, with slips kept apart. */
-  lifts: LiftChange[];
-  suspectLifts: LiftChange[];
-  /** Lifts done this week that weren't done in the comparison week. */
-  newLifts: WeeklyWorkoutSummary['exerciseBests'];
+  /** Each session this week, lift by lift, against the last time that same
+   *  session was done. */
+  sessionLifts: SessionCompare[];
+  /** The mean change across every lift this week that has one. */
   strengthPct: number | null;
   bodyParts: BodyPartRow[];
   flags: Flag[];
@@ -358,11 +349,8 @@ export function buildCoachWeek(
     });
   }
 
-  const allChanges = liftChanges(current, previous);
-  const lifts = allChanges.filter((c) => !isSuspect(c)).sort((a, b) => b.pct - a.pct);
-  const suspectLifts = allChanges.filter(isSuspect);
-  const before = new Set(previous.exerciseBests.map((e) => e.normalizedName));
-  const newLifts = current.exerciseBests.filter((e) => !before.has(e.normalizedName));
+  const sessionLifts = compareSessions(data, weekSessions);
+  const allLifts = sessionLifts.flatMap((s) => s.lifts);
 
   // Body parts trained in either week, this week's biggest first.
   const prevParts = new Map(previous.byBodyPart.map((b) => [b.bodyPart, b]));
@@ -374,12 +362,12 @@ export function buildCoachWeek(
   const bodyParts: BodyPartRow[] = partNames.map((name) => {
     const cur = curParts.get(name);
     const prev = prevParts.get(name);
-    const partLifts = lifts.filter((c) => (c.cur.bodyPart ?? 'Other') === name);
+    const partLifts = allLifts.filter((l) => (l.bodyPart?.trim() || 'Other') === name);
     return {
       bodyPart: name,
       sets: { current: cur?.setCount ?? 0, previous: prev?.setCount ?? 0 },
       volumeKg: { current: cur?.volume ?? 0, previous: prev?.volume ?? 0 },
-      strengthPct: averageChange(partLifts),
+      strengthPct: meanPct(partLifts),
       topSet: cur?.topSet ?? null,
     };
   });
@@ -404,10 +392,8 @@ export function buildCoachWeek(
     sleepHours,
     feel,
     days,
-    lifts,
-    suspectLifts,
-    newLifts,
-    strengthPct: averageChange(allChanges),
+    sessionLifts,
+    strengthPct: meanPct(allLifts),
     bodyParts,
     flags: [],
   };
@@ -438,14 +424,15 @@ export function weekFlags(w: CoachWeek): Flag[] {
   if (stress != null && stress >= STRAIN_FLAG) {
     flags.push({ key: 'stress', tone: 'warn', text: `Stress averaging ${oneDp(stress)} of 5` });
   }
-  const down = w.lifts.filter((c) => c.pct <= -DOWN_PCT);
+  const lifts = w.sessionLifts.flatMap((s) => s.lifts);
+  const down = lifts.filter((l) => l.pct != null && l.pct <= -DOWN_PCT);
   if (down.length > 0) {
     flags.push({
       key: 'down',
       tone: 'warn',
       text:
         down.length === 1
-          ? `${down[0].cur.displayName} down ${Math.abs(Math.round(down[0].pct))}%`
+          ? `${down[0].displayName} down ${Math.abs(Math.round(down[0].pct!))}%`
           : `${down.length} lifts down ${DOWN_PCT}% or more`,
     });
   }
@@ -460,14 +447,15 @@ export function weekFlags(w: CoachWeek): Flag[] {
       });
     }
   }
-  if (w.suspectLifts.length > 0) {
+  const suspect = lifts.filter((l) => l.suspect);
+  if (suspect.length > 0) {
     flags.push({
       key: 'suspect',
       tone: 'note',
       text:
-        w.suspectLifts.length === 1
-          ? `${w.suspectLifts[0].cur.displayName} jumped too far to compare`
-          : `${w.suspectLifts.length} lifts jumped too far to compare`,
+        suspect.length === 1
+          ? `${suspect[0].displayName} jumped too far to compare`
+          : `${suspect.length} lifts jumped too far to compare`,
     });
   }
   return flags;
@@ -483,6 +471,172 @@ export function oneDp(n: number): string {
 export function pctChange(m: Measure): number | null {
   if (m.current == null || m.previous == null || m.previous === 0) return null;
   return ((m.current - m.previous) / m.previous) * 100;
+}
+
+// ---- Lifts, against the last time --------------------------------------------
+//
+// A coach reads a lift the way the logbook does: what did you do on it last
+// time, and what did you do today. So each lift is judged on its best set —
+// the heaviest weight, and the most reps at that weight — set against the
+// best set the last time that same session was done. On a plan that rotates
+// over two weeks that's the session two weeks ago, not last week's, which was
+// a different workout.
+//
+// The percentage is on weight × reps of that one set: 80 kg × 8 to 82.5 kg × 8
+// is +3%, and 28 kg × 10 to 28 kg × 12 is +20%. More weight and more reps
+// both count, and an extra or a dropped set doesn't.
+
+export interface TopSet {
+  weightKg: number;
+  reps: number;
+}
+
+/** The heaviest set, the most reps breaking a tie. Null when no set had both
+ *  a weight and reps (a plank, a hold). */
+export function topSet(sets: { weight: number | null; reps: number | null }[]): TopSet | null {
+  let best: TopSet | null = null;
+  for (const s of sets) {
+    if (s.weight == null || s.reps == null) continue;
+    if (!best || s.weight > best.weightKg || (s.weight === best.weightKg && s.reps > best.reps)) {
+      best = { weightKg: s.weight, reps: s.reps };
+    }
+  }
+  return best;
+}
+
+/** Change from one best set to another, in weight × reps, as a percentage. */
+export function topSetChangePct(before: TopSet, after: TopSet): number | null {
+  const was = before.weightKg * before.reps;
+  if (was <= 0) return null;
+  return ((after.weightKg * after.reps - was) / was) * 100;
+}
+
+export interface LiftCompare {
+  normalizedName: string;
+  displayName: string;
+  bodyPart: string | null;
+  current: TopSet | null;
+  /** Null when the lift wasn't in that session last time. */
+  previous: TopSet | null;
+  /** Null when there's nothing to set it against, or the jump is too big to
+   *  be the same machine (see `suspect`). */
+  pct: number | null;
+  /** A change this large is a different machine or a slip, not training. */
+  suspect: boolean;
+}
+
+export interface SessionCompare {
+  sessionId: string;
+  dayName: string;
+  completedAt: string;
+  /** The last time this same session was done, or null on its first outing. */
+  previous: { sessionId: string; completedAt: string } | null;
+  lifts: LiftCompare[];
+  /** The mean change across this session's lifts that have one. */
+  averagePct: number | null;
+}
+
+function meanPct(lifts: LiftCompare[]): number | null {
+  return mean(lifts.map((l) => l.pct).filter((p): p is number => p != null));
+}
+
+/** Each set in a session, grouped by lift, in the order the lifts were done. */
+function liftsIn(data: CoachData, sessionId: string): Map<string, CoachSet[]> {
+  const out = new Map<string, CoachSet[]>();
+  const sets = data.sets
+    .filter((s) => s.sessionId === sessionId)
+    .sort((a, b) => (a.completedAt < b.completedAt ? -1 : 1));
+  for (const s of sets) out.set(s.normalizedName, [...(out.get(s.normalizedName) ?? []), s]);
+  return out;
+}
+
+export function compareSessions(data: CoachData, sessions: CoachSession[]): SessionCompare[] {
+  return [...sessions]
+    .sort((a, b) => (a.completedAt < b.completedAt ? -1 : 1))
+    .map((session) => {
+      const before = data.sessions
+        .filter((s) => s.dayName === session.dayName && s.completedAt < session.completedAt)
+        .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
+      const now = liftsIn(data, session.id);
+      const then = before ? liftsIn(data, before.id) : new Map<string, CoachSet[]>();
+      const lifts: LiftCompare[] = [...now.entries()].map(([normalizedName, sets]) => {
+        const current = topSet(sets);
+        const previous = topSet(then.get(normalizedName) ?? []);
+        const raw = current && previous ? topSetChangePct(previous, current) : null;
+        const suspect = raw != null && Math.abs(raw) > SUSPECT_PCT;
+        return {
+          normalizedName,
+          displayName: sets[sets.length - 1].displayName,
+          bodyPart: sets[0].bodyPart,
+          current,
+          previous,
+          pct: suspect ? null : raw,
+          suspect,
+        };
+      });
+      return {
+        sessionId: session.id,
+        dayName: session.dayName,
+        completedAt: session.completedAt,
+        previous: before ? { sessionId: before.id, completedAt: before.completedAt } : null,
+        lifts,
+        averagePct: meanPct(lifts),
+      };
+    });
+}
+
+/** One lift's best set, session by session, oldest first. */
+export interface LiftPoint {
+  sessionId: string;
+  dayName: string;
+  /** yyyy-mm-dd of the session. */
+  date: string;
+  completedAt: string;
+  top: TopSet | null;
+  sets: { weightKg: number | null; reps: number | null }[];
+}
+
+/**
+ * One lift's history. Given a session name, only the times it was done in
+ * that session — on a rotating plan Push 1 and Push 2 load the same lift
+ * differently, and a line through both zigzags between them.
+ */
+export function liftHistory(data: CoachData, normalizedName: string, dayName?: string): LiftPoint[] {
+  const sessions = new Map(data.sessions.map((s) => [s.id, s]));
+  const bySession = new Map<string, CoachSet[]>();
+  for (const s of data.sets) {
+    if (s.normalizedName !== normalizedName) continue;
+    const session = sessions.get(s.sessionId);
+    if (!session || (dayName != null && session.dayName !== dayName)) continue;
+    bySession.set(s.sessionId, [...(bySession.get(s.sessionId) ?? []), s]);
+  }
+  return [...bySession.entries()]
+    .map(([sessionId, rows]) => {
+      const ordered = rows.sort((a, b) => (a.completedAt < b.completedAt ? -1 : 1));
+      return {
+        sessionId,
+        dayName: sessions.get(sessionId)!.dayName,
+        date: dayKey(new Date(ordered[0].completedAt)),
+        completedAt: ordered[0].completedAt,
+        top: topSet(ordered),
+        sets: ordered.map((r) => ({ weightKg: r.weight, reps: r.reps })),
+      };
+    })
+    .sort((a, b) => (a.completedAt < b.completedAt ? -1 : 1));
+}
+
+/** The sessions a lift has been done in, most recently done first. */
+export function liftSessionNames(data: CoachData, normalizedName: string): string[] {
+  const last = new Map<string, string>();
+  for (const p of liftHistory(data, normalizedName)) last.set(p.dayName, p.completedAt);
+  return [...last.entries()].sort((a, b) => b[1].localeCompare(a[1])).map(([name]) => name);
+}
+
+/** First best set in a history against the last, as a percentage. */
+export function historyChangePct(history: LiftPoint[]): number | null {
+  const scored = history.filter((p) => p.top != null);
+  if (scored.length < 2) return null;
+  return topSetChangePct(scored[0].top!, scored[scored.length - 1].top!);
 }
 
 // ---- Weeks in a row --------------------------------------------------------
@@ -527,15 +681,17 @@ export interface BodyPartWeek {
   weekStart: string;
   sets: number;
   volumeKg: number;
-  /** The heaviest set of the week for this part, by estimated 1RM. */
+  /** The heaviest set of the week for this part, the most reps breaking a tie. */
   best: { exercise: string; weightKg: number; reps: number } | null;
 }
 
 export interface BodyPartExercise {
   normalizedName: string;
   displayName: string;
-  history: ExerciseHistoryPoint[];
-  /** Estimated-1RM change from the first session in the window to the last. */
+  /** The session this history comes from — see liftHistory. */
+  dayName: string;
+  history: LiftPoint[];
+  /** Best-set change from the first session in the window to the last. */
   changePct: number | null;
   lastDate: string | null;
 }
@@ -544,19 +700,6 @@ export interface BodyPartDetail {
   bodyPart: string;
   weeks: BodyPartWeek[];
   exercises: BodyPartExercise[];
-}
-
-export function toPerfSets(sets: CoachSet[]): PerfSet[] {
-  return [...sets]
-    .sort((a, b) => (a.completedAt < b.completedAt ? -1 : 1))
-    .map((s) => ({
-      displayName: s.displayName,
-      normalizedName: s.normalizedName,
-      weight: s.weight,
-      reps: s.reps,
-      completedAt: s.completedAt,
-      bodyPart: s.bodyPart,
-    }));
 }
 
 /** Every body part the athlete has logged a set against, most sets first. */
@@ -589,62 +732,64 @@ export function bodyPartDetail(
     let sets = 0;
     let volumeKg = 0;
     let best: BodyPartWeek['best'] = null;
-    let bestE = 0;
     for (const s of partSets) {
       if (!inRange(s.completedAt, start, end)) continue;
       sets += 1;
       if (s.weight == null || s.reps == null) continue;
       volumeKg += s.weight * s.reps;
-      const e = estimate1RM(s.weight, s.reps);
-      if (e > bestE) {
-        bestE = e;
+      if (!best || s.weight > best.weightKg || (s.weight === best.weightKg && s.reps > best.reps)) {
         best = { exercise: s.displayName, weightKg: s.weight, reps: s.reps };
       }
     }
     out.push({ weekStart: dayKey(start), sets, volumeKg, best });
   }
 
-  const inWindow = toPerfSets(partSets.filter((s) => inRange(s.completedAt, from, to)));
-  const names = new Map<string, string>();
-  for (const s of inWindow) names.set(s.normalizedName, s.displayName);
-  const exercises: BodyPartExercise[] = [...names.entries()].map(([normalizedName, displayName]) => {
-    const history = buildExerciseHistory(inWindow, normalizedName);
+  // One entry per lift per session it's done in, each its own history.
+  const inWindow = { ...data, sets: partSets.filter((s) => inRange(s.completedAt, from, to)) };
+  const sessionNames = new Map(data.sessions.map((s) => [s.id, s.dayName]));
+  const pairs = new Map<string, { normalizedName: string; displayName: string; dayName: string }>();
+  for (const s of [...inWindow.sets].sort((a, b) => (a.completedAt < b.completedAt ? -1 : 1))) {
+    const dayName = sessionNames.get(s.sessionId);
+    if (dayName == null) continue;
+    pairs.set(`${s.normalizedName}|${dayName}`, { normalizedName: s.normalizedName, displayName: s.displayName, dayName });
+  }
+  const exercises: BodyPartExercise[] = [...pairs.values()].map(({ normalizedName, displayName, dayName }) => {
+    const history = liftHistory(inWindow, normalizedName, dayName);
     return {
       normalizedName,
       displayName,
+      dayName,
       history,
-      changePct: e1rmChange(history),
+      changePct: historyChangePct(history),
       lastDate: history.length > 0 ? history[history.length - 1].date : null,
     };
   });
   // Most recently trained first: what's in the plan now, before what was.
   exercises.sort(
     (a, b) =>
-      (b.lastDate ?? '').localeCompare(a.lastDate ?? '') || a.displayName.localeCompare(b.displayName),
+      (b.lastDate ?? '').localeCompare(a.lastDate ?? '') ||
+      a.displayName.localeCompare(b.displayName) ||
+      a.dayName.localeCompare(b.dayName),
   );
   return { bodyPart, weeks: out, exercises };
 }
 
-function e1rmChange(history: ExerciseHistoryPoint[]): number | null {
-  const scored = history.filter((p) => p.bestEst1RMkg != null && p.bestEst1RMkg > 0);
-  if (scored.length < 2) return null;
-  const first = scored[0].bestEst1RMkg!;
-  const last = scored[scored.length - 1].bestEst1RMkg!;
-  return ((last - first) / first) * 100;
-}
-
 // ---- One lift, one session -------------------------------------------------
 
-export function exerciseDetail(data: CoachData, normalizedName: string): {
+export function exerciseDetail(
+  data: CoachData,
+  normalizedName: string,
+  dayName?: string,
+): {
   displayName: string;
-  history: ExerciseHistoryPoint[];
+  history: LiftPoint[];
   bodyPart: string | null;
 } {
   const sets = data.sets.filter((s) => s.normalizedName === normalizedName);
   const latest = [...sets].sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
   return {
     displayName: latest?.displayName ?? normalizedName,
-    history: buildExerciseHistory(toPerfSets(sets), normalizedName),
+    history: liftHistory(data, normalizedName, dayName),
     bodyPart: latest?.bodyPart ?? null,
   };
 }

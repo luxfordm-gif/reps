@@ -4,6 +4,7 @@
 // work, how did it feel, are they getting stronger, and what's the trend.
 
 import { useState } from 'react';
+import type { MachineUnit } from '../lib/units';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   addDays,
@@ -17,6 +18,8 @@ import {
   type CoachWeek,
   type Comparison,
   type Flag,
+  type SessionCompare,
+  type TopSet,
 } from '../lib/coach/coachWeek';
 import type { AthleteData } from '../lib/coach/coachApi';
 import { DEMO_ATHLETE_ID } from '../lib/coach/demoData';
@@ -30,6 +33,7 @@ import {
   count,
   hours,
   liftSet,
+  liftWeight,
   pct,
   shortDate,
   useCoachUnits,
@@ -69,7 +73,11 @@ export function WeekScreen() {
         : defaultWeek(data, now),
   );
   const weekStart = parseWeek(weekKey)!;
-  const compare: Comparison = params.get('vs') === 'rotation' && data.rotationWeeks >= 2 ? 'rotation' : 'last';
+  // On a rotating plan last week was the other half of the rotation, so the
+  // week is set against the last time the same sessions came round unless
+  // asked otherwise.
+  const rotates = data.rotationWeeks >= 2;
+  const compare: Comparison = rotates && params.get('vs') !== 'last' ? 'rotation' : 'last';
 
   const week = buildCoachWeek(data, weekStart, compare, now);
   const trends = weeklyTrends(data, weekStart, 12);
@@ -77,7 +85,8 @@ export function WeekScreen() {
   function go(next: Date, vs: Comparison = compare) {
     const p = new URLSearchParams();
     p.set('week', dayKey(next));
-    if (vs === 'rotation') p.set('vs', 'rotation');
+    // Only the non-default choice goes in the URL: last week, on a rotating plan.
+    if (rotates && vs === 'last') p.set('vs', 'last');
     setParams(p);
   }
 
@@ -117,8 +126,8 @@ export function WeekScreen() {
             <Segmented
               value={compare}
               options={[
-                { value: 'last', label: 'Last week' },
                 { value: 'rotation', label: `Same sessions, ${data.rotationWeeks} weeks ago` },
+                { value: 'last', label: 'Last week' },
               ]}
               onChange={(v) => go(weekStart, v)}
             />
@@ -155,8 +164,8 @@ export function WeekScreen() {
           </div>
           <div className="mt-1 text-xs text-muted">
             {week.strengthPct != null
-              ? `Estimated 1RM on ${week.lifts.length} ${week.lifts.length === 1 ? 'lift' : 'lifts'} done both weeks`
-              : 'No lifts done in both weeks'}
+              ? `Best sets against the same session last time, ${comparedCount(week)}`
+              : 'Nothing to compare with yet'}
           </div>
         </div>
         <Stat
@@ -192,12 +201,13 @@ export function WeekScreen() {
 
       <WeekGrid week={week} athleteId={athleteId} units={units} />
 
+      {/* Keyed on the week, so the session picked starts over on a new week. */}
+      <LiftsCard key={weekKey} week={week} athleteId={athleteId} units={units} data={data} />
+
       <div className="grid gap-6 lg:grid-cols-2">
         <FeelCard week={week} vsLabel={vsLabel} />
-        <StrengthCard week={week} athleteId={athleteId} units={units} data={data} vsLabel={vsLabel} />
+        <BodyPartsCard week={week} athleteId={athleteId} units={units} vsLabel={vsLabel} />
       </div>
-
-      <BodyPartsCard week={week} athleteId={athleteId} units={units} vsLabel={vsLabel} />
 
       <Card title="Last 12 weeks" aside="Click a bar to open that week">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -453,92 +463,242 @@ function FeelCard({ week, vsLabel }: { week: CoachWeek; vsLabel: string }) {
   );
 }
 
-function StrengthCard({
+function comparedCount(week: CoachWeek): string {
+  const n = week.sessionLifts.flatMap((x) => x.lifts).filter((l) => l.pct != null).length;
+  return `${n} ${n === 1 ? 'lift' : 'lifts'}`;
+}
+
+/** "+2.5 kg", "+2 reps", "+2.5 kg, −1 rep", "Same" — what changed on the best set. */
+function setChange(before: TopSet, after: TopSet, units: CoachUnits, machine?: MachineUnit): string {
+  const parts: string[] = [];
+  const dKg = after.weightKg - before.weightKg;
+  const dReps = after.reps - before.reps;
+  const sign = (n: number) => (n > 0 ? '+' : '−');
+  if (Math.abs(dKg) >= 0.05) {
+    const amount =
+      machine === 'pin'
+        ? `${oneDp(Math.abs(dKg))} ${Math.abs(dKg) === 1 ? 'pin' : 'pins'}`
+        : liftWeight(Math.abs(dKg), units.lift);
+    parts.push(`${sign(dKg)}${amount}`);
+  }
+  if (dReps !== 0) parts.push(`${sign(dReps)}${Math.abs(dReps)} ${Math.abs(dReps) === 1 ? 'rep' : 'reps'}`);
+  return parts.length > 0 ? parts.join(', ') : 'Same';
+}
+
+function PctCell({ value }: { value: number | null }) {
+  if (value == null) return <span className="text-muted">–</span>;
+  const r = Math.round(value);
+  const tone = r > 0 ? 'text-good' : r < 0 ? 'text-danger' : 'text-muted';
+  return (
+    <span className={`whitespace-nowrap font-semibold tabular-nums ${tone}`}>
+      {r > 0 ? '▲ ' : r < 0 ? '▼ ' : ''}
+      {pct(value)}
+    </span>
+  );
+}
+
+function sessionLabel(s: SessionCompare): string {
+  return `${s.dayName}, ${weekdayName(dayKey(new Date(s.completedAt)))}`;
+}
+
+/**
+ * The week's lifts, one session at a time. Each pill is a session done this
+ * week; each lift in it is set against the same lift the last time that same
+ * session was done — two weeks back on a two-week rotation.
+ */
+function LiftsCard({
   week,
   athleteId,
   units,
   data,
-  vsLabel,
 }: {
   week: CoachWeek;
   athleteId: string;
   units: CoachUnits;
   data: AthleteData;
-  vsLabel: string;
 }) {
-  const set = (normalizedName: string, kg: number, reps: number) =>
-    liftSet(kg, reps, units.lift, data.machineUnits.get(normalizedName));
-  const nothing = week.lifts.length === 0 && week.newLifts.length === 0 && week.suspectLifts.length === 0;
+  const [picked, setPicked] = useState<string | null>(null);
+  const sessions = week.sessionLifts;
+  const shown = sessions.find((s) => s.sessionId === picked) ?? null;
+
   return (
-    <Card title="Strength" aside={`Best set by estimated 1RM, vs ${vsLabel}`}>
-      {nothing ? (
-        <p className="text-sm text-muted">No weighted sets this week.</p>
+    <Card title="Lifts" aside="Each session against the last time you did it">
+      {sessions.length === 0 ? (
+        <p className="text-sm text-muted">No sessions this week.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted">
-                <th className="pb-2 font-semibold">Lift</th>
-                <th className="pb-2 font-semibold">This week</th>
-                <th className="pb-2 font-semibold">{vsLabel[0].toUpperCase() + vsLabel.slice(1)}</th>
-                <th className="pb-2 text-right font-semibold">Change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {week.lifts.map((c) => (
-                <tr key={c.cur.normalizedName} className="border-t border-line">
-                  <td className="py-2 pr-3">
-                    <LiftLink athleteId={athleteId} name={c.cur.normalizedName} label={c.cur.displayName} />
-                  </td>
-                  <td className="py-2 pr-3 tabular-nums">{set(c.cur.normalizedName, c.cur.topWeightKg, c.cur.topReps)}</td>
-                  <td className="py-2 pr-3 tabular-nums text-muted">
-                    {set(c.prev.normalizedName, c.prev.topWeightKg, c.prev.topReps)}
-                  </td>
-                  <td
-                    className={`py-2 text-right font-semibold tabular-nums ${
-                      c.pct >= 0.5 ? 'text-good' : c.pct <= -0.5 ? 'text-danger' : 'text-muted'
-                    }`}
-                  >
-                    {c.pct >= 0.5 ? '▲ ' : c.pct <= -0.5 ? '▼ ' : ''}
-                    {pct(c.pct)}
-                  </td>
+        <>
+          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Sessions">
+            <Pill on={shown == null} onClick={() => setPicked(null)}>
+              All sessions
+            </Pill>
+            {sessions.map((s) => (
+              <Pill key={s.sessionId} on={shown?.sessionId === s.sessionId} onClick={() => setPicked(s.sessionId)}>
+                {sessionLabel(s)}
+              </Pill>
+            ))}
+          </div>
+
+          {shown == null ? (
+            <table className="mt-4 w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted">
+                  <th className="pb-2 font-semibold">Session</th>
+                  <th className="pb-2 font-semibold">Compared with</th>
+                  <th className="pb-2 text-right font-semibold">Lifts up</th>
+                  <th className="pb-2 text-right font-semibold">Lifts down</th>
+                  <th className="pb-2 text-right font-semibold">Overall</th>
                 </tr>
-              ))}
-              {week.newLifts.map((e) => (
-                <tr key={e.normalizedName} className="border-t border-line">
-                  <td className="py-2 pr-3">
-                    <LiftLink athleteId={athleteId} name={e.normalizedName} label={e.displayName} />
-                  </td>
-                  <td className="py-2 pr-3 tabular-nums">{set(e.normalizedName, e.topWeightKg, e.topReps)}</td>
-                  <td className="py-2 pr-3 text-muted">Not done</td>
-                  <td className="py-2 text-right text-xs text-muted">New</td>
-                </tr>
-              ))}
-              {week.suspectLifts.map((c) => (
-                <tr key={c.cur.normalizedName} className="border-t border-line">
-                  <td className="py-2 pr-3">
-                    <LiftLink athleteId={athleteId} name={c.cur.normalizedName} label={c.cur.displayName} />
-                  </td>
-                  <td className="py-2 pr-3 tabular-nums">{set(c.cur.normalizedName, c.cur.topWeightKg, c.cur.topReps)}</td>
-                  <td className="py-2 pr-3 tabular-nums text-muted">
-                    {set(c.prev.normalizedName, c.prev.topWeightKg, c.prev.topReps)}
-                  </td>
-                  <td className="py-2 text-right text-xs text-muted" title="Too big a jump to be the same machine">
-                    Not compared
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {sessions.map((s) => {
+                  const up = s.lifts.filter((l) => l.pct != null && Math.round(l.pct) > 0).length;
+                  const down = s.lifts.filter((l) => l.pct != null && Math.round(l.pct) < 0).length;
+                  return (
+                    <tr
+                      key={s.sessionId}
+                      onClick={() => setPicked(s.sessionId)}
+                      className="cursor-pointer border-t border-line hover:bg-pressed"
+                    >
+                      <td className="py-2.5 pr-3 font-semibold text-ink">{sessionLabel(s)}</td>
+                      <td className="py-2.5 pr-3 text-muted">
+                        {s.previous ? `${s.dayName} on ${shortDate(s.previous.completedAt)}` : 'First time logged'}
+                      </td>
+                      <td className="py-2.5 text-right tabular-nums">{s.previous ? up : '–'}</td>
+                      <td className="py-2.5 text-right tabular-nums">{s.previous ? down : '–'}</td>
+                      <td className="py-2.5 text-right">
+                        <PctCell value={s.averagePct} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <SessionLifts session={shown} athleteId={athleteId} units={units} data={data} />
+          )}
+        </>
       )}
     </Card>
   );
 }
 
-function LiftLink({ athleteId, name, label }: { athleteId: string; name: string; label: string }) {
+function SessionLifts({
+  session,
+  athleteId,
+  units,
+  data,
+}: {
+  session: SessionCompare;
+  athleteId: string;
+  units: CoachUnits;
+  data: AthleteData;
+}) {
+  const set = (name: string, t: TopSet | null) =>
+    t ? liftSet(t.weightKg, t.reps, units.lift, data.machineUnits.get(name)) : '–';
   return (
-    <Link to={`/coach/${athleteId}/exercise/${encodeURIComponent(name)}`} className="font-medium text-ink hover:underline">
+    <div className="mt-4">
+      <p className="text-sm text-muted">
+        {session.previous ? (
+          <>
+            {session.dayName} on {shortDate(session.completedAt)}, against{' '}
+            <Link to={`/coach/${athleteId}/session/${session.previous.sessionId}`} className="text-ink hover:underline">
+              the same session on {shortDate(session.previous.completedAt)}
+            </Link>
+            .
+          </>
+        ) : (
+          `The first ${session.dayName} logged, so there's nothing to compare with yet.`
+        )}{' '}
+        <Link to={`/coach/${athleteId}/session/${session.sessionId}`} className="text-ink hover:underline">
+          Every set
+        </Link>
+      </p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead>
+            <tr className="text-left text-xs text-muted">
+              <th className="pb-2 font-semibold">Lift</th>
+              <th className="pb-2 font-semibold">Last time</th>
+              <th className="pb-2 font-semibold">This week</th>
+              <th className="pb-2 font-semibold">Change</th>
+              <th className="pb-2 text-right font-semibold">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {session.lifts.map((l) => (
+              <tr key={l.normalizedName} className="border-t border-line">
+                <td className="py-2.5 pr-3">
+                  <LiftLink athleteId={athleteId} name={l.normalizedName} label={l.displayName} session={session.dayName} />
+                </td>
+                <td className="py-2.5 pr-3 tabular-nums text-muted">{l.previous ? set(l.normalizedName, l.previous) : 'Not done'}</td>
+                <td className="py-2.5 pr-3 tabular-nums">{set(l.normalizedName, l.current)}</td>
+                <td className="py-2.5 pr-3 text-muted">
+                  {l.suspect
+                    ? 'Too big a jump to be the same machine'
+                    : l.current && l.previous
+                      ? setChange(l.previous, l.current, units, data.machineUnits.get(l.normalizedName))
+                      : l.previous
+                        ? ''
+                        : 'New'}
+                </td>
+                <td className="py-2.5 text-right">
+                  <PctCell value={l.pct} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          {session.averagePct != null && (
+            <tfoot>
+              <tr className="border-t border-line">
+                <td colSpan={4} className="pt-2.5 text-sm font-semibold text-ink">
+                  {session.dayName} overall
+                </td>
+                <td className="pt-2.5 text-right">
+                  <PctCell value={session.averagePct} />
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      <p className="mt-3 text-xs text-muted">
+        Each lift's best set: the heaviest weight, the most reps breaking a tie. The percentage is on weight × reps.
+      </p>
+    </div>
+  );
+}
+
+function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      role="tab"
+      aria-selected={on}
+      onClick={onClick}
+      className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors ${
+        on ? 'bg-ink text-white' : 'bg-surface-strong text-ink hover:bg-line'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function LiftLink({
+  athleteId,
+  name,
+  label,
+  session,
+}: {
+  athleteId: string;
+  name: string;
+  label: string;
+  session: string;
+}) {
+  return (
+    <Link
+      to={`/coach/${athleteId}/exercise/${encodeURIComponent(name)}?session=${encodeURIComponent(session)}`}
+      className="font-medium text-ink hover:underline"
+    >
       {label}
     </Link>
   );
@@ -557,16 +717,17 @@ function BodyPartsCard({
 }) {
   if (week.bodyParts.length === 0) return null;
   return (
-    <Card title="Body parts" aside={`Open one for its lifts over 12 weeks · vs ${vsLabel}`}>
+    <Card title="Body parts" aside="Open one for its lifts over 12 weeks">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm">
+        <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-muted">
               <th className="pb-2 font-semibold">Body part</th>
               <th className="pb-2 text-right font-semibold">Sets</th>
               <th className="pb-2 text-right font-semibold">Volume</th>
-              <th className="pb-2 text-right font-semibold">Strength</th>
-              <th className="pb-2 pl-6 font-semibold">Heaviest set</th>
+              <th className="pb-2 text-right font-semibold" title="Best sets against the same session last time">
+                Lifts
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -580,39 +741,27 @@ function BodyPartsCard({
                     {b.bodyPart}
                   </Link>
                 </td>
-                <td className="py-2.5 text-right tabular-nums">
+                <td className="whitespace-nowrap py-2.5 text-right tabular-nums">
                   {b.sets.current}
-                  <span className="ml-2 inline-block w-14 text-left">
+                  <span className="ml-1.5 inline-block w-10 text-left">
                     <Delta m={b.sets} format={(n) => String(n)} better="neither" quiet />
                   </span>
                 </td>
-                <td className="py-2.5 text-right tabular-nums">
+                <td className="whitespace-nowrap py-2.5 text-right tabular-nums">
                   {volume(b.volumeKg.current ?? 0, units.lift)}
-                  <span className="ml-2 inline-block w-14 text-left">
+                  <span className="ml-1.5 inline-block w-12 text-left">
                     <Delta m={b.volumeKg} format={count} better="neither" asPct quiet />
                   </span>
                 </td>
-                <td
-                  className={`py-2.5 text-right font-semibold tabular-nums ${
-                    b.strengthPct == null
-                      ? 'text-muted'
-                      : b.strengthPct >= 0.5
-                        ? 'text-good'
-                        : b.strengthPct <= -0.5
-                          ? 'text-danger'
-                          : 'text-muted'
-                  }`}
-                >
-                  {b.strengthPct != null ? pct(b.strengthPct) : '–'}
-                </td>
-                <td className="py-2.5 pl-6 text-muted">
-                  {b.topSet ? `${b.topSet.exercise}, ${liftSet(b.topSet.weight, b.topSet.reps, units.lift)}` : '–'}
+                <td className="py-2.5 text-right">
+                  <PctCell value={b.strengthPct} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="mt-3 text-xs text-muted">Sets and volume against {vsLabel}. Lifts against the same session last time.</p>
     </Card>
   );
 }

@@ -6,6 +6,11 @@ import {
   bodyPartDetail,
   bodyPartsTrained,
   buildCoachWeek,
+  compareSessions,
+  liftHistory,
+  liftSessionNames,
+  topSet,
+  topSetChangePct,
   feelScore,
   mondayOf,
   parseWeek,
@@ -98,16 +103,46 @@ eq('each question averages the sessions that answered it', [w.feel.ratings.perfo
 eq('and last week beside it', w.feel.ratings.soreness.previous, 2.5);
 eq('check-ins counted', w.feel.checkIns, 2);
 
-console.log('lifts');
-eq('lifts in both weeks, slips kept apart', w.lifts.map((c) => c.cur.normalizedName), ['bench', 'squat']);
-eq('the slip is named', w.suspectLifts.map((c) => c.cur.normalizedName), ['leg press']);
-eq('a lift new this week', w.newLifts.map((e) => e.normalizedName), ['fly']);
-ok('strength average leaves the slip out', w.strengthPct != null && Math.abs(w.strengthPct - ((3.125 + -10) / 2)) < 0.01, w.strengthPct);
+console.log('best sets');
+eq('the heaviest set, most reps breaking a tie', topSet([{ weight: 80, reps: 8 }, { weight: 82.5, reps: 5 }, { weight: 82.5, reps: 6 }]), { weightKg: 82.5, reps: 6 });
+eq('no weighted set, no best set', topSet([{ weight: null, reps: null }, { weight: null, reps: 12 }]), null);
+eq('more weight, same reps', Math.round(topSetChangePct({ weightKg: 80, reps: 8 }, { weightKg: 82.5, reps: 8 }) * 10) / 10, 3.1);
+eq('more reps, same weight', topSetChangePct({ weightKg: 28, reps: 10 }, { weightKg: 28, reps: 12 }), 20);
+eq('the same set is no change', topSetChangePct({ weightKg: 45, reps: 10 }, { weightKg: 45, reps: 10 }), 0);
+
+console.log('lifts, against the same session last time');
+const [push, legs] = w.sessionLifts;
+eq('one entry per session this week, in order', w.sessionLifts.map((x) => [x.dayName, x.previous?.sessionId]), [['Push', 's1'], ['Legs', 's2']]);
+eq('bench: last time and this time', [push.lifts[0].previous, push.lifts[0].current], [{ weightKg: 80, reps: 8 }, { weightKg: 82.5, reps: 8 }]);
+eq('bench up 3%', Math.round(push.lifts[0].pct * 1000) / 1000, 3.125);
+eq('a lift new to the session has nothing to compare with', [push.lifts[1].displayName, push.lifts[1].previous, push.lifts[1].pct], ['Fly', null, null]);
+eq('squat down 10%', legs.lifts.find((l) => l.normalizedName === 'squat').pct, -10);
+eq('a doubled leg press is a machine change, not compared', [legs.lifts.find((l) => l.normalizedName === 'leg press').suspect, legs.lifts.find((l) => l.normalizedName === 'leg press').pct], [true, null]);
+eq('a plank has no best set', legs.lifts.find((l) => l.normalizedName === 'plank').current, null);
+eq('each session averages its own lifts', [push.averagePct, legs.averagePct], [3.125, -10]);
+ok('the week averages every lift, the slip left out', Math.abs(w.strengthPct - ((3.125 + -10) / 2)) < 0.01, w.strengthPct);
+
+console.log('a two-week rotation');
+{
+  const rot = (id, date, dayName) => ({ id, completedAt: at(date), dayName, checkIn: blank });
+  const rs = [rot('a1', '2026-09-07', 'Push 1'), rot('b1', '2026-09-14', 'Push 2'), rot('a2', '2026-09-21', 'Push 1')];
+  const rsets = [
+    set('a1', '2026-09-07', 'Bench', 'Chest', 80, 8),
+    set('b1', '2026-09-14', 'Bench', 'Chest', 70, 12),
+    set('a2', '2026-09-21', 'Bench', 'Chest', 82.5, 8),
+  ];
+  const [cmp] = compareSessions({ ...data, sessions: rs, sets: rsets }, [rs[2]]);
+  eq('Push 1 is set against the last Push 1, two weeks back, not last week\'s Push 2', [cmp.previous.sessionId, cmp.lifts[0].previous], ['a1', { weightKg: 80, reps: 8 }]);
+  const rdata = { ...data, sessions: rs, sets: rsets };
+  eq('a lift\'s sessions, most recent first', liftSessionNames(rdata, 'bench'), ['Push 1', 'Push 2']);
+  eq('its history in one session skips the other', liftHistory(rdata, 'bench', 'Push 1').map((p) => p.top.weightKg), [80, 82.5]);
+  eq('and across both, every time', liftHistory(rdata, 'bench').length, 3);
+}
 
 console.log('body parts');
 eq('every part in either week, this week first', w.bodyParts.map((b) => b.bodyPart), ['Quads', 'Chest', 'Other']);
 eq('sets against last week', w.bodyParts.find((b) => b.bodyPart === 'Chest').sets, { current: 2, previous: 2 });
-ok('chest strength from bench alone', Math.abs(w.bodyParts.find((b) => b.bodyPart === 'Chest').strengthPct - 3.125) < 0.01);
+ok('chest from bench alone: fly was new', Math.abs(w.bodyParts.find((b) => b.bodyPart === 'Chest').strengthPct - 3.125) < 0.01);
 
 console.log('flags');
 eq('flags in order of how pressing', w.flags.map((f) => f.key), ['missed', 'sleep', 'soreness', 'stress', 'down', 'weight', 'suspect']);
@@ -125,7 +160,7 @@ const withAbs = buildCoachWeek({ ...data, referenceDayNames: ['Legs'] }, WEEK2, 
 eq('a reference day is on the grid but not counted', [withAbs.workouts.current, withAbs.days[3].sessions.length], [1, 1]);
 
 console.log('empty comparison week');
-eq('first week has zeros to compare against', [calm.workouts.previous, calm.lifts.length, calm.newLifts.length], [0, 0, 3]);
+eq('first week: zeros to compare against, every lift new', [calm.workouts.previous, calm.sessionLifts.every((x) => x.previous == null && x.lifts.every((l) => l.pct == null))], [0, true]);
 eq('no strength change without a comparison', calm.strengthPct, null);
 
 console.log('rotation');
@@ -140,7 +175,7 @@ eq('weeks oldest first', trends.map((t) => [t.weekStart, t.workouts]), [['2026-0
 eq('parts by sets logged, ties by name', bodyPartsTrained(data), ['Chest', 'Quads', 'Other']);
 const quads = bodyPartDetail(data, 'Quads', WEEK2, 2);
 eq('a part week by week', quads.weeks.map((x) => [x.sets, x.best?.exercise]), [[2, 'Leg press'], [2, 'Leg press']]);
-eq('its lifts with their history, latest trained first', quads.exercises.map((e) => [e.displayName, e.history.length]), [['Leg press', 2], ['Squat', 2]]);
+eq('its lifts with their history, latest trained first', quads.exercises.map((e) => [e.displayName, e.dayName, e.history.length]), [['Leg press', 'Legs', 2], ['Squat', 'Legs', 2]]);
 const detail = sessionDetail(data, 's3');
 eq('a session grouped by lift', detail.exercises.map((e) => [e.displayName, e.sets.length]), [['Bench', 1], ['Fly', 1]]);
 eq('an unknown session is null', sessionDetail(data, 'nope'), null);
@@ -169,6 +204,8 @@ console.log('sample athlete (/coach/demo)');
   ok('…with short sleep and soreness flagged', ['missed', 'sleep', 'soreness'].every((k) => last.flags.some((f) => f.key === k)), last.flags);
   const week = buildCoachWeek(demo, new Date('2026-10-12T00:00:00'), 'last', now);
   ok('this week: squat is flagged as down', week.flags.some((f) => f.key === 'down' && f.text.includes('Back squat')), week.flags);
+  const first = last.sessionLifts[0];
+  eq('on its two-week rotation, a session is set against the same one two weeks back', [first.dayName, (new Date(first.completedAt) - new Date(first.previous.completedAt)) / 86400000], ['Push 2', 14]);
   eq('twelve weeks of trends with work in every one', weeklyTrends(demo, new Date('2026-10-12T00:00:00'), 12).every((t) => t.workouts > 0), true);
 }
 
