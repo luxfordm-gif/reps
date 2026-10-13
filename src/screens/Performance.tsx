@@ -21,6 +21,7 @@ import {
   BoltIcon,
   WaterIcon,
   StepsIcon,
+  MoonIcon,
 } from '../components/Tile';
 import { RecordsBoard } from '../components/RecordsBoard';
 import {
@@ -34,6 +35,7 @@ import {
 import { loadRecords, type LiftRecord } from '../lib/recordsApi';
 import { listWaterSince, type WaterDay } from '../lib/waterApi';
 import { listSteps, formatSteps, type StepRow } from '../lib/stepsApi';
+import { listSleep, formatSleep, roundToHalf, type SleepRow } from '../lib/sleepApi';
 import { getActivePlan, weeksOnPlan, type FullPlan } from '../lib/plansApi';
 import { buildDaySlots } from '../lib/daySlots';
 import { buildWeekFacts, comparisonLabel, weekLine, type WeekFacts } from '../lib/summary';
@@ -133,6 +135,7 @@ interface Loaded {
   week: WeekSummary;
   water: WaterDay[];
   steps: StepRow[];
+  sleep: SleepRow[];
 }
 
 const EMPTY_WEEK: WeekSummary = {
@@ -150,7 +153,7 @@ async function loadAll(): Promise<Loaded> {
   const from = new Date();
   from.setDate(from.getDate() - (HABIT_WINDOW_DAYS - 1));
   const weekFrom = `${from.getFullYear()}-${pad2(from.getMonth() + 1)}-${pad2(from.getDate())}`;
-  const [perf, records, plan, sessions, week, water, steps] = await Promise.all([
+  const [perf, records, plan, sessions, week, water, steps, sleep] = await Promise.all([
     loadPerformanceData().catch(() => ({ sets: [], bodyWeights: [] })),
     loadRecords().catch(() => []),
     getActivePlan().catch(() => null),
@@ -158,8 +161,9 @@ async function loadAll(): Promise<Loaded> {
     getThisWeekSummary().catch(() => EMPTY_WEEK),
     listWaterSince(weekFrom).catch(() => []),
     listSteps().catch(() => []),
+    listSleep().catch(() => []),
   ]);
-  return { perf, records, plan, sessions, week, water, steps };
+  return { perf, records, plan, sessions, week, water, steps, sleep };
 }
 
 export function Performance() {
@@ -221,6 +225,7 @@ export function Performance() {
       }),
       water: dailyAverage(data.water.map((w) => ({ date: w.recorded_on, value: w.count }))),
       steps: dailyAverage(data.steps.map((r) => ({ date: r.recorded_on, value: r.steps }))),
+      sleep: dailyAverage(data.sleep.map((r) => ({ date: r.recorded_on, value: r.hours }))),
       volume: computeWeeklyVolume(perf.sets),
       perWeek: computeWorkoutsPerWeek(gymSessions, activatedAt),
       bodyWeight: summarizeBodyWeight(perf.bodyWeights, activatedAt),
@@ -358,13 +363,13 @@ export function Performance() {
               </Block>
             )}
 
-            {/* How often, and the two habits. The habits average over three
+            {/* How often, and the three habits. The habits average over three
                 weeks and over the days actually logged — see dailyAverage —
                 so a couple of missed days don't read as a collapse, and a
                 Monday with nothing written down yet doesn't blank the tile
                 entirely, which is what made steps look broken. */}
             <Block>
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 gap-2.5">
                 <MiniTile
                   icon={<BoltIcon />}
                   label="Workouts"
@@ -390,6 +395,16 @@ export function Performance() {
                       : '—'
                   }
                   hint={derived.steps.average != null ? 'per day · 3w' : 'Not tracked'}
+                />
+                <MiniTile
+                  icon={<MoonIcon />}
+                  label="Sleep"
+                  value={
+                    derived.sleep.average != null
+                      ? formatSleep(roundToHalf(derived.sleep.average))
+                      : '—'
+                  }
+                  hint={derived.sleep.average != null ? 'per night · 3w' : 'Not tracked'}
                 />
               </div>
             </Block>

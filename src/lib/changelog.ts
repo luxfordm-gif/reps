@@ -33,6 +33,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2026-10-13.1',
+    title: "What's new",
+    bullets: [
+      'Log how many hours you slept from the home screen',
+      'See your training on a computer, and share it with your coach',
+    ],
+  },
+  {
     version: '2026-10-09.1',
     title: "What's new",
     bullets: [

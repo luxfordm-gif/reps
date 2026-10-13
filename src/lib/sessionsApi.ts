@@ -1,4 +1,5 @@
 import { supabase, currentUserId, currentUserIdSync } from './supabase';
+import { summarizeWeekSets, type WeekSessionRow, type WeekSetRow, type WeeklyWorkoutSummary } from './weekSummary';
 import { getActivePlan, getCachedActivePlan } from './plansApi';
 import { prefetchAlternativesForExercises } from './alternativesApi';
 import { isOfflineError, isReachable, isTransportError, query } from './offline/net';
@@ -110,9 +111,14 @@ export interface WeekCheckInRow extends CheckInExportRow {
   sessionId: string;
 }
 
-/** Check-ins on sessions completed from `from` up to (not including) `to`. */
-export async function getCheckInsBetween(from: Date, to: Date): Promise<WeekCheckInRow[]> {
-  const userId = await currentUserId();
+/** Check-ins on sessions completed from `from` up to (not including) `to`.
+ *  `forUserId` reads another account's — a coach's, through their read access. */
+export async function getCheckInsBetween(
+  from: Date,
+  to: Date,
+  forUserId?: string,
+): Promise<WeekCheckInRow[]> {
+  const userId = forUserId ?? (await currentUserId());
   if (!userId) return [];
   const { data, error } = await supabase
     .from('sessions')
@@ -133,8 +139,9 @@ export async function getCheckInsBetween(from: Date, to: Date): Promise<WeekChec
   };
   return ((data as Row[]) ?? []).map((r) => {
     const td = Array.isArray(r.training_days) ? r.training_days[0] : r.training_days;
-    // A check-in tapped offline is only on the device until it syncs.
-    const local = readCache<SessionCheckInPatch>(userId, checkInCacheName(r.id));
+    // A check-in tapped offline is only on the device until it syncs. Only
+    // ever on the athlete's own device, so a coach has nothing to merge.
+    const local = forUserId ? null : readCache<SessionCheckInPatch>(userId, checkInCacheName(r.id));
     return {
       sessionId: r.id,
       completedAt: r.completed_at,
@@ -1157,65 +1164,26 @@ export async function getThisWeekSummary(): Promise<WeekSummary> {
   return { workoutsDone: sessionList.length, bars, dayDetails };
 }
 
-export interface BodyPartStats {
-  bodyPart: string;
-  volume: number;
-  setCount: number;
-  sessionCount: number;
-  topSet: { exercise: string; weight: number; reps: number } | null;
-}
+export type {
+  BodyPartStats,
+  ExerciseWeekBest,
+  WeekSessionRow,
+  WeekSetRow,
+  WeeklySessionRef,
+  WeeklyWorkoutSummary,
+} from './weekSummary';
+export { summarizeWeekSets } from './weekSummary';
 
-export interface WeeklySessionRef {
-  trainingDayName: string;
-  completedAt: string;
-}
-
-/** The single best set (by estimated 1RM) logged for one exercise in a week. */
-export interface ExerciseWeekBest {
-  normalizedName: string;
-  displayName: string;
-  bodyPart: string | null;
-  /** Weight (kg) and reps of the set that produced the best estimated 1RM. */
-  topWeightKg: number;
-  topReps: number;
-  /** Epley estimated 1RM (kg) of that set — used to rank week-over-week gains. */
-  bestE1RMkg: number;
-}
-
-export interface WeeklyWorkoutSummary {
-  weekStart: Date;
-  weekEnd: Date;
-  workoutsDone: number;
-  totalVolume: number;
-  totalSets: number;
-  sessions: WeeklySessionRef[];
-  byBodyPart: BodyPartStats[];
-  /** Best set per exercise this week, for per-exercise progress comparisons. */
-  exerciseBests: ExerciseWeekBest[];
-}
-
-/** Epley estimated one-rep max. Single reps return the lifted weight unchanged. */
-function epley1RM(weight: number, reps: number): number {
-  if (reps <= 1) return weight;
-  return weight * (1 + reps / 30);
-}
-
-export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWorkoutSummary> {
+/** `forUserId` reads another account's week — a coach's, through their read
+ *  access. Without it, the signed-in user's. */
+export async function getWeeklyWorkoutSummary(
+  weekStart: Date,
+  forUserId?: string,
+): Promise<WeeklyWorkoutSummary> {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 7);
-  const empty: WeeklyWorkoutSummary = {
-    weekStart,
-    weekEnd,
-    workoutsDone: 0,
-    totalVolume: 0,
-    totalSets: 0,
-    sessions: [],
-    byBodyPart: [],
-    exerciseBests: [],
-  };
-
-  const userId = await currentUserId();
-  if (!userId) return empty;
+  const userId = forUserId ?? (await currentUserId());
+  if (!userId) return summarizeWeekSets(weekStart, [], []);
 
   const { data: sessionRows, error: sessErr } = await supabase
     .from('sessions')
@@ -1231,104 +1199,37 @@ export async function getWeeklyWorkoutSummary(weekStart: Date): Promise<WeeklyWo
     completed_at: string;
     training_days: { name: string } | { name: string }[] | null;
   };
-  const sessions = (sessionRows as SRow[]) ?? [];
-  if (sessions.length === 0) return empty;
-
-  const sessionIds = sessions.map((s) => s.id);
-  const sessionRefs: WeeklySessionRef[] = sessions.map((s) => {
+  const sessions: WeekSessionRow[] = ((sessionRows as SRow[]) ?? []).map((s) => {
     const td = Array.isArray(s.training_days) ? s.training_days[0] : s.training_days;
-    return { trainingDayName: td?.name ?? 'Workout', completedAt: s.completed_at };
+    return { id: s.id, completed_at: s.completed_at, trainingDayName: td?.name ?? 'Workout' };
   });
+  if (sessions.length === 0) return summarizeWeekSets(weekStart, [], []);
 
   const { data: setsRows, error: setsErr } = await supabase
     .from('logged_sets')
     .select(
       'session_id, exercise_display_name, exercise_normalized_name, weight, reps, plan_exercises(body_part)',
     )
-    .in('session_id', sessionIds);
+    .in(
+      'session_id',
+      sessions.map((s) => s.id),
+    );
   if (setsErr) throw setsErr;
-  type LRow = {
-    session_id: string;
-    exercise_display_name: string;
-    exercise_normalized_name: string;
-    weight: number | null;
-    reps: number | null;
+  type LRow = Omit<WeekSetRow, 'bodyPart'> & {
     plan_exercises: { body_part: string | null } | { body_part: string | null }[] | null;
   };
-  const setRows = (setsRows as LRow[]) ?? [];
-
-  const groups = new Map<
-    string,
-    {
-      volume: number;
-      setCount: number;
-      sessions: Set<string>;
-      topSet: { exercise: string; weight: number; reps: number } | null;
-    }
-  >();
-  // Best set per exercise (by estimated 1RM), keyed by normalized name.
-  const exGroups = new Map<string, ExerciseWeekBest>();
-  let totalVolume = 0;
-  let totalSets = 0;
-  for (const r of setRows) {
+  const setRows: WeekSetRow[] = ((setsRows as LRow[]) ?? []).map((r) => {
     const pe = Array.isArray(r.plan_exercises) ? r.plan_exercises[0] : r.plan_exercises;
-    const bodyPart = pe?.body_part?.trim() ? pe.body_part.trim() : 'Other';
-    let group = groups.get(bodyPart);
-    if (!group) {
-      group = { volume: 0, setCount: 0, sessions: new Set(), topSet: null };
-      groups.set(bodyPart, group);
-    }
-    group.setCount += 1;
-    group.sessions.add(r.session_id);
-    totalSets += 1;
-    if (r.weight != null && r.reps != null) {
-      const v = r.weight * r.reps;
-      group.volume += v;
-      totalVolume += v;
-      if (!group.topSet || r.weight > group.topSet.weight) {
-        group.topSet = {
-          exercise: r.exercise_display_name,
-          weight: r.weight,
-          reps: r.reps,
-        };
-      }
-      const e = epley1RM(r.weight, r.reps);
-      const ex = exGroups.get(r.exercise_normalized_name);
-      if (!ex || e > ex.bestE1RMkg) {
-        exGroups.set(r.exercise_normalized_name, {
-          normalizedName: r.exercise_normalized_name,
-          displayName: r.exercise_display_name,
-          bodyPart: pe?.body_part?.trim() ? pe.body_part.trim() : null,
-          topWeightKg: r.weight,
-          topReps: r.reps,
-          bestE1RMkg: e,
-        });
-      }
-    }
-  }
-
-  const byBodyPart: BodyPartStats[] = [...groups.entries()]
-    .map(([bodyPart, g]) => ({
-      bodyPart,
-      volume: g.volume,
-      setCount: g.setCount,
-      sessionCount: g.sessions.size,
-      topSet: g.topSet,
-    }))
-    .sort((a, b) => b.volume - a.volume || b.setCount - a.setCount);
-
-  const exerciseBests = [...exGroups.values()].sort((a, b) => b.bestE1RMkg - a.bestE1RMkg);
-
-  return {
-    weekStart,
-    weekEnd,
-    workoutsDone: sessions.length,
-    totalVolume,
-    totalSets,
-    sessions: sessionRefs,
-    byBodyPart,
-    exerciseBests,
-  };
+    return {
+      session_id: r.session_id,
+      exercise_display_name: r.exercise_display_name,
+      exercise_normalized_name: r.exercise_normalized_name,
+      weight: r.weight,
+      reps: r.reps,
+      bodyPart: pe?.body_part ?? null,
+    };
+  });
+  return summarizeWeekSets(weekStart, sessions, setRows);
 }
 
 export async function hasAnySessionsBefore(iso: string): Promise<boolean> {

@@ -17,6 +17,7 @@ import { Login } from './screens/Login';
 import { UploadPlan } from './screens/UploadPlan';
 import { BodyWeight } from './screens/BodyWeight';
 import { Steps } from './screens/Steps';
+import { Sleep } from './screens/Sleep';
 import { Profile } from './screens/Profile';
 import { Plans } from './screens/Plans';
 import { Performance } from './screens/Performance';
@@ -53,6 +54,7 @@ type Modal =
   | 'upload'
   | 'bodyWeight'
   | 'steps'
+  | 'sleep'
   | 'history'
   | 'plans'
   | 'onboarding'
@@ -400,6 +402,8 @@ function Root() {
     body = <BodyWeight onBack={() => setModal(null)} />;
   } else if (modal === 'steps') {
     body = <Steps onBack={() => setModal(null)} />;
+  } else if (modal === 'sleep') {
+    body = <Sleep onBack={() => setModal(null)} />;
   } else if (modal === 'onboarding') {
     body = (
       <Onboarding
@@ -545,6 +549,7 @@ function Root() {
             onPlanSaved={handlePlanSaved}
             onLogBodyWeight={() => setModal('bodyWeight')}
             onLogSteps={() => setModal('steps')}
+            onLogSleep={() => setModal('sleep')}
             onTapDay={(day, sibling) => {
               setActiveDay(day);
               setActiveDaySibling(sibling ?? null);

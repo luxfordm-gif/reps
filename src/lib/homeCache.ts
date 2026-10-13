@@ -11,6 +11,7 @@ import {
 } from './sessionsApi';
 import { getTodayWaterCount } from './waterApi';
 import { getTodayStepCount } from './stepsApi';
+import { getTodaySleepHours } from './sleepApi';
 import { currentUserIdSync } from './supabase';
 import { dropCache, readCache, writeCache } from './offline/storage';
 
@@ -20,6 +21,8 @@ export interface HomeData {
   waterCount: number;
   // Optional so a copy persisted before steps existed still loads.
   stepCount?: number;
+  /** Last night's hours, logged this morning. Optional for the same reason. */
+  sleepHours?: number | null;
   active: ActiveSessionContext | null;
   weekSummary: WeekSummary;
   completedThisWeek: string[];
@@ -76,10 +79,11 @@ export async function loadHomeData(): Promise<HomeData> {
       const mainDayIds = (p?.training_days ?? [])
         .filter((d) => d.name !== 'Abs')
         .map((d) => d.id);
-      const [lc, w, st, a, ws, dn, rp, lcbd] = await Promise.all([
+      const [lc, w, st, sl, a, ws, dn, rp, lcbd] = await Promise.all([
         getLastCompletedTrainingDayName(p?.activated_at ?? null),
         getTodayWaterCount(),
         getTodayStepCount(),
+        getTodaySleepHours(),
         getAnyActiveSession(),
         getThisWeekSummary(),
         getCompletedDayNamesThisWeek(),
@@ -91,6 +95,7 @@ export async function loadHomeData(): Promise<HomeData> {
         lastCompleted: lc,
         waterCount: w,
         stepCount: st,
+        sleepHours: sl,
         active: a,
         weekSummary: ws,
         completedThisWeek: dn,

@@ -10,7 +10,13 @@ type Mode = 'signin' | 'signup' | 'forgot';
  *  email, so the screen says so instead of leaving a filled-in form behind. */
 type Step = 'email' | 'password' | 'sent';
 
-export function Login() {
+interface Props {
+  /** A line under the heading saying who this sign-in is for — the coach
+   *  area uses it, since its sign-in is otherwise the athlete's. */
+  note?: string;
+}
+
+export function Login({ note }: Props = {}) {
   const [mode, setMode] = useState<Mode>('signin');
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
@@ -36,8 +42,12 @@ export function Login() {
   useScrollLock();
   const viewport = useVisualViewport();
 
-  /** Where a confirmation or reset link should land. */
-  const linkTarget = () => `${window.location.origin}/`;
+  /** Where a confirmation or reset link should land: back in the coach area
+   *  for someone signing up there, invite code and all, and Home otherwise. */
+  const linkTarget = () =>
+    window.location.pathname.startsWith('/coach')
+      ? `${window.location.origin}${window.location.pathname}${window.location.search}`
+      : `${window.location.origin}/`;
 
   function changeMode(m: Mode) {
     setMode(m);
@@ -207,6 +217,9 @@ export function Login() {
           </h1>
           {subtitle && (
             <p className="mt-1 text-center text-sm text-muted">{subtitle}</p>
+          )}
+          {note && step !== 'sent' && (
+            <p className="mt-3 max-w-xs text-center text-sm text-muted">{note}</p>
           )}
 
           <div className="mt-5 w-full">

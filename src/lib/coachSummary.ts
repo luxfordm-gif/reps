@@ -6,7 +6,7 @@
 // did they train, are they getting stronger, how did it feel, and what moved
 // most. Anything the coach wants beyond that, they'll ask.
 
-import type { ExerciseWeekBest, WeeklyWorkoutSummary } from './sessionsApi';
+import type { ExerciseWeekBest, WeeklyWorkoutSummary } from './weekSummary';
 import { formatStoneLb, kgToLb, type BodyWeightUnit } from './units';
 import {
   RATING_MAX,
@@ -29,7 +29,7 @@ export interface CoachSummaryInput {
   rotation?: { weeksBack: number; week: WeeklyWorkoutSummary } | null;
   /** The week's end-of-workout check-ins, in date order. */
   checkIns?: CheckInExportRow[];
-  /** Body weight, water and steps as daily averages, this week and last. */
+  /** Body weight, water, steps and sleep as daily averages, this week and last. */
   body?: {
     current: DailyAverages;
     lastWeek: DailyAverages | null;
@@ -46,12 +46,16 @@ export interface DailyAverages {
   weightKg: number | null;
   waterPerDay: number | null;
   stepsPerDay: number | null;
+  /** Hours a night. */
+  sleepHours: number | null;
 }
 
 export interface DailyLogs {
   weights: { recorded_on: string; weight_kg: number }[];
   water: { recorded_on: string; count: number }[];
   steps: { recorded_on: string; steps: number }[];
+  /** Optional: the copy built before sleep was logged still has the other three. */
+  sleep?: { recorded_on: string; hours: number }[];
 }
 
 /** yyyy-mm-dd in local time, the way the daily logs are keyed. */
@@ -76,6 +80,7 @@ export function dailyAverages(logs: DailyLogs, weekStart: Date): DailyAverages {
     weightKg: mean(logs.weights.filter((r) => days.has(r.recorded_on)).map((r) => r.weight_kg)),
     waterPerDay: mean(logs.water.filter((r) => days.has(r.recorded_on)).map((r) => r.count)),
     stepsPerDay: mean(logs.steps.filter((r) => days.has(r.recorded_on)).map((r) => r.steps)),
+    sleepHours: mean((logs.sleep ?? []).filter((r) => days.has(r.recorded_on)).map((r) => r.hours)),
   };
 }
 
@@ -164,7 +169,7 @@ export function buildCoachSummary(input: CoachSummaryInput): string {
     if (avg) out.push(`Average: ${avg}`);
   }
 
-  // Weight, water, steps.
+  // Weight, water, steps, sleep.
   const body = input.body ? bodyLines(input.body) : [];
   if (body.length > 0) {
     out.push('');
@@ -256,6 +261,10 @@ function bodyLines(body: NonNullable<CoachSummaryInput['body']>): string[] {
     const n = Math.round(current.stepsPerDay / 100) * 100;
     const steps = (v: number) => (Math.round(v / 100) * 100).toLocaleString('en-GB');
     out.push(`Steps ${steps(n)} a day${versus(n, lastWeek?.stepsPerDay, steps, '')}`);
+  }
+  if (current.sleepHours != null) {
+    const n = current.sleepHours;
+    out.push(`Sleep ${oneDp(n)} h a night${versus(n, lastWeek?.sleepHours, oneDp, ' h')}`);
   }
   return out;
 }
