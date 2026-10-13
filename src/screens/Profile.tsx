@@ -65,7 +65,17 @@ import { listBodyWeights } from '../lib/bodyWeightApi';
 import { listWaterSince } from '../lib/waterApi';
 import { listSteps } from '../lib/stepsApi';
 import { getCheckInEnabled, setCheckInEnabled } from '../lib/checkin';
-import { copyTextWhenReady } from '../lib/copyText';
+import { copyText, copyTextWhenReady } from '../lib/copyText';
+import {
+  createInvite,
+  formatInviteCode,
+  getLiveInvite,
+  inviteLink,
+  listMyCoaches,
+  removeLink,
+  type CoachInvite,
+  type LinkedCoach,
+} from '../lib/coachAccessApi';
 import { haptics } from '../lib/haptics';
 
 interface Props {
@@ -460,6 +470,8 @@ export function Profile({
           </div>
         </Section>
 
+        {session && <CoachAccessSection athleteId={session.user.id} />}
+
         <Section title="Account">
           <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
             <button
@@ -798,6 +810,178 @@ function CoachWeeklySummaryRow({ name, plan }: { name: string | null; plan: Full
         });
       }}
     />
+  );
+}
+
+/**
+ * Who can see this account's training. A coach is invited with a one-off code
+ * and, once they've used it, sees workouts, check-ins and daily logs on a
+ * computer — read-only. Each linked coach can be removed here.
+ */
+function CoachAccessSection({ athleteId }: { athleteId: string }) {
+  const [coaches, setCoaches] = useState<LinkedCoach[] | null>(null);
+  const [invite, setInvite] = useState<CoachInvite | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [removing, setRemoving] = useState<LinkedCoach | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([listMyCoaches(), getLiveInvite()])
+      .then(([c, i]) => {
+        if (!mounted) return;
+        setCoaches(c);
+        setInvite(i);
+      })
+      .catch(() => mounted && setLoadError(true));
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function makeInvite() {
+    setBusy(true);
+    setActionError(null);
+    setCopied(false);
+    try {
+      setInvite(await createInvite());
+      haptics.commit();
+    } catch {
+      setActionError("Couldn't make a code. Check your connection and try again.");
+      haptics.alert();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyInvite(i: CoachInvite) {
+    const until = new Date(i.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+    const ok = await copyText(
+      `I've invited you to see my training on Reps. Open ${inviteLink(i.code)} on a computer, ` +
+        `or enter code ${formatInviteCode(i.code)} at ${window.location.origin}/coach. ` +
+        `It works once, until ${until}.`
+    );
+    setCopied(ok);
+    if (ok) haptics.commit();
+    else haptics.alert();
+  }
+
+  async function confirmRemove(c: LinkedCoach) {
+    try {
+      await removeLink(athleteId, c.coach_id);
+      setCoaches((prev) => (prev ?? []).filter((x) => x.coach_id !== c.coach_id));
+    } catch {
+      setActionError(`Couldn't remove ${c.name}. Check your connection and try again.`);
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  return (
+    <Section title="Coach">
+      <div className="overflow-hidden rounded-card bg-paper-card shadow-card">
+        <p className="px-5 pt-4 text-xs text-muted">
+          Your coach signs in on a computer and sees your workouts, check-ins, weight, water,
+          steps and sleep. They can't change anything.
+        </p>
+
+        {loadError ? (
+          <p className="px-5 py-4 text-sm text-muted">Coach access needs a connection to load.</p>
+        ) : (
+          <>
+            {(coaches ?? []).map((c) => (
+              <div key={c.coach_id}>
+                <div className="mt-3 border-t border-line" />
+                <div className="flex items-center justify-between gap-3 py-3.5 pl-5 pr-4">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-ink">{c.name}</div>
+                    <div className="mt-0.5 text-xs text-muted">
+                      Can see your training since{' '}
+                      {new Date(c.linked_at).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                      })}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setRemoving(c)}
+                    className="pressable shrink-0 rounded-pill px-3 py-1.5 text-sm font-semibold text-danger active:bg-pressed"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div className="mt-3 border-t border-line" />
+            {invite ? (
+              <div className="px-5 py-4">
+                <div className="text-xs font-semibold uppercase tracking-eyebrow text-muted">
+                  Invite code
+                </div>
+                <div className="mt-1 font-mono text-2xl font-bold tracking-widest text-ink">
+                  {formatInviteCode(invite.code)}
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  Works once, until{' '}
+                  {new Date(invite.expires_at).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'long',
+                  })}
+                  . A new code replaces this one.
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => copyInvite(invite)}
+                    className="pressable flex-1 rounded-pill bg-ink py-2.5 text-sm font-semibold text-white active:opacity-80"
+                  >
+                    {copied ? 'Copied' : 'Copy invite'}
+                  </button>
+                  <button
+                    onClick={makeInvite}
+                    disabled={busy}
+                    className="pressable rounded-pill bg-paper px-4 py-2.5 text-sm font-semibold text-ink active:bg-surface-strong disabled:opacity-50"
+                  >
+                    New code
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={makeInvite}
+                disabled={busy || coaches == null}
+                className="flex w-full items-center justify-between py-4 pl-5 pr-6 text-left active:bg-pressed disabled:opacity-60"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-ink">
+                    {busy ? 'Making a code…' : 'Invite your coach'}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted">
+                    {(coaches ?? []).length > 0
+                      ? 'Add another coach with a new code'
+                      : 'Get a code to send them'}
+                  </div>
+                </div>
+                <ChevronRight />
+              </button>
+            )}
+            {actionError && <p className="px-5 pb-4 text-sm text-danger">{actionError}</p>}
+          </>
+        )}
+      </div>
+
+      {removing && (
+        <ConfirmModal
+          title={`Remove ${removing.name}?`}
+          message="They won't be able to see your training any more. You can invite them again later."
+          confirmLabel="Remove"
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => confirmRemove(removing)}
+        />
+      )}
+    </Section>
   );
 }
 
