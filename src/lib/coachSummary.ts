@@ -6,7 +6,7 @@
 // did they train, are they getting stronger, how did it feel, and what moved
 // most. Anything the coach wants beyond that, they'll ask.
 
-import type { ExerciseWeekBest, WeeklyWorkoutSummary } from './sessionsApi';
+import type { ExerciseWeekBest, WeeklyWorkoutSummary } from './weekSummary';
 import { formatStoneLb, kgToLb, type BodyWeightUnit } from './units';
 import {
   RATING_MAX,
